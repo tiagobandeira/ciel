@@ -226,6 +226,10 @@ O modelo é intercambiável — o valor está no harness: tool registry dinâmic
 sessões com branch/fork, base de conhecimento por sessão e injeção de contexto otimizada
 para janelas pequenas.
 
+A janela de contexto é otimizada por design: uma sessão típica com tasks,
+busca e escrita de arquivos fica em torno de 20k–30k tokens totais,
+viabilizando o uso contínuo com modelos locais de janela menor.
+
 ## Limitações
 
 - Modelos pequenos locais (< 8B) podem falhar em tasks com múltiplos steps ou raciocínio complexo.

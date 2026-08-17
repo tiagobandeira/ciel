@@ -111,7 +111,7 @@ def header(model: str, agent_name: str, tools: dict, safe: bool = False):
     console.print()
 
 
-def print_history_entry(role: str, content: str, ts: str = ""):
+def print_history_entry(role: str, content: str, ts: str = "", tokens_in: int = 0, tokens_out: int = 0):
     if role == "user":
         label = f"[{CLR_USER}]você[/{CLR_USER}]"
         style = CLR_USER
@@ -120,7 +120,19 @@ def print_history_entry(role: str, content: str, ts: str = ""):
         style = CLR_AGENT
 
     ts_str = f" [bright_black]{ts}[/bright_black]" if ts else ""
-    console.print(f"{label}{ts_str}")
+    
+    # tokens alinhados à direita — só exibe se tiver valor
+    if tokens_in or tokens_out:
+        tok_str = f"[bright_black]↑{tokens_in:,} ↓{tokens_out:,}[/bright_black]"
+        width = console.width
+        # calcula espaço entre label+ts e tokens
+        label_plain = f"{role}  {ts}"  # aproximação do tamanho real
+        pad = width - len(label_plain) - len(f"↑{tokens_in:,} ↓{tokens_out:,}") - 2
+        header_line = f"{label}{ts_str}{' ' * max(pad, 4)}{tok_str}"
+    else:
+        header_line = f"{label}{ts_str}"
+
+    console.print(header_line)
     console.print(Panel(escape(content), border_style=style, padding=(0, 1)))
     console.print()
 
@@ -255,14 +267,18 @@ def build_first_message(user_input: str, image_b64: str | None = None) -> dict:
     return {"role": "user", "content": user_input}
 
 
-def call_model(messages: list, model: str) -> str:
+def call_model(messages: list, model: str) -> tuple[str, int, int]:
     payload = {"model": model, "messages": messages, "stream": False}
     resp = requests.post(OLLAMA_URL, json=payload, timeout=120)
     resp.raise_for_status()
-    return resp.json()["message"]["content"]
+    data = resp.json()
+    content   = data["message"]["content"]
+    tokens_in  = data.get("prompt_eval_count", 0)  # tokens de entrada
+    tokens_out = data.get("eval_count", 0)          # tokens de saída
+    return content, tokens_in, tokens_out
 
 
-def call_model_with_spinner(messages: list, model: str) -> str:
+def call_model_with_spinner(messages: list, model: str) -> tuple[str, int, int]:
     """Chama o modelo exibindo um spinner enquanto aguarda a resposta."""
     with Live(
         Spinner("dots", text=" [bright_black]pensando…[/bright_black]"),
@@ -292,7 +308,7 @@ def _ask_model_for_tool_proposal(messages: list, model: str) -> dict | None:
         ),
     }]
     try:
-        raw = call_model(probe, model)
+        raw , _ ,_ = call_model(probe, model)
         parsed = parse_response(raw)
         if parsed.get("criar_tool") is True:
             # valida campos mínimos
@@ -396,6 +412,9 @@ def run_agent(
     context_injection: bloco de texto (resumo de sessão anterior) adicionado
                        ao final do system prompt para dar contexto de branch.
     """
+    # ── contadores de tokens ───────────────────────────────────────────────
+    total_in  = 0
+    total_out = 0
     system_prompt = build_system_prompt(agent_info, schema, web_base_url=web_base_url, session_id=session_id)
     if context_injection:
         system_prompt = f"{system_prompt}\n\n{context_injection}"
@@ -418,10 +437,14 @@ def run_agent(
         print_step(step, "modelo", "aguardando…", CLR_STEP)
 
         try:
-            raw = call_model_with_spinner(messages, model)
+            #raw = call_model_with_spinner(messages, model)
+            raw, t_in, t_out = call_model_with_spinner(messages, model)
+            total_in  += t_in
+            total_out += t_out
         except requests.RequestException as e:
             console.print(f"  [{CLR_ERR}]erro de conexão: {e}[/{CLR_ERR}]")
-            return f"Erro de conexão com Ollama: {e}"
+            # erro de conexão
+            return f"Erro de conexão com Ollama: {e}", total_in, total_out
 
         parsed = parse_response(raw)
 
@@ -430,7 +453,7 @@ def run_agent(
             print_step(step, "done", msg, CLR_OK)
             print_rule()
             print_agent_footer(step)
-            return msg
+            return msg, total_in, total_out
 
         if "error" in parsed:
             print_step(step, "parse error", parsed["error"], CLR_ERR)
@@ -490,10 +513,11 @@ def run_agent(
     console.print(f"  [{CLR_WARN}]steps esgotados — verificando se uma nova tool resolveria...[/{CLR_WARN}]")
     proposal = _ask_model_for_tool_proposal(messages, model)
 
-    if proposal:
-        return {"status": "needs_tool", "proposal": proposal}
 
-    return "⚠ Limite de steps atingido sem conclusão."
+    if proposal:
+        return {"status": "needs_tool", "proposal": proposal}, total_in, total_out
+    # steps esgotados sem auto tool
+    return "⚠ Limite de steps atingido sem conclusão.", total_in, total_out
 
 
 # ── loop principal da CLI ─────────────────────────────────────────────────────
@@ -539,6 +563,10 @@ def _handle_auto_tool(
 
     Retorna (mensagem_final, tools_atualizado, schema_atualizado).
     """
+    # ── contadores de sessão ───────────────────────────────────────────────
+    session_tokens_in  = 0
+    session_tokens_out = 0
+
     proposal  = result["proposal"]
     tool_name = proposal["nome"]
     print_auto_tool_proposal(proposal)
@@ -575,7 +603,7 @@ def _handle_auto_tool(
     if is_temp:
         create_instruction += " Use a tool 'create_temp_tool' para salvar."
 
-    create_result = run_agent(
+    create_result,  _, _ = run_agent(
         create_instruction,
         tools,
         schema,
@@ -620,7 +648,7 @@ def _handle_auto_tool(
     )
 
     # ── reexecuta tarefa original ─────────────────────────────────────────────
-    retry_result = run_agent(
+    retry_result, _, _ = run_agent(
         user_input,
         new_tools,
         new_schema,
@@ -734,6 +762,10 @@ def main():
     parser.add_argument("--list-agents", action="store_true",    help="lista agentes disponíveis e sai")
     args = parser.parse_args()
 
+    # ── contadores de sessão ───────────────────────────────────────────────
+    session_tokens_in  = 0
+    session_tokens_out = 0
+
     if args.list_agents:
         print_agents_list()
         sys.exit(0)
@@ -766,7 +798,7 @@ def main():
     CMDS = [
         "/sair", "/limpar", "/novo", "/task", "/tools", "/agente", 
         "/source", "/source --listar","/source --remover","/source --global","/source --limpar-orfas", "/limpar-temp",
-        "/promover ", "/copiar", "/ajuda",
+        "/promover ", "/copiar", "/tokens", "/ajuda",
         "/history", "/history salvar", "/history exportar",
     ]
     pt_style = PtStyle.from_dict({"prompt": "ansibrightcyan bold"})
@@ -849,6 +881,16 @@ def main():
                 f"  [green]{agent_info['name']}[/green]  "
                 f"[bright_black]{agent_info['description']}[/bright_black]\n"
                 f"  [bright_black]{hist_info}[/bright_black]\n"
+            )
+            continue
+
+        if user_input == "/tokens":
+            total = session_tokens_in + session_tokens_out
+            console.print(
+                f"\n  [bright_black]tokens desta sessão:[/bright_black]\n"
+                f"  [cyan]entrada:[/cyan]  {session_tokens_in:,}\n"
+                f"  [cyan]saída:[/cyan]    {session_tokens_out:,}\n"
+                f"  [cyan]total:[/cyan]    {total:,}\n"
             )
             continue
 
@@ -1214,6 +1256,7 @@ def main():
                 "  [yellow]/source [white]--global <arquivo>[/white][/yellow] indexa como fonte compartilhada\n"
                 "  [yellow]/limpar-temp[/yellow]             remove tools temporárias\n"
                 "  [yellow]/promover[/yellow]                promove tool temp → permanente\n"
+                "  [yellow]/tokens[/yellow]                  Mostra tokens gastos na sessão atual\n"
                 "  [yellow]/copiar[/yellow]                  copia última resposta do agente\n"
                 "  [yellow]/history[/yellow]                 lista todas as sessões salvas\n"
                 "  [yellow]/history [white]<agente>[/white][/yellow]      filtra sessões por agente\n"
@@ -1338,12 +1381,14 @@ def main():
             ts = datetime.now().strftime("%a %H:%M")
             history.append({"role": "user", "content": f"/task {task['nome']}", "ts": ts})
 
-            result = run_agent(
+            result, t_in, t_out = run_agent(
                 task_prompt, tools, schema, args.model, agent_info,
                 history=history[:-1],
                 session_id=str(current_session_id) if current_session_id else None,
                 max_steps=MAX_STEPS_TASK,          # <-- usa o limite expandido
             )
+            session_tokens_in  += t_in
+            session_tokens_out += t_out
 
             if isinstance(result, dict) and result.get("status") == "needs_tool":
                 result, tools, schema = _handle_auto_tool(
@@ -1355,7 +1400,7 @@ def main():
 
             ts = datetime.now().strftime("%a %H:%M")
             history.append({"role": "agent", "content": result, "ts": ts})
-            print_history_entry("agent", result, ts)
+            print_history_entry("agent", result, ts, t_in, t_out)
             print_turn_separator()
 
             if current_session_id is not None:
@@ -1393,13 +1438,15 @@ def main():
                 store.update_title(current_session_id, auto_title)
 
         # history[:-1] exclui o turno atual (já passado via user_input)
-        result = run_agent(
+        result, t_in, t_out = run_agent(
             user_input, tools, schema, args.model, agent_info,
             history=history[:-1],
             context_injection=context_injection,
             session_id=str(current_session_id) if current_session_id else None,
         )
-
+        session_tokens_in  += t_in
+        session_tokens_out += t_out
+        
         # ── auto tool ─────────────────────────────────────────────────────────
         if isinstance(result, dict) and result.get("status") == "needs_tool":
             result, tools, schema = _handle_auto_tool(
@@ -1418,7 +1465,7 @@ def main():
 
         ts = datetime.now().strftime("%a %H:%M")
         history.append({"role": "agent", "content": result, "ts": ts})
-        print_history_entry("agent", result, ts)
+        print_history_entry("agent", result, ts, t_in, t_out)
         print_turn_separator()
 
         # salva turno do agente em tempo real
