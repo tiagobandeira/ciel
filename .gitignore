@@ -1,0 +1,39 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Bancos de dados locais
+*.db
+
+# Dados pessoais do usuário
+data/
+
+# Cache de conhecimento (regenerável)
+knowledge/cache/
+
+# Tarefas pessoais (resumos gerados)
+tasks/resumo-diario.md
+
+# Scripts locais de máquina
+scripts/
+
+# Tools temporárias geradas pelo agente ou usuário
+tools/temp/
+
+# Atalho Windows (específico do setup local)
+iniciar.bat
+
+# Outros
+project_structure.md
+
+# Variáveis de ambiente
+.env
+.env.*
+
+# IDEs
+.vscode/
+.idea/

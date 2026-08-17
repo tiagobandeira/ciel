@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent CLI</title>
+<link rel="stylesheet" href="/static/style.css">
+<!-- highlight.js para syntax highlight nos blocos de código -->
+<link rel="stylesheet"
+  href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
+<!-- marked.js para markdown completo -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" defer></script>
+<!-- app.js depois dos CDNs -->
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+
+<header>
+  <h1>⚙ Agent CLI</h1>
+  <span id="agent-badge">…</span>
+  <button class="hdr-btn" onclick="toggleTools()">tools ▾</button>
+  <span id="model-badge">…</span>
+  <button class="hdr-btn" onclick="clearChat()">limpar</button>
+</header>
+
+<div id="tools-drawer"></div>
+
+<div id="messages"></div>
+
+<!-- preview do arquivo pendente -->
+<div id="upload-preview">
+  <span id="prev-thumb"></span>
+  <span id="prev-name"></span>
+  <button id="upload-clear" onclick="clearUpload()" title="remover">✕</button>
+</div>
+
+<div id="input-area">
+  <!-- botão de upload -->
+  <button class="input-icon-btn" onclick="triggerUpload()" title="anexar arquivo">📎</button>
+  <input type="file" id="file-input" style="display:none"
+    accept="image/*,.txt,.md,.py,.csv,.json,.yaml,.yml,.toml,.log">
+
+  <textarea id="msg-input" rows="1" placeholder="Digite um comando… (Enter envia, Shift+Enter quebra linha)"
+    onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+
+  <button id="send-btn" onclick="sendMessage()">↑</button>
+</div>
+
+</body>
+</html>
