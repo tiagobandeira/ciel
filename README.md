@@ -8,12 +8,16 @@ Cada **persona** é um arquivo `.md` em `/agents/` — troque o comportamento do
 
 ## Instalação
 
+> Primeira vez? Siga o **[tutorial passo a passo](docs/tutorial.md)** — do zero ao primeiro chat.
+
 ```bash
 # 1. Crie e ative um ambiente virtual (recomendado)
 python -m venv venv
 
 # Windows
-venv\Scripts\activate
+venv\Scripts\activate.bat        # Prompt de Comando
+venv\Scripts\Activate.ps1        # PowerShell
+
 # Linux/macOS
 source venv/bin/activate
 
