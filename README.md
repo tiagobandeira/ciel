@@ -1,3 +1,6 @@
+
+![Ciel](docs/assets/banner.jpeg)
+
 # Ciel CLI
 
 CLI agêntica para automação de tarefas via linguagem natural, com suporte a modelos locais (Ollama) e cloud. Janela de contexto otimizada, base de conhecimento por sessão e tools extensíveis.
@@ -31,6 +34,8 @@ pip install requests rich pymupdf
 > e instalar pacotes via pip. Sem isolamento, isso afeta seu Python global.
 
 ## Uso
+
+![Ciel em uso](docs/assets/screenshot.png)
 
 ```bash
 python cli.py                             # agente padrão (general)
