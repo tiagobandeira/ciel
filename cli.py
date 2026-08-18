@@ -61,7 +61,7 @@ CLR_WARN    = "yellow"
 console = Console()
 
 # ── nome da ferramenta ────────────────────────────────────────────────────────
-NAME = "Agent CLI"   # altere aqui quando decidir o nome definitivo
+NAME = "Ciel CLI"   # altere aqui quando decidir o nome definitivo
 VERSION = "1.0.0"
 
 def _banner() -> str:
@@ -86,9 +86,12 @@ def header(model: str, agent_name: str, tools: dict, safe: bool = False):
     safe_badge = "  [yellow]⚠ modo seguro[/yellow]\n" if safe else ""
 
     ascii_art = """
-        ░█▀█░█▀▀░█▀▀░█▀█░▀█▀░░░█▀▀░█░░░▀█▀
-        ░█▀█░█░█░█▀▀░█░█░░█░░░░█░░░█░░░░█░
-        ░▀░▀░▀▀▀░▀▀▀░▀░▀░░▀░░░░▀▀▀░▀▀▀░▀▀▀
+             ██████╗██╗███████╗██╗     
+            ██╔════╝██║██╔════╝██║     
+            ██║     ██║█████╗  ██║     
+            ██║     ██║██╔══╝  ██║     
+            ╚██████╗██║███████╗███████╗
+             ╚═════╝╚═╝╚══════╝╚══════╝
     """
 
     content = (
@@ -100,7 +103,7 @@ def header(model: str, agent_name: str, tools: dict, safe: bool = False):
         f"  [bright_black]tools:[/bright_black] [yellow]{tools_line}[/yellow]\n"
         f"{ascii_art}"
         f"\n"
-        f"  [bright_black]/  comandos  ·  tab  completar  ·  /ajuda  ajuda[/bright_black]"
+        f"  [bright_black]/  comandos  ·  tab  completar  ·  /ajuda  ajuda[/bright_black] \n"
     )
     console.print(Panel(
         content,
