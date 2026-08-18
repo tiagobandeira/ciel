@@ -1,4 +1,4 @@
-# PyAgentCLI
+# Ciel CLI
 
 CLI agêntica para automação de tarefas via linguagem natural, com suporte a modelos locais (Ollama) e cloud. Janela de contexto otimizada, base de conhecimento por sessão e tools extensíveis.
 
