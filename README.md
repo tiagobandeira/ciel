@@ -225,15 +225,17 @@ PyAgentCLI/
 
 ## Arquitetura
 
-```
-User Harness    agents/*.md         personas, tools permitidas, comportamento
-Harness Built   cli.py + tools/     loop agêntico, tool registry, RAG, histórico
-Model           Ollama              LLM intercambiável via --model
-```
+<p align="center">
+  <img src="docs/assets/agent_cli_architecture.svg" width="700">
+</p>
 
 O modelo é intercambiável — o valor está no harness: tool registry dinâmico,
 sessões com branch/fork, base de conhecimento por sessão e injeção de contexto otimizada
 para janelas pequenas.
+
+Tasks permitem execução predefinida de fluxos complexos — uma forma deliberada de
+compensar as limitações de contexto de modelos locais menores sem depender de um
+orquestrador grande.
 
 A janela de contexto é otimizada por design: uma sessão típica com tasks,
 busca e escrita de arquivos fica em torno de 20k–30k tokens totais,
