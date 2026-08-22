@@ -9,6 +9,21 @@ Cada **persona** é um arquivo `.md` em `/agents/` — troque o comportamento do
 
 > **Aviso de segurança:** este projeto permite que o agente execute scripts Python e instale pacotes via pip. Use sempre dentro de um `venv` e considere a flag `--safe` se não confiar no modelo ou no input. Veja [Segurança](#segurança) antes de começar.
 
+## 🌐 Versão Server Local
+
+O **CIEL Server** oferece uma interface web para executar o CIEL localmente através do navegador. Ele mantém os mesmos recursos da CLI — agentes, tasks, ferramentas, fontes e sessões — em uma interface mais prática e acessível.
+
+O servidor roda no computador e pode ser acessado localmente ou por outros dispositivos na mesma rede:
+
+```text
+http://127.0.0.1:5000
+http://192.168.x.x:5000
+```
+
+Assim, você pode executar o CIEL no PC e utilizá-lo também pelo celular ou outro dispositivo, sem abrir mão do processamento local.
+
+![Ciel Local Server](docs/assets/screenshot_server.png)
+
 ## Instalação
 
 > Primeira vez? Siga o **[tutorial passo a passo](docs/tutorial.md)** — do zero ao primeiro chat.
@@ -45,6 +60,7 @@ python cli.py --agent researcher          # leitura e síntese de arquivos
 python cli.py --agent general --safe      # sem tools de execução arbitrária
 python cli.py --model gemma4:cloud        # outro modelo Ollama
 python cli.py --list-agents               # lista personas disponíveis
+python server.py                          # versão server local
 ```
 
 ## Comandos da CLI

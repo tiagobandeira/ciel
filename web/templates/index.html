@@ -3,48 +3,275 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agent CLI</title>
-<link rel="stylesheet" href="/static/style.css">
-<!-- highlight.js para syntax highlight nos blocos de código -->
-<link rel="stylesheet"
-  href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<title>Ciel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
-<!-- marked.js para markdown completo -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" defer></script>
-<!-- app.js depois dos CDNs -->
+<link rel="stylesheet" href="/static/style.css">
 <script src="/static/app.js" defer></script>
 </head>
 <body>
 
-<header>
-  <h1>⚙ Agent CLI</h1>
-  <span id="agent-badge">…</span>
-  <button class="hdr-btn" onclick="toggleTools()">tools ▾</button>
-  <span id="model-badge">…</span>
-  <button class="hdr-btn" onclick="clearChat()">limpar</button>
-</header>
+<!-- ── Sidebar overlay (mobile) ────────────────────────── -->
+<div id="sidebar-overlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
 
-<div id="tools-drawer"></div>
+<!-- ── Sidebar esquerda ─────────────────────────────────── -->
+<aside id="sidebar" class="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">
+      <span class="logo-mark">◈</span>
+      <span class="logo-text">ciel</span>
+    </div>
+    <button class="icon-btn sidebar-close" onclick="closeSidebar()" title="fechar">✕</button>
+  </div>
 
-<div id="messages"></div>
+  <!-- Agente atual -->
+  <div class="agent-card">
+    <div class="agent-card-top">
+      <div class="agent-avatar" id="agent-avatar">G</div>
+      <div class="agent-info">
+        <div class="agent-name" id="sidebar-agent-name">carregando…</div>
+        <div class="agent-desc" id="sidebar-agent-desc"></div>
+      </div>
+    </div>
+    <button class="btn-outline btn-sm w-full" onclick="openAgentModal()">trocar agente</button>
+  </div>
 
-<!-- preview do arquivo pendente -->
-<div id="upload-preview">
-  <span id="prev-thumb"></span>
-  <span id="prev-name"></span>
-  <button id="upload-clear" onclick="clearUpload()" title="remover">✕</button>
+  <!-- Nav -->
+  <nav class="sidebar-nav">
+    <button class="nav-item active" onclick="showView('chat')">
+      <span class="nav-icon">💬</span>
+      <span>chat</span>
+    </button>
+    <button class="nav-item" onclick="openTaskModal()">
+      <span class="nav-icon">⚡</span>
+      <span>tasks</span>
+    </button>
+    <button class="nav-item" onclick="openSourceModal()">
+      <span class="nav-icon">📚</span>
+      <span>fontes</span>
+    </button>
+    <button class="nav-item" onclick="toggleToolsPanel()">
+      <span class="nav-icon">⚙</span>
+      <span>tools</span>
+      <span class="nav-badge" id="tools-count">0</span>
+    </button>
+  </nav>
+
+  <!-- Sessões -->
+  <div class="sessions-section">
+    <div class="section-label">
+      <span>sessões</span>
+      <button class="icon-btn-sm" onclick="newSession()" title="nova sessão">+</button>
+    </div>
+    <div id="sessions-list" class="sessions-list">
+      <div class="sessions-empty">nenhuma sessão salva</div>
+    </div>
+  </div>
+
+  <!-- Rodapé sidebar -->
+  <div class="sidebar-footer">
+    <a href="https://github.com/tiagobandeira/ciel" target="_blank" class="footer-link">
+      <span>⬡</span> GitHub
+    </a>
+    <span class="version-badge" id="version-badge">v—</span>
+  </div>
+</aside>
+
+<!-- ── Área principal ────────────────────────────────────── -->
+<main class="main">
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <button class="icon-btn topbar-menu" onclick="toggleSidebar()" title="menu">☰</button>
+    <div class="topbar-center">
+      <span class="status-dot" id="status-dot"></span>
+      <span class="topbar-agent" id="topbar-agent">ciel</span>
+      <span class="topbar-sep">·</span>
+      <span class="topbar-model" id="topbar-model">—</span>
+    </div>
+    <div class="topbar-right">
+      <div class="token-pill" id="token-pill" title="tokens desta sessão">
+        <span id="token-in">0</span>↑ <span id="token-out">0</span>↓
+      </div>
+      <button class="icon-btn" onclick="clearChat()" title="nova sessão">↺</button>
+      <button class="icon-btn" onclick="toggleRightPanel()" title="painel" id="right-panel-btn">⊟</button>
+    </div>
+  </header>
+
+  <!-- Chat + painel direito -->
+  <div class="content-area">
+
+    <!-- Mensagens -->
+    <div class="chat-wrapper">
+      <div id="messages" class="messages"></div>
+
+      <!-- Preview arquivo pendente -->
+      <div id="upload-preview" class="upload-preview">
+        <span id="prev-thumb" class="prev-thumb"></span>
+        <span id="prev-name" class="prev-name"></span>
+        <span class="prev-type" id="prev-type"></span>
+        <button class="icon-btn-sm err" onclick="clearUpload()" title="remover">✕</button>
+      </div>
+
+      <!-- Barra de input -->
+      <div class="input-bar">
+        <div class="input-actions-left">
+          <button class="input-action-btn" onclick="triggerUpload()" title="anexar arquivo">📎</button>
+          <input type="file" id="file-input" style="display:none"
+            accept="image/*,.txt,.md,.py,.csv,.json,.yaml,.yml,.toml,.log,.pdf">
+          <button class="input-action-btn" onclick="openTaskModal()" title="executar task">⚡</button>
+          <button class="input-action-btn" onclick="toggleCommandMenu()" title="comandos">/</button>
+        </div>
+
+        <textarea
+          id="msg-input"
+          rows="1"
+          placeholder="mensagem para o agente…"
+          onkeydown="handleKey(event)"
+          oninput="autoResize(this)"
+        ></textarea>
+
+        <button id="send-btn" class="send-btn" onclick="sendMessage()" title="enviar">↑</button>
+      </div>
+
+      <!-- Menu de comandos rápidos -->
+      <div id="command-menu" class="command-menu hidden">
+        <div class="command-menu-header">comandos</div>
+        <button class="command-item" onclick="quickCommand('/history salvar')">💾 salvar sessão</button>
+        <button class="command-item" onclick="quickCommand('/history exportar')">📄 exportar .md</button>
+        <button class="command-item" onclick="quickCommand('/tools')">⚙ listar tools</button>
+        <button class="command-item" onclick="quickCommand('/tokens')">📊 ver tokens</button>
+        <button class="command-item" onclick="quickCommand('/limpar-temp')">🗑 limpar tools temp</button>
+        <button class="command-item" onclick="quickCommand('/novo')">✦ nova sessão</button>
+        <div class="command-menu-header">sources</div>
+        <button class="command-item" onclick="openSourceModal()">📚 gerenciar fontes</button>
+        <button class="command-item" onclick="quickCommand('/source --listar')">📋 listar fontes</button>
+      </div>
+    </div>
+
+    <!-- Painel direito -->
+    <aside id="right-panel" class="right-panel">
+      <!-- Tabs -->
+      <div class="panel-tabs">
+        <button class="panel-tab active" onclick="switchPanelTab('tools')">tools</button>
+        <button class="panel-tab" onclick="switchPanelTab('session')">sessão</button>
+      </div>
+
+      <!-- Tab: Tools -->
+      <div id="panel-tools" class="panel-content active">
+        <div class="panel-search-row">
+          <input type="text" class="panel-search" placeholder="buscar tool…" oninput="filterTools(this.value)">
+        </div>
+        <div id="tools-list" class="tools-list">
+          <div class="panel-empty">nenhuma tool carregada</div>
+        </div>
+      </div>
+
+      <!-- Tab: Sessão -->
+      <div id="panel-session" class="panel-content">
+        <div class="session-info-block">
+          <div class="info-row">
+            <span class="info-label">agente</span>
+            <span class="info-val" id="info-agent">—</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">modelo</span>
+            <span class="info-val" id="info-model">—</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">sessão</span>
+            <span class="info-val" id="info-session">nova</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">tokens ↑</span>
+            <span class="info-val accent" id="info-tin">0</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">tokens ↓</span>
+            <span class="info-val accent" id="info-tout">0</span>
+          </div>
+        </div>
+        <div class="panel-divider"></div>
+        <div class="session-actions">
+          <button class="btn-outline btn-sm w-full" onclick="quickCommand('/history salvar')">💾 salvar sessão</button>
+          <button class="btn-outline btn-sm w-full" onclick="quickCommand('/history exportar')">📄 exportar .md</button>
+          <button class="btn-outline btn-sm w-full err-btn" onclick="clearChat()">↺ nova sessão</button>
+        </div>
+        <div class="panel-divider"></div>
+        <div class="section-label">sources desta sessão</div>
+        <div id="sources-panel-list" class="sources-mini-list">
+          <div class="panel-empty">nenhuma fonte</div>
+        </div>
+        <button class="btn-outline btn-sm w-full mt8" onclick="openSourceModal()">+ adicionar fonte</button>
+      </div>
+    </aside>
+
+  </div><!-- /content-area -->
+</main>
+
+<!-- ══ MODAIS ══════════════════════════════════════════════ -->
+
+<!-- Modal: Trocar Agente -->
+<div id="agent-modal" class="modal-backdrop hidden" onclick="closeModal('agent-modal')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span>trocar agente</span>
+      <button class="icon-btn" onclick="closeModal('agent-modal')">✕</button>
+    </div>
+    <div id="agents-grid" class="agents-grid">
+      <div class="panel-empty">carregando…</div>
+    </div>
+  </div>
 </div>
 
-<div id="input-area">
-  <!-- botão de upload -->
-  <button class="input-icon-btn" onclick="triggerUpload()" title="anexar arquivo">📎</button>
-  <input type="file" id="file-input" style="display:none"
-    accept="image/*,.txt,.md,.py,.csv,.json,.yaml,.yml,.toml,.log">
+<!-- Modal: Tasks -->
+<div id="task-modal" class="modal-backdrop hidden" onclick="closeModal('task-modal')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span>executar task</span>
+      <button class="icon-btn" onclick="closeModal('task-modal')">✕</button>
+    </div>
+    <div id="tasks-list-modal" class="tasks-list-modal">
+      <div class="panel-empty">carregando…</div>
+    </div>
+  </div>
+</div>
 
-  <textarea id="msg-input" rows="1" placeholder="Digite um comando… (Enter envia, Shift+Enter quebra linha)"
-    onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+<!-- Modal: Fontes / Sources -->
+<div id="source-modal" class="modal-backdrop hidden" onclick="closeModal('source-modal')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span>fontes de conhecimento</span>
+      <button class="icon-btn" onclick="closeModal('source-modal')">✕</button>
+    </div>
+    <div class="source-add-row">
+      <input type="text" id="source-input" class="panel-search" placeholder="caminho ou URL…" style="flex:1">
+      <label class="checkbox-label">
+        <input type="checkbox" id="source-global"> global
+      </label>
+      <button class="btn-primary btn-sm" onclick="addSource()">+ indexar</button>
+    </div>
+    <div id="sources-list-modal" class="sources-list-modal">
+      <div class="panel-empty">nenhuma fonte indexada</div>
+    </div>
+  </div>
+</div>
 
-  <button id="send-btn" onclick="sendMessage()">↑</button>
+<!-- Modal: Histórico de Sessões -->
+<div id="history-modal" class="modal-backdrop hidden" onclick="closeModal('history-modal')">
+  <div class="modal modal-wide" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span>histórico de sessões</span>
+      <button class="icon-btn" onclick="closeModal('history-modal')">✕</button>
+    </div>
+    <div id="history-sessions-list" class="sessions-list-modal">
+      <div class="panel-empty">nenhuma sessão salva</div>
+    </div>
+  </div>
 </div>
 
 </body>

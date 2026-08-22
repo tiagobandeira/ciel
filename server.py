@@ -1,274 +1,598 @@
 """
-Servidor web local do agente — acesso via browser/celular na rede local.
+server.py — Ciel web server
+Compatível com cli.py atualizado. Expõe /api/* para o frontend.
+
+Rotas:
+  GET  /                    → index.html
+  GET  /static/<path>       → arquivos estáticos
+  GET  /api/info            → agente, modelo, tools, versão
+  POST /api/chat            → executa turno do agente
+  POST /api/clear           → limpa histórico
+  GET  /api/agents          → lista agentes disponíveis
+  POST /api/agent           → troca de agente
+  GET  /api/tasks           → lista tasks disponíveis
+  GET  /api/sessions        → histórico de sessões salvas
+  GET  /api/session/<id>    → turnos de uma sessão
+  POST /api/session/save    → salva sessão atual
+  POST /api/source          → indexa arquivo/URL como fonte
+  GET  /api/sources         → lista fontes da sessão atual
+  DELETE /api/source/<id>   → remove fonte
+  GET  /download            → download de arquivo gerado
 
 Uso:
   python server.py
-  python server.py --agent general --model gemma4:cloud --port 5000
+  python server.py --agent dev_helper --model gemma4:cloud --port 5000
 """
 
-import argparse
+import sys
+import json
 import base64
-import mimetypes
-import socket
+import argparse
 from pathlib import Path
+from datetime import datetime
+from flask import Flask, request, jsonify, send_from_directory, send_file, abort
 
-from flask import Flask, jsonify, render_template, request, send_file
-from flask_cors import CORS
+# ── garante que o root do projeto está no path ─────────────────────────────
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
 
-from agent_loader import filter_tools, list_agents, load_agent
-from cli import _build_create_instruction, _reload_tools, run_agent
 from tools_registry import load_tools, tools_schema
+from agent_loader   import load_agent, filter_tools, list_agents
+from history_store  import HistoryStore, DB_PATH
+from history_ui     import build_context_injection
 
-DEFAULT_MODEL = "gemma4:cloud"#"gemma4:e2b-it-qat"
-DEFAULT_AGENT = "general"
-DEFAULT_PORT  = 5000
-UNSAFE_TOOLS  = {"run_script"}
-PROJECT_ROOT  = Path(__file__).parent.resolve()
+# ── config ──────────────────────────────────────────────────────────────────
+DEFAULT_MODEL  = "gemma4:cloud"
+DEFAULT_AGENT  = "general"
+VERSION        = "2.0.0"
+UNSAFE_TOOLS   = {"run_script"}
 
-app = Flask(__name__, template_folder="web/templates", static_folder="web/static")
-CORS(app)
-state: dict = {}
+# Estes são importados do cli.py para reaproveitar toda a lógica
+from cli import (
+    run_agent, load_task, find_tasks, build_task_prompt,
+    _reload_tools, _handle_auto_tool, _save_session,
+    MAX_STEPS, MAX_STEPS_TASK,
+)
+
+# ── flask app ────────────────────────────────────────────────────────────────
+app = Flask(
+    __name__,
+    static_folder=str(ROOT / "web" / "static"),
+    template_folder=str(ROOT / "web" / "templates"),
+)
+
+# ── estado de sessão (in-memory, por processo) ───────────────────────────────
+class AppState:
+    def __init__(self, agent_id: str, model: str, safe: bool = False):
+        self.model      = model
+        self.safe       = safe
+        self.history    = []          # list[dict]
+        self.store      = HistoryStore(DB_PATH)
+        self.session_id: int | None = None
+        self.context_injection = None
+        self.tokens_in  = 0
+        self.tokens_out = 0
+        self._load_agent(agent_id)
+
+    def _load_agent(self, agent_id: str):
+        self.agent_id   = agent_id
+        self.agent_info = load_agent(agent_id)
+        all_tools       = load_tools()
+        self.tools      = filter_tools(all_tools, self.agent_info["allowed_tools"])
+        if self.safe:
+            self.tools = {k: v for k, v in self.tools.items() if k not in UNSAFE_TOOLS}
+        self.schema = tools_schema(self.tools)
+
+    def switch_agent(self, agent_id: str):
+        self.history.clear()
+        self.session_id        = None
+        self.context_injection = None
+        self.tokens_in         = 0
+        self.tokens_out        = 0
+        self._load_agent(agent_id)
+
+    def new_session(self):
+        self.history.clear()
+        self.session_id        = None
+        self.context_injection = None
+        self.tokens_in         = 0
+        self.tokens_out        = 0
+
+    @property
+    def base_url(self):
+        return request.host_url.rstrip('/')
+
+    def tools_as_list(self):
+        return [
+            {
+                "name": name,
+                "desc": meta.get("description", "").split("\n")[0][:80],
+                "cat":  meta.get("categoria", "permanente"),
+            }
+            for name, meta in sorted(self.tools.items())
+        ]
 
 
-def init_state(agent_name: str, model: str, safe: bool):
-    agent_info = load_agent(agent_name)
-    all_tools  = load_tools()
-    tools      = filter_tools(all_tools, agent_info["allowed_tools"])
-    if safe:
-        tools = {k: v for k, v in tools.items() if k not in UNSAFE_TOOLS}
-    (PROJECT_ROOT / "data" / "user").mkdir(parents=True, exist_ok=True)
-    state.update({
-        "agent_info":       agent_info,
-        "model":            model,
-        "safe":             safe,
-        "tools":            tools,
-        "schema":           tools_schema(tools),
-        "history":          [],
-        "pending_proposal": None,
-    })
+# Inicializado no startup
+state: AppState = None
 
 
+# ── rotas estáticas ───────────────────────────────────────────────────────────
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return send_from_directory(app.template_folder, "index.html")
+
+@app.route("/static/<path:filename>")
+def static_files(filename):
+    return send_from_directory(app.static_folder, filename)
+
+@app.route("/download")
+def download():
+    path = request.args.get("path", "")
+    if not path:
+        abort(400)
+    full = ROOT / path
+    if not full.exists() or not full.is_file():
+        abort(404)
+    # segurança: só permite paths dentro do ROOT
+    try:
+        full.relative_to(ROOT)
+    except ValueError:
+        abort(403)
+    return send_file(str(full), as_attachment=True, download_name=full.name)
 
 
-@app.route("/info")
-def info():
+# ── /api/info ─────────────────────────────────────────────────────────────────
+@app.route("/api/info")
+def api_info():
     return jsonify({
-        "agent": state["agent_info"]["name"],
-        "model": state["model"],
-        "tools": [
-            {"name": k, "desc": v["description"].split("\n")[0][:60], "cat": v.get("categoria", "permanente")}
-            for k, v in state["tools"].items()
-        ],
+        "agent":      state.agent_id,
+        "agent_full": state.agent_info.get("name", state.agent_id),
+        "agent_desc": state.agent_info.get("description", ""),
+        "model":      state.model,
+        "version":    VERSION,
+        "tools":      state.tools_as_list(),
     })
 
 
-@app.route("/chat", methods=["POST"])
-def chat():
-    data       = request.get_json(force=True)
-    user_input = (data.get("message") or "").strip()
-    image_b64  = data.get("image_b64")
-    file_text  = data.get("file_text")
-    filename   = data.get("filename", "arquivo")
+# ── /api/chat ─────────────────────────────────────────────────────────────────
+@app.route("/api/chat", methods=["POST"])
+def api_chat():
+    data        = request.get_json(force=True)
+    user_input  = data.get("message", "").strip()
+    image_b64   = data.get("image_b64")
+    file_text   = data.get("file_text")
+    filename    = data.get("filename", "arquivo")
 
     if not user_input and not image_b64 and not file_text:
         return jsonify({"error": "mensagem vazia"}), 400
 
-    tools      = state["tools"]
-    schema     = state["schema"]
-    model      = state["model"]
-    agent_info = state["agent_info"]
-    history    = state["history"]
-
-    # confirmacao de auto tool pendente
-    if state["pending_proposal"]:
-        proposal = state["pending_proposal"]
-        resp = user_input.lower().strip()
-        if resp in ("s", "sim", "yes"):
-            choice = "s"
-        elif resp in ("t", "temp", "temporária", "temporaria"):
-            choice = "t"
-        else:
-            state["pending_proposal"] = None
-            return jsonify({"reply": "Ok, tarefa encerrada sem criar a tool.", "status": "done"})
-
-        result, new_tools, new_schema = _handle_auto_tool_web(
-            proposal, choice, tools, schema, model, agent_info, history, state["safe"]
-        )
-        state["tools"]            = new_tools
-        state["schema"]           = new_schema
-        state["pending_proposal"] = None
-        history.append({"role": "agent", "content": result})
-        return jsonify({"reply": result, "status": "done"})
-
-    # monta input efetivo
-    effective_input = user_input
-    img_b64_clean   = None
-
-    if image_b64:
-        # salva copia no disco
-        img_path = PROJECT_ROOT / "uploads" / filename
-        img_path.parent.mkdir(exist_ok=True)
-        img_path.write_bytes(base64.b64decode(image_b64))
-        # passa b64 direto ao modelo
-        img_b64_clean   = image_b64
-        effective_input = user_input or "Descreva e analise esta imagem."
-
+    # monta entrada real
     if file_text:
-        effective_input = (
+        user_input = (
             f"{user_input}\n\n"
-            f"Conteudo do arquivo '{filename}':\n```\n{file_text[:6000]}\n```"
-        )
+            f"<arquivo nome=\"{filename}\">\n{file_text[:12000]}\n</arquivo>"
+        ) if user_input else f"<arquivo nome=\"{filename}\">\n{file_text[:12000]}\n</arquivo>"
 
-    history.append({"role": "user", "content": effective_input})
-    web_url = state.get("web_base_url", "")
-    result = run_agent(
-        effective_input, tools, schema, model, agent_info,
-        history=history[:-1], image_b64=img_b64_clean, web_base_url=web_url,
+    # ── comandos especiais (/task, /tools, /tokens, /history ...) ────────────
+    if user_input.startswith("/"):
+        reply, changed = handle_command(user_input)
+        return jsonify({
+            "status":       "done",
+            "reply":        reply,
+            "tools_changed": changed,
+            "session_id":   state.session_id,
+        })
+
+    # ── turno normal ──────────────────────────────────────────────────────────
+    ts = datetime.now().strftime("%a %H:%M")
+    state.history.append({"role": "user", "content": user_input, "ts": ts})
+
+    # salva turno user em tempo real
+    if state.session_id is None:
+        state.session_id = state.store.new_session(
+            agent_id=state.agent_id,
+            title="",
+        )
+    state.store.append_turn(state.session_id, "user", user_input, ts)
+
+    # auto-título
+    sess = state.store.get_session(state.session_id)
+    if sess and not sess["title"]:
+        auto_title = " ".join(user_input.split()[:8])
+        state.store.update_title(state.session_id, auto_title)
+
+    result, t_in, t_out = run_agent(
+        user_input,
+        state.tools,
+        state.schema,
+        state.model,
+        state.agent_info,
+        history=state.history[:-1],
+        image_b64=image_b64,
+        web_base_url=state.base_url,
+        context_injection=state.context_injection,
+        session_id=str(state.session_id) if state.session_id else None,
     )
 
+    state.tokens_in  += t_in
+    state.tokens_out += t_out
+    state.context_injection = None  # limpa após primeiro uso
+
+    tools_changed = False
+
+    # auto tool
     if isinstance(result, dict) and result.get("status") == "needs_tool":
-        proposal = result["proposal"]
-        state["pending_proposal"] = proposal
-        params = ", ".join(
-            f"{p['nome']} ({p.get('tipo','str')})" for p in proposal.get("parametros", [])
+        proposal = result.get("proposal", {})
+        reply    = (
+            f"⚡ **Auto Tool**\n\n"
+            f"O agente precisa de uma nova tool para concluir esta tarefa:\n\n"
+            f"- **nome:** `{proposal.get('nome','?')}`\n"
+            f"- **função:** {proposal.get('descricao','?')}\n\n"
+            f"Use `/criar-tool {proposal.get('nome','')}` para criar permanente "
+            f"ou `/criar-tool-temp {proposal.get('nome','')}` para temporária."
         )
-        msg = (
-            f"Nao consegui completar a tarefa com as tools disponiveis.\n\n"
-            f"Posso criar uma nova tool:\n"
-            f"**{proposal['nome']}** - {proposal['descricao']}\n"
-            f"Parametros: {params or 'nenhum'}\n\n"
-            f"Responda:\n"
-            f"- **s** - criar e salvar permanente\n"
-            f"- **t** - criar como temporaria\n"
-            f"- qualquer outra coisa - cancelar"
+        return jsonify({
+            "status":   "needs_tool",
+            "reply":    reply,
+            "proposal": proposal,
+            "tokens_in":  t_in,
+            "tokens_out": t_out,
+            "session_id": state.session_id,
+        })
+
+    final_reply = result if isinstance(result, str) else str(result)
+
+    ts = datetime.now().strftime("%a %H:%M")
+    state.history.append({"role": "agent", "content": final_reply, "ts": ts})
+    state.store.append_turn(state.session_id, "agent", final_reply, ts)
+
+    return jsonify({
+        "status":       "done",
+        "reply":        final_reply,
+        "tokens_in":    t_in,
+        "tokens_out":   t_out,
+        "tools_changed": tools_changed,
+        "session_id":   state.session_id,
+    })
+
+
+# ── handler de comandos internos ──────────────────────────────────────────────
+def handle_command(cmd: str) -> tuple[str, bool]:
+    """
+    Processa /comandos do frontend.
+    Retorna (reply_str, tools_changed_bool).
+    """
+    changed = False
+
+    # /task
+    if cmd.startswith("/task"):
+        parts = cmd.split(None, 1)
+        arg   = parts[1].strip() if len(parts) > 1 else ""
+
+        if not arg:
+            tasks = list(Path("tasks").glob("*.md")) if Path("tasks").exists() else []
+            if not tasks:
+                return "nenhuma task em `tasks/`", False
+            lines = ["**tasks disponíveis:**\n"]
+            for t in sorted(tasks):
+                td  = load_task(t)
+                obj = td["objetivo"][:60] if td else "formato inválido"
+                lines.append(f"- `{t.stem}` — {obj}")
+            return "\n".join(lines), False
+
+        task_path = Path(arg) if arg.endswith(".md") else Path("tasks") / f"{arg}.md"
+        if not task_path.exists():
+            candidates = find_tasks(arg, Path("tasks"))
+            if not candidates:
+                return f"task `{arg}` não encontrada.", False
+            task_path = candidates[0]
+
+        task = load_task(task_path)
+        if not task:
+            return f"arquivo `{task_path.name}` não segue o formato de task.", False
+
+        task_prompt = build_task_prompt(task)
+        ts = datetime.now().strftime("%a %H:%M")
+        state.history.append({"role": "user", "content": f"/task {task['nome']}", "ts": ts})
+
+        result, t_in, t_out = run_agent(
+            task_prompt,
+            state.tools,
+            state.schema,
+            state.model,
+            state.agent_info,
+            history=state.history[:-1],
+            web_base_url=state.base_url,
+            session_id=str(state.session_id) if state.session_id else None,
+            max_steps=MAX_STEPS_TASK,
         )
-        return jsonify({"reply": msg, "status": "needs_tool"})
+        state.tokens_in  += t_in
+        state.tokens_out += t_out
 
-    history.append({"role": "agent", "content": result})
-    return jsonify({"reply": result, "status": "done"})
+        if isinstance(result, dict) and result.get("status") == "needs_tool":
+            return "⚠ A task requer uma tool que ainda não existe.", False
+
+        final = result if isinstance(result, str) else str(result)
+        ts = datetime.now().strftime("%a %H:%M")
+        state.history.append({"role": "agent", "content": final, "ts": ts})
+        if state.session_id:
+            state.store.append_turn(state.session_id, "agent", final, ts)
+        return final, changed
+
+    # /tools
+    if cmd == "/tools":
+        lines = ["**tools ativas:**\n"]
+        for name, meta in sorted(state.tools.items()):
+            cat  = meta.get("categoria", "permanente")
+            desc = meta.get("description", "").split("\n")[0][:60]
+            badge = " `[temp]`" if cat == "temp" else ""
+            lines.append(f"- `{name}`{badge} — {desc}")
+        return "\n".join(lines), False
+
+    # /tokens
+    if cmd == "/tokens":
+        total = state.tokens_in + state.tokens_out
+        return (
+            f"**tokens desta sessão:**\n\n"
+            f"- entrada: `{state.tokens_in:,}`\n"
+            f"- saída: `{state.tokens_out:,}`\n"
+            f"- total: `{total:,}`"
+        ), False
+
+    # /history salvar
+    if cmd == "/history salvar":
+        if not state.history:
+            return "nenhuma conversa para salvar.", False
+        # importa Console dummy para _save_session
+        class _DummyConsole:
+            def print(self, *a, **kw): pass
+        import types
+        dummy = _DummyConsole()
+        sid = _save_session(
+            state.store, state.history, state.agent_info,
+            state.model, state.agent_id, dummy,
+            existing_session_id=state.session_id,
+        )
+        state.session_id = sid
+        return f"sessão #{sid} salva.", False
+
+    # /history exportar
+    if cmd == "/history exportar":
+        if not state.session_id:
+            return "salve a conversa primeiro com `/history salvar`", False
+        try:
+            out = state.store.export_markdown(state.session_id)
+            return f"exportado: `{out}`", False
+        except Exception as e:
+            return f"erro ao exportar: {e}", False
+
+    # /novo
+    if cmd == "/novo":
+        state.new_session()
+        return "nova sessão iniciada.", False
+
+    # /limpar-temp
+    if cmd == "/limpar-temp":
+        temp_dir = Path("tools/temp")
+        removidas = []
+        for f in temp_dir.glob("*.py"):
+            if f.name != "__init__.py":
+                f.unlink()
+                removidas.append(f.stem)
+        if removidas:
+            state.tools, state.schema = _reload_tools(state.agent_info, state.safe)
+            changed = True
+            return f"tools temp removidas: {', '.join(removidas)}", True
+        return "nenhuma tool temporária encontrada.", False
+
+    # /source --listar
+    if cmd == "/source --listar":
+        try:
+            from knowledge.db import list_sources
+            sources = list_sources(
+                agent_id=state.agent_id,
+                session_id=str(state.session_id) if state.session_id else None,
+            )
+            if not sources:
+                return "nenhuma fonte indexada.", False
+            lines = [f"**{len(sources)} fonte(s):**\n"]
+            for s in sources:
+                scope = "global" if s["session_id"] == "_shared" else f"sessão {s['session_id']}"
+                lines.append(f"- `{s['filename']}` ({s['n_chunks']} chunks · {scope})")
+            return "\n".join(lines), False
+        except Exception as e:
+            return f"erro: {e}", False
+
+    return f"comando `{cmd}` não reconhecido pelo servidor.", False
 
 
-@app.route("/download")
-def download():
-    rel_path = request.args.get("path", "")
-    if not rel_path:
-        return jsonify({"error": "path nao informado"}), 400
-    try:
-        full_path = (PROJECT_ROOT / rel_path).resolve()
-        full_path.relative_to(PROJECT_ROOT)
-    except (ValueError, Exception):
-        return jsonify({"error": "path invalido"}), 400
-
-    if not full_path.exists() or not full_path.is_file():
-        return jsonify({"error": f"arquivo nao encontrado: {rel_path}"}), 404
-
-    mime = mimetypes.guess_type(str(full_path))[0] or "application/octet-stream"
-    return send_file(full_path, mimetype=mime, as_attachment=False)
-
-
-@app.route("/clear", methods=["POST"])
-def clear():
-    state["history"].clear()
-    state["pending_proposal"] = None
+# ── /api/clear ────────────────────────────────────────────────────────────────
+@app.route("/api/clear", methods=["POST"])
+def api_clear():
+    state.new_session()
     return jsonify({"ok": True})
 
 
-@app.route("/agents")
-def agents():
-    result = []
-    for a in list_agents():
+# ── /api/agents ───────────────────────────────────────────────────────────────
+@app.route("/api/agents")
+def api_agents():
+    agents = []
+    for aid in list_agents():
         try:
-            info = load_agent(a)
-            result.append({"name": a, "desc": info["description"][:70]})
+            info = load_agent(aid)
+            agents.append({
+                "id":          aid,
+                "name":        info.get("name", aid),
+                "description": info.get("description", "")[:80],
+            })
         except Exception:
-            result.append({"name": a, "desc": ""})
-    return jsonify(result)
+            agents.append({"id": aid, "name": aid, "description": ""})
+    return jsonify({"agents": agents})
 
 
-@app.route("/switch", methods=["POST"])
-def switch():
-    data = request.get_json(force=True)
+# ── /api/agent (POST) ─────────────────────────────────────────────────────────
+@app.route("/api/agent", methods=["POST"])
+def api_switch_agent():
+    data     = request.get_json(force=True)
+    agent_id = data.get("agent", "").strip()
+    if not agent_id:
+        return jsonify({"error": "agent_id vazio"}), 400
     try:
-        init_state(data.get("agent", DEFAULT_AGENT), state["model"], state["safe"])
-        return jsonify({"ok": True, "agent": state["agent_info"]["name"]})
+        state.switch_agent(agent_id)
+    except FileNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    return jsonify({
+        "ok":         True,
+        "agent":      state.agent_id,
+        "agent_full": state.agent_info.get("name", state.agent_id),
+        "agent_desc": state.agent_info.get("description", ""),
+        "tools":      state.tools_as_list(),
+    })
+
+
+# ── /api/tasks ────────────────────────────────────────────────────────────────
+@app.route("/api/tasks")
+def api_tasks():
+    tasks_dir = Path("tasks")
+    if not tasks_dir.exists():
+        return jsonify({"tasks": []})
+    tasks = []
+    for p in sorted(tasks_dir.glob("*.md")):
+        td = load_task(p)
+        if td:
+            tasks.append({
+                "id":        p.stem,
+                "name":      td["nome"],
+                "objective": td["objetivo"][:80],
+            })
+    return jsonify({"tasks": tasks})
+
+
+# ── /api/sessions ─────────────────────────────────────────────────────────────
+@app.route("/api/sessions")
+def api_sessions():
+    agent_filter = request.args.get("agent")
+    sessions = state.store.list_sessions(agent_filter)
+    return jsonify({"sessions": sessions})
+
+
+# ── /api/session/<id> ─────────────────────────────────────────────────────────
+@app.route("/api/session/<int:session_id>")
+def api_get_session(session_id):
+    turns = state.store.get_turns(session_id)
+    sess  = state.store.get_session(session_id)
+    return jsonify({"session": sess, "turns": turns})
+
+
+# ── /api/source ───────────────────────────────────────────────────────────────
+@app.route("/api/source", methods=["POST"])
+def api_add_source():
+    data      = request.get_json(force=True)
+    path      = data.get("path", "").strip()
+    is_global = data.get("global", False)
+
+    if not path:
+        return jsonify({"error": "path vazio"}), 400
+
+    aid = state.agent_id
+    if is_global:
+        sid = "_shared"
+    else:
+        if state.session_id is None:
+            state.session_id = state.store.new_session(
+                agent_id=aid,
+                title=f"sessão {datetime.now().strftime('%d/%m %H:%M')}",
+            )
+        sid = str(state.session_id)
+
+    try:
+        if path.startswith(("http://", "https://")):
+            from knowledge.ingest_url import ingest_url
+            source_id = ingest_url(url=path, agent_id=aid, session_id=sid, verbose=False)
+        else:
+            from knowledge.ingest import ingest
+            source_id = ingest(filepath=path, agent_id=aid, session_id=sid, verbose=False)
+        return jsonify({"ok": True, "source_id": source_id})
+    except FileNotFoundError:
+        return jsonify({"error": f"arquivo não encontrado: {path}"}), 404
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e)}), 500
 
 
-def _handle_auto_tool_web(proposal, choice, tools, schema, model, agent_info, history, safe):
-    tool_name        = proposal["nome"]
-    is_temp          = (choice == "t")
-    create_tool_name = "create_temp_tool" if is_temp else "create_tool"
-
-    if create_tool_name not in tools:
-        return f"Tool '{create_tool_name}' nao disponivel.", tools, schema
-
-    create_instruction = _build_create_instruction(proposal)
-    if is_temp:
-        create_instruction += " Use a tool 'create_temp_tool' para salvar."
-
-    tools_criacao = {k: v for k, v in tools.items()
-                     if k != ("create_tool" if is_temp else "create_temp_tool")}
-
-    create_result = run_agent(
-        create_instruction, tools_criacao, tools_schema(tools_criacao),
-        model, agent_info, history=None,
-    )
-    create_msg = create_result if isinstance(create_result, str) else "?"
-
-    tools_antes           = set(tools.keys())
-    new_tools, new_schema = _reload_tools(agent_info, safe)
-    tools_novas           = set(new_tools.keys()) - tools_antes
-    tool_criada           = tool_name if tool_name in new_tools else (
-        next(iter(tools_novas)) if len(tools_novas) == 1 else None
-    )
-
-    if not tool_criada:
-        return f"Criacao da tool falhou. Detalhe: {create_msg}", new_tools, new_schema
-
-    original_input = history[-2]["content"] if len(history) >= 2 else ""
-    retry = run_agent(original_input, new_tools, new_schema, model, agent_info, history=history[:-1])
-
-    if isinstance(retry, dict):
-        return "Tarefa nao concluida mesmo apos criar a tool.", new_tools, new_schema
-
-    return retry, new_tools, new_schema
+# ── /api/sources ──────────────────────────────────────────────────────────────
+@app.route("/api/sources")
+def api_list_sources():
+    try:
+        from knowledge.db import list_sources
+        sources = list_sources(
+            agent_id=state.agent_id,
+            session_id=str(state.session_id) if state.session_id else None,
+        )
+        result = []
+        for s in sources:
+            scope = "global" if s["session_id"] == "_shared" else f"sessão {s['session_id']}"
+            result.append({
+                "id":       s["id"],
+                "filename": s["filename"],
+                "n_chunks": s["n_chunks"],
+                "scope":    scope,
+                "summary":  (s.get("summary") or "")[:100],
+            })
+        return jsonify({"sources": result})
+    except Exception as e:
+        return jsonify({"sources": [], "error": str(e)})
 
 
+# ── /api/source/<id> DELETE ───────────────────────────────────────────────────
+@app.route("/api/source/<int:source_id>", methods=["DELETE"])
+def api_delete_source(source_id):
+    try:
+        from knowledge.db import get_source, delete_source
+        source = get_source(source_id)
+        if not source:
+            return jsonify({"error": "fonte não encontrada"}), 404
+        filepath = source.get("filepath", "")
+        cache_path = Path(filepath)
+        if "cache" in cache_path.parts:
+            try:
+                cache_path.unlink(missing_ok=True)
+                if cache_path.parent.exists() and not any(cache_path.parent.iterdir()):
+                    cache_path.parent.rmdir()
+            except Exception:
+                pass
+        delete_source(source_id)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── main ──────────────────────────────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description="Agent Web Server")
-    parser.add_argument("--model", default=DEFAULT_MODEL)
-    parser.add_argument("--agent", default=DEFAULT_AGENT)
-    parser.add_argument("--port",  default=DEFAULT_PORT, type=int)
-    parser.add_argument("--safe",  action="store_true")
+    global state
+
+    parser = argparse.ArgumentParser(description="Ciel Web Server")
+    parser.add_argument("--agent",  default=DEFAULT_AGENT)
+    parser.add_argument("--model",  default=DEFAULT_MODEL)
+    parser.add_argument("--port",   default=5000, type=int)
+    parser.add_argument("--host",   default="0.0.0.0")
+    parser.add_argument("--safe",   action="store_true")
+    parser.add_argument("--debug",  action="store_true")
     args = parser.parse_args()
 
     try:
-        init_state(args.agent, args.model, args.safe)
+        state = AppState(args.agent, args.model, safe=args.safe)
     except FileNotFoundError as e:
         print(f"Erro: {e}")
-        return
+        sys.exit(1)
 
-    hostname = socket.gethostname()
-    try:
-        local_ip = socket.gethostbyname(hostname)
-    except Exception:
-        local_ip = "127.0.0.1"
-
-    print(f"\n  Agent Web Server")
-    print(f"  agente : {state['agent_info']['name']}")
+    print(f"\n  ◈ ciel v{VERSION}")
+    print(f"  agente : {state.agent_info.get('name', args.agent)}")
     print(f"  modelo : {args.model}")
-    print(f"  tools  : {len(state['tools'])}")
-    print(f"\n  local  : http://localhost:{args.port}")
-    print(f"  rede   : http://{local_ip}:{args.port}  <- acesse pelo celular\n")
+    print(f"  tools  : {len(state.tools)}")
+    print(f"  endereço: http://{args.host}:{args.port}\n")
 
-    # guarda URL base pra injetar no system prompt
-    state["web_base_url"] = f"http://{local_ip}:{args.port}"
-
-    app.run(host="0.0.0.0", port=args.port, debug=False, threaded=False)
+    app.run(host=args.host, port=args.port, debug=args.debug)
 
 
 if __name__ == "__main__":
