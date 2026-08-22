@@ -473,16 +473,50 @@ def api_tasks():
 @app.route("/api/sessions")
 def api_sessions():
     agent_filter = request.args.get("agent")
-    sessions = state.store.list_sessions(agent_filter)
+    rows = state.store.list_sessions(agent_filter)
+    sessions = [
+        {
+            "id":                row["id"],
+            "agent_id":          row["agent_id"],
+            "title":             row["title"] or "",
+            "summary":           (row["summary"] or "")[:120],
+            "created_at":        row["created_at"][:16],
+            "updated_at":        row["updated_at"][:16],
+            "turn_count":        row["turn_count"],
+            "parent_session_id": row["parent_session_id"],
+        }
+        for row in rows
+    ]
     return jsonify({"sessions": sessions})
 
 
 # ── /api/session/<id> ─────────────────────────────────────────────────────────
 @app.route("/api/session/<int:session_id>")
 def api_get_session(session_id):
-    turns = state.store.get_turns(session_id)
-    sess  = state.store.get_session(session_id)
-    return jsonify({"session": sess, "turns": turns})
+    sess_row  = state.store.get_session(session_id)
+    turn_rows = state.store.get_turns(session_id)
+
+    if not sess_row:
+        return jsonify({"error": "sessão não encontrada"}), 404
+
+    session = {
+        "id":         sess_row["id"],
+        "agent_id":   sess_row["agent_id"],
+        "title":      sess_row["title"] or "",
+        "summary":    sess_row["summary"] or "",
+        "created_at": sess_row["created_at"][:16],
+        "updated_at": sess_row["updated_at"][:16],
+    }
+    turns = [
+        {
+            "id":      t["id"],
+            "role":    t["role"],
+            "content": t["content"],
+            "ts":      t["ts"],
+        }
+        for t in turn_rows
+    ]
+    return jsonify({"session": session, "turns": turns})
 
 
 # ── /api/source ───────────────────────────────────────────────────────────────

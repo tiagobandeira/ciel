@@ -157,22 +157,12 @@
     <aside id="right-panel" class="right-panel">
       <!-- Tabs -->
       <div class="panel-tabs">
-        <button class="panel-tab active" onclick="switchPanelTab('tools')">tools</button>
-        <button class="panel-tab" onclick="switchPanelTab('session')">sessão</button>
-      </div>
-
-      <!-- Tab: Tools -->
-      <div id="panel-tools" class="panel-content active">
-        <div class="panel-search-row">
-          <input type="text" class="panel-search" placeholder="buscar tool…" oninput="filterTools(this.value)">
-        </div>
-        <div id="tools-list" class="tools-list">
-          <div class="panel-empty">nenhuma tool carregada</div>
-        </div>
+        <button class="panel-tab active" onclick="switchPanelTab('session')">sessão</button>
+        <button class="panel-tab" onclick="switchPanelTab('tools')">tools</button>
       </div>
 
       <!-- Tab: Sessão -->
-      <div id="panel-session" class="panel-content">
+      <div id="panel-session" class="panel-content active">
         <div class="session-info-block">
           <div class="info-row">
             <span class="info-label">agente</span>
@@ -207,6 +197,16 @@
           <div class="panel-empty">nenhuma fonte</div>
         </div>
         <button class="btn-outline btn-sm w-full mt8" onclick="openSourceModal()">+ adicionar fonte</button>
+      </div>
+
+      <!-- Tab: Tools -->
+      <div id="panel-tools" class="panel-content">
+        <div class="panel-search-row">
+          <input type="text" class="panel-search" placeholder="buscar tool…" oninput="filterTools(this.value)">
+        </div>
+        <div id="tools-list" class="tools-list">
+          <div class="panel-empty">nenhuma tool carregada</div>
+        </div>
       </div>
     </aside>
 

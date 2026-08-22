@@ -321,8 +321,9 @@ window.toggleToolsPanel = () => {
 
 // ── Panel tabs ─────────────────────────────────────────────────
 window.switchPanelTab = (tab) => {
-  document.querySelectorAll('.panel-tab').forEach((el, i) => {
-    el.classList.toggle('active', ['tools','session'][i] === tab);
+  // marca o botão cujo onclick contém o nome da tab
+  document.querySelectorAll('.panel-tab').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('onclick')?.includes(`'${tab}'`));
   });
   document.getElementById('panel-tools').classList.toggle('active', tab === 'tools');
   document.getElementById('panel-session').classList.toggle('active', tab === 'session');
