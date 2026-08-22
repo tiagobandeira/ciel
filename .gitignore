@@ -29,6 +29,8 @@ iniciar.bat
 
 # Outros
 project_structure.md
+tasks/iniciar_rpg.md
+agents/rpg_master.md
 
 # Variáveis de ambiente
 .env
