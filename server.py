@@ -519,6 +519,54 @@ def api_get_session(session_id):
     return jsonify({"session": session, "turns": turns})
 
 
+# ── /api/source/upload (POST) ─────────────────────────────────────────────────
+@app.route("/api/source/upload", methods=["POST"])
+def api_upload_source():
+    """
+    Recebe um arquivo via multipart/form-data, salva em data/user/sources/
+    e indexa no knowledge.db exatamente como /api/source faria com um caminho local.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "nenhum arquivo enviado"}), 400
+
+    f         = request.files["file"]
+    is_global = request.form.get("global", "false").lower() in ("true", "1", "on")
+    aid       = state.agent_id
+
+    # destino: data/user/sources/<filename>
+    save_dir = ROOT / "data" / "user" / "sources"
+    save_dir.mkdir(parents=True, exist_ok=True)
+    dest = save_dir / f.filename
+    # evita sobrescrever: adiciona sufixo se já existir
+    if dest.exists():
+        stem, suffix = dest.stem, dest.suffix
+        i = 1
+        while dest.exists():
+            dest = save_dir / f"{stem}_{i}{suffix}"
+            i += 1
+    f.save(str(dest))
+
+    # resolve escopo
+    if is_global:
+        sid = "_shared"
+    else:
+        if state.session_id is None:
+            state.session_id = state.store.new_session(
+                agent_id=aid,
+                title=f"sessão {datetime.now().strftime('%d/%m %H:%M')}",
+            )
+        sid = str(state.session_id)
+
+    try:
+        from knowledge.ingest import ingest
+        source_id = ingest(filepath=str(dest), agent_id=aid, session_id=sid, verbose=False)
+        return jsonify({"ok": True, "source_id": source_id, "saved_as": str(dest)})
+    except Exception as e:
+        # remove arquivo se a indexação falhou
+        dest.unlink(missing_ok=True)
+        return jsonify({"error": str(e)}), 500
+
+
 # ── /api/source ───────────────────────────────────────────────────────────────
 @app.route("/api/source", methods=["POST"])
 def api_add_source():

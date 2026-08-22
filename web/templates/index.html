@@ -248,13 +248,60 @@
       <span>fontes de conhecimento</span>
       <button class="icon-btn" onclick="closeModal('source-modal')">✕</button>
     </div>
-    <div class="source-add-row">
-      <input type="text" id="source-input" class="panel-search" placeholder="caminho ou URL…" style="flex:1">
-      <label class="checkbox-label">
-        <input type="checkbox" id="source-global"> global
-      </label>
-      <button class="btn-primary btn-sm" onclick="addSource()">+ indexar</button>
+
+    <!-- Nota explicativa -->
+    <div class="source-note">
+      <span class="source-note-icon">ℹ</span>
+      <span>Fontes são indexadas na memória do servidor e ficam disponíveis para o agente consultar.
+      <strong>Sessão:</strong> só para esta conversa.
+      <strong>Global:</strong> persistente para o agente em qualquer sessão.
+      Arquivos enviados pelo chat não são indexados — use fontes para documentos de referência recorrentes.</span>
     </div>
+
+    <!-- Tabs: upload / caminho / URL -->
+    <div class="source-tabs">
+      <button class="source-tab active" onclick="switchSourceTab('file')">📁 arquivo</button>
+      <button class="source-tab" onclick="switchSourceTab('path')">💻 caminho</button>
+      <button class="source-tab" onclick="switchSourceTab('url')">🌐 URL</button>
+    </div>
+
+    <!-- Painel: upload de arquivo -->
+    <div id="source-tab-file" class="source-tab-panel">
+      <div class="source-upload-area" id="source-drop-area" onclick="document.getElementById('source-file-input').click()">
+        <input type="file" id="source-file-input" style="display:none"
+          accept=".txt,.md,.py,.csv,.json,.yaml,.yml,.toml,.log,.pdf"
+          onchange="onSourceFileSelected(this)">
+        <span class="source-upload-icon">📄</span>
+        <span class="source-upload-label" id="source-upload-label">clique para selecionar ou arraste um arquivo</span>
+        <span class="source-upload-hint">.txt · .md · .pdf · .csv · .py · .json e outros</span>
+      </div>
+    </div>
+
+    <!-- Painel: caminho local -->
+    <div id="source-tab-path" class="source-tab-panel hidden">
+      <div class="source-input-row">
+        <input type="text" id="source-path-input" class="panel-search"
+          placeholder="ex: /home/user/docs/manual.pdf ou data/user/notas.md">
+      </div>
+    </div>
+
+    <!-- Painel: URL -->
+    <div id="source-tab-url" class="source-tab-panel hidden">
+      <div class="source-input-row">
+        <input type="text" id="source-url-input" class="panel-search"
+          placeholder="ex: https://docs.exemplo.com/api">
+      </div>
+    </div>
+
+    <!-- Escopo + botão -->
+    <div class="source-action-row">
+      <label class="checkbox-label">
+        <input type="checkbox" id="source-global"> salvar como global (persistente)
+      </label>
+      <button class="btn-primary btn-sm" onclick="addSource()" id="source-add-btn">+ indexar</button>
+    </div>
+
+    <!-- Lista de fontes indexadas -->
     <div id="sources-list-modal" class="sources-list-modal">
       <div class="panel-empty">nenhuma fonte indexada</div>
     </div>

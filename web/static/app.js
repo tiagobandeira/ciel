@@ -419,15 +419,57 @@ window.runTask = (taskId) => {
 };
 
 // Modal: Sources
+let activeSourceTab = 'file';
+let pendingSourceFile = null;   // File object selecionado no picker
+
 window.openSourceModal = async () => {
-  const modal = document.getElementById('source-modal');
-  modal.classList.remove('hidden');
+  document.getElementById('source-modal').classList.remove('hidden');
   closeSidebar();
+  switchSourceTab('file');   // sempre abre na tab de arquivo
   await refreshSources();
 };
 
+window.switchSourceTab = (tab) => {
+  activeSourceTab = tab;
+  document.querySelectorAll('.source-tab').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('onclick')?.includes(`'${tab}'`));
+  });
+  ['file','path','url'].forEach(t => {
+    document.getElementById(`source-tab-${t}`).classList.toggle('hidden', t !== tab);
+  });
+};
+
+// Seleção via file picker
+window.onSourceFileSelected = (input) => {
+  const file = input.files[0];
+  if (!file) return;
+  pendingSourceFile = file;
+  const label = document.getElementById('source-upload-label');
+  const area  = document.getElementById('source-drop-area');
+  label.textContent = file.name;
+  area.classList.add('has-file');
+  area.classList.remove('drag-over');
+};
+
+// Drag & drop na área de upload de fontes
+document.addEventListener('DOMContentLoaded', () => {
+  const area = document.getElementById('source-drop-area');
+  if (!area) return;
+  area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('drag-over'); });
+  area.addEventListener('dragleave', () => area.classList.remove('drag-over'));
+  area.addEventListener('drop', e => {
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    pendingSourceFile = file;
+    document.getElementById('source-upload-label').textContent = file.name;
+    area.classList.add('has-file');
+    area.classList.remove('drag-over');
+  });
+});
+
 async function refreshSources() {
-  const list   = document.getElementById('sources-list-modal');
+  const list     = document.getElementById('sources-list-modal');
   const miniList = document.getElementById('sources-panel-list');
   list.innerHTML = '<div class="panel-empty">carregando…</div>';
   try {
@@ -443,7 +485,7 @@ async function refreshSources() {
         <span class="source-item-meta">${s.n_chunks} chunks · ${s.scope}</span>
         <button class="source-item-del" onclick="removeSource(${s.id})" title="remover">✕</button>
       </div>`).join('');
-    miniList.innerHTML = data.sources.slice(0,5).map(s => `
+    miniList.innerHTML = data.sources.slice(0, 5).map(s => `
       <div class="source-mini-item">
         <span class="source-mini-name">📄 ${esc(s.filename)}</span>
         <button class="source-mini-del" onclick="removeSource(${s.id})">✕</button>
@@ -454,22 +496,64 @@ async function refreshSources() {
 }
 
 window.addSource = async () => {
-  const input  = document.getElementById('source-input');
-  const global = document.getElementById('source-global').checked;
-  const path   = input.value.trim();
-  if (!path) return;
+  const isGlobal  = document.getElementById('source-global').checked;
+  const btn       = document.getElementById('source-add-btn');
+  btn.disabled    = true;
+  btn.textContent = 'indexando…';
 
   try {
-    await api('/api/source', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path, global, session_id: currentSessionId }),
-    });
-    input.value = '';
+    if (activeSourceTab === 'file') {
+      // upload de arquivo via FormData
+      if (!pendingSourceFile) {
+        addSysMsg('selecione um arquivo primeiro.');
+        return;
+      }
+      const form = new FormData();
+      form.append('file', pendingSourceFile);
+      form.append('global', isGlobal);
+      form.append('session_id', currentSessionId ?? '');
+
+      const r = await fetch('/api/source/upload', { method: 'POST', body: form });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error || `HTTP ${r.status}`); }
+
+      const name = pendingSourceFile.name;
+      // reset picker
+      pendingSourceFile = null;
+      document.getElementById('source-file-input').value = '';
+      document.getElementById('source-upload-label').textContent = 'clique para selecionar ou arraste um arquivo';
+      document.getElementById('source-drop-area').classList.remove('has-file');
+      addSysMsg(`fonte indexada: ${name}`);
+
+    } else if (activeSourceTab === 'path') {
+      const path = document.getElementById('source-path-input').value.trim();
+      if (!path) { addSysMsg('informe o caminho do arquivo.'); return; }
+      await api('/api/source', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, global: isGlobal, session_id: currentSessionId }),
+      });
+      document.getElementById('source-path-input').value = '';
+      addSysMsg(`fonte indexada: ${path}`);
+
+    } else {
+      const url = document.getElementById('source-url-input').value.trim();
+      if (!url) { addSysMsg('informe a URL.'); return; }
+      await api('/api/source', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: url, global: isGlobal, session_id: currentSessionId }),
+      });
+      document.getElementById('source-url-input').value = '';
+      addSysMsg(`fonte indexada: ${url}`);
+    }
+
     await refreshSources();
-    addSysMsg(`fonte indexada: ${path}`);
+
   } catch(e) {
     addSysMsg(`erro ao indexar: ${e.message}`);
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = '+ indexar';
   }
 };
 
