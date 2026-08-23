@@ -672,7 +672,7 @@ window.openHistoryModal = async () => {
     list.innerHTML = data.sessions.map(s => {
       const isBranch = !!s.parent_session_id;
       return `
-      <button class="history-item" onclick="loadSession(${s.id})">
+      <div class="history-item" data-session-id="${s.id}">
         <div class="history-item-dot ${isBranch ? 'branch' : ''}"></div>
         <div class="history-item-body">
           <div class="history-item-title">
@@ -684,10 +684,53 @@ window.openHistoryModal = async () => {
           </div>
         </div>
         <span class="history-item-badge">${esc(s.agent_id)}</span>
-      </button>`;
+        <button class="history-item-del"
+                data-del-id="${s.id}"
+                data-del-title="${escAttr(s.title || 'sem título')}"
+                title="deletar">×</button>
+      </div>`;
     }).join('');
   } catch(e) {
     list.innerHTML = `<div class="panel-empty">erro: ${esc(e.message)}</div>`;
+  }
+};
+
+// ── Delete de sessão ───────────────────────────────────────────
+let pendingDeleteId = null;
+
+window.openConfirmDelete = (sessionId, title) => {
+  pendingDeleteId = sessionId;
+  document.getElementById('confirm-session-title').textContent = title;
+  document.getElementById('confirm-delete-modal').classList.remove('hidden');
+};
+
+window.confirmDeleteSession = async () => {
+  if (!pendingDeleteId) return;
+  const id = pendingDeleteId;
+  pendingDeleteId = null;
+  closeModal('confirm-delete-modal');
+
+  try {
+    await api(`/api/session/${id}`, { method: 'DELETE' });
+
+    // se deletou a sessão atual/visualizada, reseta o chat
+    if (id === currentSessionId || id === viewingSessionId) {
+      messagesEl().innerHTML = '';
+      currentSessionId = null;
+      viewingSessionId = null;
+      resetRightPanel();
+      addSysMsg('sessão deletada — nova sessão iniciada');
+    } else {
+      addSysMsg(`sessão #${id} deletada`);
+    }
+
+    await loadSessions();
+    // atualiza modal de histórico se ainda estiver aberto
+    if (!document.getElementById('history-modal').classList.contains('hidden')) {
+      openHistoryModal();
+    }
+  } catch(e) {
+    addSysMsg(`erro ao deletar sessão: ${e.message}`);
   }
 };
 
@@ -771,8 +814,8 @@ async function loadSessions() {
     list.innerHTML = data.sessions.slice(0, 20).map(s => {
       const isBranch = !!s.parent_session_id;
       return `
-      <button class="session-item ${s.id === viewingSessionId ? 'active' : ''}"
-              onclick="loadSession(${s.id}); closeSidebar()">
+      <div class="session-item ${s.id === viewingSessionId ? 'active' : ''}"
+           data-session-id="${s.id}">
         <span class="session-item-dot"></span>
         <div class="session-item-body">
           <div class="session-item-title">
@@ -780,7 +823,11 @@ async function loadSessions() {
           </div>
           <div class="session-item-meta">${esc(s.agent_id)} · ${esc(s.updated_at || '')}</div>
         </div>
-      </button>`;
+        <button class="session-item-del"
+                data-del-id="${s.id}"
+                data-del-title="${escAttr(s.title || 'sem título')}"
+                title="deletar">×</button>
+      </div>`;
     }).join('');
   } catch(_) {}
 }
@@ -789,6 +836,33 @@ async function loadSessions() {
 window.triggerUpload = () => document.getElementById('file-input').click();
 
 document.addEventListener('DOMContentLoaded', () => {
+
+  // Delegation: sidebar sessions
+  document.getElementById('sessions-list').addEventListener('click', e => {
+    const delBtn = e.target.closest('[data-del-id]');
+    if (delBtn) {
+      openConfirmDelete(Number(delBtn.dataset.delId), delBtn.dataset.delTitle);
+      return;
+    }
+    const item = e.target.closest('[data-session-id]');
+    if (item) {
+      loadSession(Number(item.dataset.sessionId));
+      closeSidebar();
+    }
+  });
+
+  // Delegation: history modal
+  document.getElementById('history-sessions-list').addEventListener('click', e => {
+    const delBtn = e.target.closest('[data-del-id]');
+    if (delBtn) {
+      openConfirmDelete(Number(delBtn.dataset.delId), delBtn.dataset.delTitle);
+      return;
+    }
+    const item = e.target.closest('[data-session-id]');
+    if (item) {
+      loadSession(Number(item.dataset.sessionId));
+    }
+  });
   const fileInput = document.getElementById('file-input');
   fileInput.addEventListener('change', () => {
     const file = fileInput.files[0];

@@ -690,6 +690,22 @@ def api_get_session(session_id):
     return jsonify({"session": session, "turns": turns})
 
 
+# ── /api/session/<id> DELETE ──────────────────────────────────────────────────
+@app.route("/api/session/<int:session_id>", methods=["DELETE"])
+def api_delete_session(session_id):
+    sess = state.store.get_session(session_id)
+    if not sess:
+        return jsonify({"error": "sessão não encontrada"}), 404
+
+    state.store.delete_session(session_id)
+
+    # se a sessão deletada era a atual, reseta o estado
+    if state.session_id == session_id:
+        state.new_session()
+
+    return jsonify({"ok": True, "deleted": session_id})
+
+
 # ── /api/source/upload (POST) ─────────────────────────────────────────────────
 @app.route("/api/source/upload", methods=["POST"])
 def api_upload_source():
