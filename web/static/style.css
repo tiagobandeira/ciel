@@ -1242,3 +1242,100 @@ body {
   50%      { text-shadow: 0 0 20px rgba(56,189,248,0.7); }
 }
 .logo-mark { animation: logo-pulse 3s ease-in-out infinite; }
+
+/* ── View mode banner ─────────────────────────────────────────── */
+.view-mode-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--warn-dim);
+  border-bottom: 1px solid var(--warn);
+  font-size: 11px;
+  color: var(--warn);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.view-mode-hint {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* ── Branch notice (sys message especial) ─────────────────────── */
+.branch-notice .msg-bubble {
+  background: var(--cyan-dim) !important;
+  border: 1px solid var(--cyan) !important;
+  color: var(--cyan) !important;
+  font-size: 11px;
+  padding: 6px 12px !important;
+  font-family: var(--font-mono);
+}
+
+/* ── Separador de sessão pai ──────────────────────────────────── */
+.parent-separator {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-self: stretch;
+  margin: 4px 0 8px;
+}
+.parent-sep-line {
+  height: 1px;
+  background: var(--border2);
+}
+.parent-sep-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  text-align: center;
+}
+.parent-sep-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.parent-sep-link {
+  background: none;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.parent-sep-link:hover {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.parent-summary {
+  font-size: 11px;
+  color: var(--text2);
+  line-height: 1.6;
+  max-width: 520px;
+  text-align: left;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+}
+
+/* ── Indicador de branch (↪) ─────────────────────────────────── */
+.branch-indicator {
+  color: var(--cyan);
+  font-size: 11px;
+  margin-right: 4px;
+}
+.history-item-dot.branch {
+  background: var(--cyan);
+}
+.parent-ref {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}

@@ -72,6 +72,10 @@ class AppState:
         self.context_injection = None
         self.tokens_in  = 0
         self.tokens_out = 0
+        # ── branch ───────────────────────────────────────────────────────────
+        # Quando o usuário abre uma sessão existente, ficamos em modo leitura.
+        # No primeiro input do usuário, criamos a branch automaticamente.
+        self.branch_pending: int | None = None   # id da sessão pai (None = não pendente)
         self._load_agent(agent_id)
 
     def _load_agent(self, agent_id: str):
@@ -87,6 +91,7 @@ class AppState:
         self.history.clear()
         self.session_id        = None
         self.context_injection = None
+        self.branch_pending    = None
         self.tokens_in         = 0
         self.tokens_out        = 0
         self._load_agent(agent_id)
@@ -95,8 +100,55 @@ class AppState:
         self.history.clear()
         self.session_id        = None
         self.context_injection = None
+        self.branch_pending    = None
         self.tokens_in         = 0
         self.tokens_out        = 0
+
+    def enter_view_mode(self, parent_session_id: int):
+        """
+        Prepara o estado para visualização de uma sessão existente.
+        O history em memória fica vazio — será populado pela branch
+        no primeiro input do usuário.
+        """
+        self.history.clear()
+        self.session_id        = None
+        self.context_injection = None
+        self.branch_pending    = parent_session_id
+        self.tokens_in         = 0
+        self.tokens_out        = 0
+
+    def create_branch(self) -> tuple[int, str]:
+        """
+        Cria a branch da sessão pai e prepara o context_injection.
+        Retorna (novo_session_id, aviso_para_o_chat).
+        """
+        parent_id   = self.branch_pending
+        self.branch_pending = None
+
+        parent = self.store.get_session(parent_id)
+        if not parent:
+            # sessão pai sumiu — abre sessão nova normalmente
+            return None, None
+
+        # cria sessão filha
+        branch_id = self.store.branch_session(parent_id, self.agent_id)
+        self.session_id = branch_id
+
+        # injeta contexto: usa resumo se existir, senão avisa que não há
+        summary = parent["summary"] or ""
+        if summary:
+            self.context_injection = build_context_injection(
+                summary       = summary,
+                session_title = parent["title"] or f"sessão #{parent_id}",
+                agent_id      = parent["agent_id"],
+            )
+
+        notice = (
+            f"↪ branch criada a partir de **#{parent_id}** "
+            f"— {parent['title'] or 'sem título'}"
+            + (" · contexto injetado" if summary else " · sem resumo disponível")
+        )
+        return branch_id, notice
 
     @property
     def base_url(self):
@@ -184,6 +236,13 @@ def api_chat():
             "session_id":   state.session_id,
         })
 
+    # ── branch automática no primeiro input após visualização ────────────────
+    branch_notice = None
+    if state.branch_pending is not None:
+        parent_id_for_sources = state.branch_pending   # captura antes do create_branch zerar
+        _, branch_notice = state.create_branch()
+        _copy_session_sources(parent_id_for_sources, str(state.session_id))
+
     # ── turno normal ──────────────────────────────────────────────────────────
     ts = datetime.now().strftime("%a %H:%M")
     state.history.append({"role": "user", "content": user_input, "ts": ts})
@@ -248,12 +307,13 @@ def api_chat():
     state.store.append_turn(state.session_id, "agent", final_reply, ts)
 
     return jsonify({
-        "status":       "done",
-        "reply":        final_reply,
-        "tokens_in":    t_in,
-        "tokens_out":   t_out,
+        "status":        "done",
+        "reply":         final_reply,
+        "branch_notice": branch_notice,
+        "tokens_in":     t_in,
+        "tokens_out":    t_out,
         "tools_changed": tools_changed,
-        "session_id":   state.session_id,
+        "session_id":    state.session_id,
     })
 
 
@@ -490,7 +550,118 @@ def api_sessions():
     return jsonify({"sessions": sessions})
 
 
-# ── /api/session/<id> ─────────────────────────────────────────────────────────
+# ── helper: copia referências de fontes da sessão pai ────────────────────────
+def _copy_session_sources(parent_session_id: int | None, new_session_id: str):
+    """
+    Duplica no knowledge.db as referências de fontes da sessão pai
+    para a sessão da branch, sem reindexar os arquivos.
+    """
+    if parent_session_id is None:
+        return
+    try:
+        from knowledge.db import get_conn
+        kconn = get_conn()
+        rows = kconn.execute(
+            "SELECT * FROM sources WHERE session_id=?",
+            (str(parent_session_id),),
+        ).fetchall()
+        for row in rows:
+            # insere com novo session_id; ignora se já existe
+            kconn.execute(
+                """
+                INSERT OR IGNORE INTO sources
+                    (filename, filepath, agent_id, session_id, n_chunks, summary, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    row["filename"], row["filepath"], row["agent_id"],
+                    new_session_id,  row["n_chunks"],  row["summary"],
+                    row["created_at"],
+                ),
+            )
+        kconn.commit()
+        kconn.close()
+    except Exception:
+        pass   # fontes são melhorias, não impedem a branch de funcionar
+
+
+# ── /api/session/<id>/load ────────────────────────────────────────────────────
+@app.route("/api/session/<int:session_id>/load", methods=["POST"])
+def api_load_session(session_id):
+    """
+    Abre uma sessão existente em modo leitura + prepara branch.
+    - Muda o agente se necessário (sem resetar tools desnecessariamente)
+    - Seta branch_pending no estado
+    - Retorna turns, info do agente e fontes da sessão
+    """
+    sess = state.store.get_session(session_id)
+    if not sess:
+        return jsonify({"error": "sessão não encontrada"}), 404
+
+    # troca de agente se necessário (sem limpar branch_pending ainda)
+    if sess["agent_id"] != state.agent_id:
+        state._load_agent(sess["agent_id"])
+
+    # entra em modo leitura
+    state.enter_view_mode(session_id)
+
+    # turnos para exibição
+    turn_rows = state.store.get_turns(session_id)
+    turns = [
+        {"id": t["id"], "role": t["role"], "content": t["content"], "ts": t["ts"]}
+        for t in turn_rows
+    ]
+
+    # fontes desta sessão
+    sources = []
+    try:
+        from knowledge.db import list_sources
+        raw = list_sources(agent_id=sess["agent_id"], session_id=str(session_id))
+        sources = [
+            {
+                "id":       s["id"],
+                "filename": s["filename"],
+                "n_chunks": s["n_chunks"],
+                "scope":    "sessão",
+            }
+            for s in raw
+        ]
+    except Exception:
+        pass
+
+    # dados da sessão pai (se for branch)
+    parent_info = None
+    if sess["parent_session_id"]:
+        parent_row = state.store.get_session(sess["parent_session_id"])
+        if parent_row:
+            parent_info = {
+                "id":          parent_row["id"],
+                "title":       parent_row["title"] or "",
+                "summary":     parent_row["summary"] or "",
+                "has_summary": bool(parent_row["summary"]),
+            }
+
+    return jsonify({
+        "ok":           True,
+        "session":      {
+            "id":                sess["id"],
+            "agent_id":          sess["agent_id"],
+            "title":             sess["title"] or "",
+            "summary":           sess["summary"] or "",
+            "created_at":        sess["created_at"][:16],
+            "updated_at":        sess["updated_at"][:16],
+            "has_summary":       bool(sess["summary"]),
+            "parent_session_id": sess["parent_session_id"],
+        },
+        "parent":       parent_info,
+        "turns":        turns,
+        "sources":      sources,
+        "agent":        state.agent_id,
+        "agent_full":   state.agent_info.get("name", state.agent_id),
+        "agent_desc":   state.agent_info.get("description", ""),
+        "tools":        state.tools_as_list(),
+        "branch_pending": session_id,
+    })
 @app.route("/api/session/<int:session_id>")
 def api_get_session(session_id):
     sess_row  = state.store.get_session(session_id)

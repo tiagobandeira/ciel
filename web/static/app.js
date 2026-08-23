@@ -7,7 +7,8 @@
 let pendingFile      = null;   // { file, dataUrl?, content?, type: 'image'|'text' }
 let currentAgent     = null;   // string: id do agente ativo
 let currentModel     = null;   // string
-let currentSessionId = null;   // int | null
+let currentSessionId = null;   // int | null — sessão onde o chat está acontecendo
+let viewingSessionId = null;   // int | null — sessão destacada na sidebar (inclui modo leitura)
 let tokenIn          = 0;
 let tokenOut         = 0;
 let allTools         = {};     // cache de tools
@@ -161,6 +162,58 @@ function removeTypingIndicator() {
   document.getElementById('typing-indicator')?.remove();
 }
 
+function addBranchNotice(text) {
+  const div = document.createElement('div');
+  div.className = 'msg sys branch-notice';
+  div.innerHTML = `<div class="msg-bubble branch-bubble">${esc(text)}</div>`;
+  messagesEl().appendChild(div);
+  scrollBottom();
+}
+
+function addViewModeBanner(sessionId, title) {
+  // banner fixo no topo do chat indicando modo leitura
+  const existing = document.getElementById('view-mode-banner');
+  if (existing) existing.remove();
+
+  const banner = document.createElement('div');
+  banner.id = 'view-mode-banner';
+  banner.className = 'view-mode-banner';
+  banner.innerHTML = `
+    <span>👁 visualizando sessão #${sessionId} — ${esc(title || 'sem título')}</span>
+    <span class="view-mode-hint">envie uma mensagem para retomar com branch automática</span>
+  `;
+  // insere antes das mensagens
+  const wrapper = document.querySelector('.chat-wrapper');
+  wrapper.insertBefore(banner, wrapper.firstChild);
+}
+
+function removeViewModeBanner() {
+  document.getElementById('view-mode-banner')?.remove();
+}
+
+function addParentSeparator(parent) {
+  const div = document.createElement('div');
+  div.className = 'parent-separator';
+
+  const summary = parent.has_summary
+    ? `<div class="parent-summary">${esc(parent.summary)}</div>`
+    : '';
+
+  div.innerHTML = `
+    <div class="parent-sep-line"></div>
+    <div class="parent-sep-body">
+      <span class="parent-sep-label">↪ branch de</span>
+      <button class="parent-sep-link" onclick="loadSession(${parent.id})">
+        #${parent.id} · ${esc(parent.title || 'sem título')}
+      </button>
+      ${summary}
+    </div>
+    <div class="parent-sep-line"></div>
+  `;
+  messagesEl().appendChild(div);
+  scrollBottom();
+}
+
 function scrollBottom() {
   const el = messagesEl();
   el.scrollTop = el.scrollHeight;
@@ -175,6 +228,7 @@ window.sendMessage = async () => {
   inputEl().value = '';
   autoResize(inputEl());
   closeCommandMenu();
+  removeViewModeBanner();
 
   const fileInfo = pendingFile ? pendingFile.file.name : null;
   addUserMsg(displayText, fileInfo);
@@ -210,6 +264,11 @@ window.sendMessage = async () => {
     removeTypingIndicator();
     setStatus('online');
 
+    // aviso de branch criada (antes da resposta do agente)
+    if (data.branch_notice) {
+      addBranchNotice(data.branch_notice);
+    }
+
     const role = data.status === 'needs_tool' ? 'warn' : 'agent';
     addAgentMsg(data.reply || data.error || '?', role);
 
@@ -218,9 +277,10 @@ window.sendMessage = async () => {
       updateTokenDisplay(data.tokens_in || 0, data.tokens_out || 0);
     }
 
-    // atualiza session_id se veio na resposta
-    if (data.session_id && !currentSessionId) {
+    // atualiza session_id (inclusive quando veio de uma branch)
+    if (data.session_id) {
       currentSessionId = data.session_id;
+      viewingSessionId = data.session_id;
       document.getElementById('info-session').textContent = `#${data.session_id}`;
     }
 
@@ -252,8 +312,10 @@ window.clearChat = async () => {
   tokenIn = 0; tokenOut = 0;
   updateTokenDisplay();
   currentSessionId = null;
-  document.getElementById('info-session').textContent = 'nova';
+  viewingSessionId = null;
+  resetRightPanel();   // limpa fontes e banner, mantém agente/tools atuais
   addSysMsg('nova sessão iniciada');
+  await loadSessions();
 };
 
 window.newSession = () => clearChat();
@@ -355,6 +417,38 @@ window.openAgentModal = async () => {
   }
 };
 
+// ── Reset painel direito (compartilhado por switchAgent e clearChat) ──────
+function resetRightPanel({ agentName = null, agentFull = null, agentDesc = null, tools = null } = {}) {
+  removeViewModeBanner();
+
+  // info de sessão
+  document.getElementById('info-session').textContent  = 'nova';
+  document.getElementById('info-tin').textContent      = '0';
+  document.getElementById('info-tout').textContent     = '0';
+
+  // agente (só atualiza se veio como argumento)
+  if (agentName !== null) {
+    document.getElementById('info-agent').textContent         = agentName;
+    document.getElementById('topbar-agent').textContent       = agentFull || agentName;
+    document.getElementById('sidebar-agent-name').textContent = agentFull || agentName;
+    document.getElementById('sidebar-agent-desc').textContent = agentDesc || '';
+    document.getElementById('agent-avatar').textContent       = (agentFull || agentName)[0].toUpperCase();
+    currentAgent = agentName;
+  }
+
+  // tools
+  if (tools !== null) {
+    allTools = {};
+    tools.forEach(t => { allTools[t.name] = t; });
+    renderToolsList(tools);
+    document.getElementById('tools-count').textContent = tools.length;
+  }
+
+  // fontes: limpa mini-lista do painel
+  document.getElementById('sources-panel-list').innerHTML =
+    '<div class="panel-empty">nenhuma fonte</div>';
+}
+
 window.switchAgent = async (agentId) => {
   closeModal('agent-modal');
   addSysMsg(`trocando para agente: ${agentId}…`);
@@ -364,24 +458,21 @@ window.switchAgent = async (agentId) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ agent: agentId }),
     });
-    currentAgent = agentId;
+
     tokenIn = 0; tokenOut = 0; updateTokenDisplay();
     messagesEl().innerHTML = '';
     currentSessionId = null;
+    viewingSessionId = null;
 
-    document.getElementById('topbar-agent').textContent = data.agent;
-    document.getElementById('sidebar-agent-name').textContent = data.agent_full || data.agent;
-    document.getElementById('sidebar-agent-desc').textContent = data.agent_desc || '';
-    document.getElementById('agent-avatar').textContent = (data.agent_full || data.agent)[0].toUpperCase();
-    document.getElementById('info-agent').textContent = data.agent;
-    document.getElementById('info-session').textContent = 'nova';
-
-    allTools = {};
-    (data.tools || []).forEach(t => { allTools[t.name] = t; });
-    renderToolsList(data.tools || []);
-    document.getElementById('tools-count').textContent = (data.tools || []).length;
+    resetRightPanel({
+      agentName: data.agent,
+      agentFull: data.agent_full || data.agent,
+      agentDesc: data.agent_desc || '',
+      tools:     data.tools || [],
+    });
 
     addSysMsg(`agente: ${data.agent_full || data.agent} · ${(data.tools||[]).length} tools`);
+    await loadSessions();
   } catch(e) {
     addSysMsg(`erro ao trocar agente: ${e.message}`);
   }
@@ -578,15 +669,23 @@ window.openHistoryModal = async () => {
       list.innerHTML = '<div class="panel-empty">nenhuma sessão salva</div>';
       return;
     }
-    list.innerHTML = data.sessions.map(s => `
+    list.innerHTML = data.sessions.map(s => {
+      const isBranch = !!s.parent_session_id;
+      return `
       <button class="history-item" onclick="loadSession(${s.id})">
-        <div class="history-item-dot"></div>
+        <div class="history-item-dot ${isBranch ? 'branch' : ''}"></div>
         <div class="history-item-body">
-          <div class="history-item-title">${esc(s.title || 'sem título')}</div>
-          <div class="history-item-meta">${esc(s.agent_id)} · ${esc(s.updated_at || '')}</div>
+          <div class="history-item-title">
+            ${isBranch ? '<span class="branch-indicator">↪</span>' : ''}${esc(s.title || 'sem título')}
+          </div>
+          <div class="history-item-meta">
+            ${esc(s.agent_id)} · ${esc(s.updated_at || '')}
+            ${isBranch ? `· <span class="parent-ref">pai: #${s.parent_session_id}</span>` : ''}
+          </div>
         </div>
         <span class="history-item-badge">${esc(s.agent_id)}</span>
-      </button>`).join('');
+      </button>`;
+    }).join('');
   } catch(e) {
     list.innerHTML = `<div class="panel-empty">erro: ${esc(e.message)}</div>`;
   }
@@ -594,17 +693,67 @@ window.openHistoryModal = async () => {
 
 window.loadSession = async (sessionId) => {
   closeModal('history-modal');
+  closeSidebar();
   try {
-    const data = await api(`/api/session/${sessionId}`);
+    const data = await api(`/api/session/${sessionId}/load`, { method: 'POST' });
+
+    // limpa chat e reseta contadores
     messagesEl().innerHTML = '';
-    currentSessionId = sessionId;
-    tokenIn = 0; tokenOut = 0; updateTokenDisplay();
-    document.getElementById('info-session').textContent = `#${sessionId}`;
+    tokenIn = 0; tokenOut = 0;
+    updateTokenDisplay();
+    currentSessionId = null;   // ainda não é a sessão ativa — é só visualização
+    viewingSessionId = sessionId;
+
+    // atualiza agente se mudou
+    if (data.agent !== undefined) {
+      document.getElementById('topbar-agent').textContent       = data.agent_full || data.agent;
+      document.getElementById('sidebar-agent-name').textContent = data.agent_full || data.agent;
+      document.getElementById('sidebar-agent-desc').textContent = data.agent_desc || '';
+      document.getElementById('agent-avatar').textContent       = (data.agent_full || data.agent)[0].toUpperCase();
+      document.getElementById('info-agent').textContent         = data.agent;
+      allTools = {};
+      (data.tools || []).forEach(t => { allTools[t.name] = t; });
+      renderToolsList(data.tools || []);
+      document.getElementById('tools-count').textContent = (data.tools || []).length;
+    }
+
+    // info de sessão no painel
+    const sess = data.session;
+    document.getElementById('info-session').textContent = `#${sess.id} (leitura)`;
+    document.getElementById('info-model').textContent   = document.getElementById('topbar-model').textContent;
+
+    // fontes da sessão no mini-painel
+    const miniList = document.getElementById('sources-panel-list');
+    if (data.sources?.length) {
+      miniList.innerHTML = data.sources.map(s => `
+        <div class="source-mini-item">
+          <span class="source-mini-name">📄 ${esc(s.filename)}</span>
+        </div>`).join('');
+    } else {
+      miniList.innerHTML = '<div class="panel-empty">nenhuma fonte</div>';
+    }
+
+    // separador de origem se for branch
+    if (data.parent) {
+      addParentSeparator(data.parent);
+    }
+
+    // renderiza histórico da sessão (modo leitura)
     (data.turns || []).forEach(t => {
-      if (t.role === 'user')  addUserMsg(t.content);
+      if (t.role === 'user')       addUserMsg(t.content);
       else if (t.role === 'agent') addAgentMsg(t.content);
     });
-    addSysMsg(`sessão #${sessionId} carregada`);
+
+    // aviso de modo leitura
+    const hasSummary = data.session?.has_summary;
+    addSysMsg(
+      `sessão #${sess.id} · ${sess.title || 'sem título'} · modo leitura` +
+      (hasSummary ? ' · resumo disponível' : ' · sem resumo — branch iniciará sem contexto')
+    );
+    addViewModeBanner(sess.id, sess.title);
+
+    await loadSessions();
+
   } catch(e) {
     addSysMsg(`erro ao carregar sessão: ${e.message}`);
   }
@@ -619,15 +768,20 @@ async function loadSessions() {
       list.innerHTML = '<div class="sessions-empty">nenhuma sessão salva</div>';
       return;
     }
-    list.innerHTML = data.sessions.slice(0, 20).map(s => `
-      <button class="session-item ${s.id === currentSessionId ? 'active' : ''}"
+    list.innerHTML = data.sessions.slice(0, 20).map(s => {
+      const isBranch = !!s.parent_session_id;
+      return `
+      <button class="session-item ${s.id === viewingSessionId ? 'active' : ''}"
               onclick="loadSession(${s.id}); closeSidebar()">
         <span class="session-item-dot"></span>
         <div class="session-item-body">
-          <div class="session-item-title">${esc(s.title || 'sem título')}</div>
+          <div class="session-item-title">
+            ${isBranch ? '<span class="branch-indicator">↪</span>' : ''}${esc(s.title || 'sem título')}
+          </div>
           <div class="session-item-meta">${esc(s.agent_id)} · ${esc(s.updated_at || '')}</div>
         </div>
-      </button>`).join('');
+      </button>`;
+    }).join('');
   } catch(_) {}
 }
 
