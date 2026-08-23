@@ -109,6 +109,9 @@ O agente executa as ações em ordem como um inspetor — sem planejar, sem impr
 ```
 
 Se mais de uma task corresponder ao nome buscado, o agente lista as candidatas e pede para escolher.
+<p align="center">
+  <img src="docs/assets/screenshot_task.png" width="600">
+</p>
 
 ## Base de conhecimento (fontes)
 
