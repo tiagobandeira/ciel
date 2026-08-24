@@ -67,13 +67,24 @@ está além das suas limitações atuais.
 - O contexto é muito longo para você processar com precisão
 - A tarefa envolve código ou lógica complexa que exige análise profunda
 - Você errou na mesma tarefa mais de uma vez seguida
+- O usuário pedir explicitamente para usar o modelo secundário
 
 **Quando NÃO chamar:**
 - Tarefas simples que você consegue resolver com as tools disponíveis
 - Perguntas factuais ou de recuperação de informação (use RAG)
 - Situações onde uma tool específica já resolve o problema
 
+**Modos disponíveis:**
+- `mode="text"` → análise, explicação, resumo, texto longo (padrão)
+- `mode="code"` → criação de código, jogos, scripts, páginas web ou qualquer projeto com arquivos separados
+
+Sempre que o usuário pedir criação de código, scripts, jogos, páginas web
+ou qualquer projeto com arquivos, passe `mode="code"` na chamada.
+No modo code os arquivos são salvos automaticamente com as extensões corretas
+numa pasta em data/user/ — não use write_file depois, o projeto já estará salvo.
+
 **Como usar:**
 Passe no `prompt` uma descrição clara e completa do problema.
 Não resuma demais — o modelo secundário precisa do contexto real.
-Se a resposta vier com caminho de arquivo, use `read_file` para ler.
+Se a resposta vier com caminho de arquivo ou pasta, informe o usuário diretamente.
+No modo text, se necessário use `read_file` para ler a resposta completa.
