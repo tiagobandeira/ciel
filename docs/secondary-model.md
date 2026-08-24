@@ -147,6 +147,7 @@ ciel_config.json
 | `timeout` | int | Segundos de espera pela resposta (padrão: 120) |
 | `max_chars_per_session` | int | Limite de caracteres de input por sessão (padrão: 40000) |
 | `max_response_chars` | int | Respostas maiores que isso são salvas em arquivo (padrão: 8000) |
+| `max_tokens` | int | Máximo de tokens na resposta do modelo secundário (padrão: 16384) |
 
 ### api_key vs api_key_env
 
