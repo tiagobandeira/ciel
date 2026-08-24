@@ -1,4 +1,3 @@
-
 ![Ciel](docs/assets/banner.jpeg)
 
 # Ciel CLI
@@ -260,11 +259,40 @@ A janela de contexto é otimizada por design: uma sessão típica com tasks,
 busca e escrita de arquivos fica em torno de 20k–30k tokens totais,
 viabilizando o uso contínuo com modelos locais de janela menor.
 
+## Modelo secundário (opcional)
+
+O CIEL suporta um modelo secundário externo para tarefas que exigem raciocínio
+mais complexo ou contexto extenso — sem substituir o orquestrador local.
+
+Quando o orquestrador (Gemma4/Ollama) identifica que o problema está além das
+suas capacidades, ele delega via tool `secondary_model` para um modelo externo
+configurado pelo usuário. O resultado volta pro orquestrador, que entrega ao usuário.
+
+Funciona com qualquer API OpenAI-compatible: NVIDIA Build (gratuito), OpenRouter,
+OpenAI, Anthropic, 9router, ou qualquer provider compatível.
+
+```bash
+# 1. Copie o template de configuração
+cp ciel_config.example.json ciel_config.json
+
+# 2. Edite com seu provider e chave
+{
+  "base_url": "https://integrate.api.nvidia.com/v1",
+  "model":    "deepseek-ai/deepseek-v4-flash-0731",
+  "api_key":  "SUA_CHAVE_AQUI"
+}
+```
+
+Sem configuração, o CIEL funciona normalmente — o modelo secundário é uma adição,
+não uma dependência.
+
+→ **[Documentação completa: docs/secondary-model.md](docs/secondary-model.md)**
+
 ## Limitações
 
-- Modelos pequenos locais (< 8B) podem falhar em tasks com múltiplos steps ou raciocínio complexo.
 - `run_script` executa qualquer `.py` que o modelo solicitar — use `--safe` se não confiar no input.
 - `create_tool` pode tentar instalar dependências via pip — use sempre dentro de um `venv`.
+- Modelos locais pequenos (< 8B) podem falhar em raciocínio complexo — considere configurar um modelo secundário para esses casos.
 
 ---
 
