@@ -20,6 +20,7 @@ Presentes em todo agente, independente do caso de uso.
 | `get_local_datetime.py` | data e hora local do sistema |
 | `create_tool.py` | o agente cria suas próprias tools em runtime |
 | `run_script.py` | executa scripts Python locais (`--safe` pra desabilitar) |
+| `secondary_model.py` | delega tarefas complexas a modelo externo via API (requer ciel_config.json) |
 
 ---
 

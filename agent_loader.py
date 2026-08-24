@@ -130,7 +130,8 @@ CORE_TOOLS = {
     "list_sources", "search_knowledge", "read_source",
     "calculator", "get_local_datetime",
     "create_tool", "run_script", "install_tool", "http_request",
-    "web_search_extended", "temp_log"
+    "web_search_extended", "temp_log",
+    "secondary_model"
 }
 
 

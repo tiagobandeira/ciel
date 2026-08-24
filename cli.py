@@ -481,6 +481,9 @@ def run_agent(
                 if tool_name in ("list_sources", "search_knowledge"):
                     args.setdefault("agent_id", agent_info.get("id", "general"))
                     args.setdefault("session_id", str(session_id) if session_id else "")
+                # ── injeta session_id no modelo secundário ────────────────────
+                if tool_name == "secondary_model":
+                    args.setdefault("session_id", str(session_id) if session_id else "_nosession")
                 feedback = tools[tool_name]["fn"](**args)
                 print_step(step, "resultado", str(feedback)[:100], CLR_OK)
 

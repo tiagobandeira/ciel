@@ -39,3 +39,6 @@ agents/rpg_master.md
 # IDEs
 .vscode/
 .idea/
+
+# Configs
+ciel_config.json
