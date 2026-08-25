@@ -22,6 +22,7 @@ _DEFAULT_CONFIG = {
 _CONFIG_PATH  = Path(__file__).parent.parent / "ciel_config.json"
 _QUOTA_PATH   = Path(__file__).parent.parent / "data" / "secondary_quota.json"
 _RESPONSE_DIR = Path(__file__).parent.parent / "data" / "user"
+_SKILLS_DIR   = Path(__file__).parent.parent / "skills"
 
 # ── system prompts por modo ───────────────────────────────────────────────────
 _SYSTEM_TEXT = "Você é um assistente especialista. Responda de forma precisa e completa em Markdown."
@@ -36,15 +37,30 @@ Formato obrigatório:
     { "filename": "style.css",  "content": "conteúdo completo aqui" },
     { "filename": "script.js",  "content": "conteúdo completo aqui" }
   ],
-  "summary": "descrição curta do que foi criado"
+  "summary": "descrição do artefato gerado: quais arquivos foram criados, o que cada um contém e como usá-los"
 }
 
 Regras:
-- filename deve ter a extensão correta (.html, .css, .js, .py, etc.)
+- filename deve ter a extensão correta (.html, .css, .js, .py, .ipynb, .txt, etc.)
 - content deve ser o código completo e funcional
 - folder deve ser um nome em kebab-case sem espaços
 - Nunca coloque markdown ou texto fora do JSON
+- O campo summary descreve o que foi GERADO (arquivos e seu conteúdo), nunca resultados de execução — o código não foi executado
 """
+
+
+def _load_skill(skill: str) -> str | None:
+    """
+    Lê o conteúdo de uma skill em skills/<skill>.md.
+    Retorna o texto da skill ou None se não encontrada.
+    """
+    path = _SKILLS_DIR / f"{skill}.md"
+    if not path.exists():
+        # tenta sem extensão caso o usuário já tenha passado o nome com .md
+        path = _SKILLS_DIR / skill
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    return None
 
 
 def _load_config() -> dict:
@@ -136,6 +152,7 @@ def run(
     session_id: str = "_nosession",
     system: str = "",
     save_response: bool = False,
+    skill: str = "",
 ) -> str:
     """
     prompt: descrição completa do problema para o modelo secundário
@@ -143,6 +160,7 @@ def run(
     session_id: ID da sessão atual (controle de cota — injetado automaticamente)
     system: instrução de sistema opcional (sobrescreve o padrão do modo)
     save_response: se True, força salvar em arquivo mesmo que resposta seja curta (só no modo text)
+    skill: nome da skill em skills/ a ser injetada no system prompt (ex: 'django-api')
     """
     cfg = _load_config()
 
@@ -174,6 +192,15 @@ def run(
     # ── define system prompt ──────────────────────────────────────────────────
     if not system:
         system = _SYSTEM_CODE if mode == "code" else _SYSTEM_TEXT
+
+    # ── injeta skill no system prompt (se fornecida) ──────────────────────────
+    if skill:
+        skill_content = _load_skill(skill)
+        if skill_content:
+            system = f"{system}\n\n---\n\n## Skill ativa: {skill}\n\n{skill_content}"
+        else:
+            # informa no prompt que a skill não foi encontrada, mas não bloqueia
+            prompt = f"[aviso: skill '{skill}' não encontrada em skills/]\n\n{prompt}"
 
     # ── chamada à API ─────────────────────────────────────────────────────────
     base_url = cfg.get("base_url", _DEFAULT_CONFIG["base_url"]).rstrip("/")

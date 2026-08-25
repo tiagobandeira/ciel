@@ -38,7 +38,7 @@ list_sources, search_knowledge, read_source,
 calculator, get_local_datetime,
 create_tool, run_script, install_tool, http_request,
 web_search_extended, temp_log,
-secondary_model
+secondary_model, list_skills
 
 ## Tasks
 
@@ -88,3 +88,39 @@ Passe no `prompt` uma descrição clara e completa do problema.
 Não resuma demais — o modelo secundário precisa do contexto real.
 Se a resposta vier com caminho de arquivo ou pasta, informe o usuário diretamente.
 No modo text, se necessário use `read_file` para ler a resposta completa.
+
+## Skills
+
+Skills são arquivos `.md` em `skills/` com instruções detalhadas, exemplos longos
+e contexto especializado — injetadas diretamente no system prompt do modelo secundário.
+Permitem configurar o secundário para tarefas que exigem contexto extenso e precisão,
+sem sobrecarregar o orquestrador local.
+
+**Quando usar uma skill:**
+- O usuário pediu `/skill <nome>` explicitamente
+- A tarefa se encaixa numa skill disponível (verifique com `list_skills`)
+- O problema precisa de convenções, exemplos ou contexto que um `.md` especializado cobre bem
+
+**Quando NÃO usar:**
+- Tarefas genéricas sem domínio específico
+- Quando nenhuma skill disponível se encaixa à tarefa
+
+**Como usar:**
+1. Se não souber quais skills existem, chame `list_skills` primeiro — ela retorna nome, descrição e `mode` de cada skill
+2. Use o `mode` informado pelo `list_skills`; se a skill não declarar mode, decida pelo tipo de tarefa
+3. Passe `skill="nome-da-skill"` na chamada a tool `secondary_model`
+4. O conteúdo da skill é injetado automaticamente no system prompt do secundário
+
+**Verificação obrigatória após `mode="code"`:**
+Após qualquer chamada ao `secondary_model` com `mode="code"`, antes de responder ao usuário:
+1. Chame `list_directory` no caminho retornado pela tool
+2. Confirme quais arquivos existem em disco (nomes e extensões)
+3. Reporte ao usuário o que foi gerado de fato — nunca use o `summary` como resultado de execução
+4. Se os arquivos não corresponderem ao esperado pela skill (ex: `.ipynb` virou `.md`), informe honestamente e pergunte se o usuário quer tentar novamente
+
+O `summary` retornado pelo `secondary_model` descreve o artefato gerado, não um resultado de execução — o código nunca foi rodado.
+
+Exemplo:
+```json
+{ "tool": "secondary_model", "args": { "prompt": "...", "mode": "code", "skill": "frontend-visual" } }
+```
