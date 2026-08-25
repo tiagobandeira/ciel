@@ -37,14 +37,15 @@ Formato obrigatório:
     { "filename": "style.css",  "content": "conteúdo completo aqui" },
     { "filename": "script.js",  "content": "conteúdo completo aqui" }
   ],
-  "summary": "descrição curta do que foi criado"
+  "summary": "descrição do artefato gerado: quais arquivos foram criados, o que cada um contém e como usá-los"
 }
 
 Regras:
-- filename deve ter a extensão correta (.html, .css, .js, .py, etc.)
+- filename deve ter a extensão correta (.html, .css, .js, .py, .ipynb, .txt, etc.)
 - content deve ser o código completo e funcional
 - folder deve ser um nome em kebab-case sem espaços
 - Nunca coloque markdown ou texto fora do JSON
+- O campo summary descreve o que foi GERADO (arquivos e seu conteúdo), nunca resultados de execução — o código não foi executado
 """
 
 

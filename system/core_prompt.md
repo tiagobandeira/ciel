@@ -106,9 +106,19 @@ sem sobrecarregar o orquestrador local.
 - Quando nenhuma skill disponível se encaixa à tarefa
 
 **Como usar:**
-1. Se não souber quais skills existem, chame `list_skills` primeiro
-2. Passe `skill="nome-da-skill"` na chamada a `secondary_model`
-3. O conteúdo da skill é injetado automaticamente no system prompt do secundário
+1. Se não souber quais skills existem, chame `list_skills` primeiro — ela retorna nome, descrição e `mode` de cada skill
+2. Use o `mode` informado pelo `list_skills`; se a skill não declarar mode, decida pelo tipo de tarefa
+3. Passe `skill="nome-da-skill"` na chamada a tool `secondary_model`
+4. O conteúdo da skill é injetado automaticamente no system prompt do secundário
+
+**Verificação obrigatória após `mode="code"`:**
+Após qualquer chamada ao `secondary_model` com `mode="code"`, antes de responder ao usuário:
+1. Chame `list_directory` no caminho retornado pela tool
+2. Confirme quais arquivos existem em disco (nomes e extensões)
+3. Reporte ao usuário o que foi gerado de fato — nunca use o `summary` como resultado de execução
+4. Se os arquivos não corresponderem ao esperado pela skill (ex: `.ipynb` virou `.md`), informe honestamente e pergunte se o usuário quer tentar novamente
+
+O `summary` retornado pelo `secondary_model` descreve o artefato gerado, não um resultado de execução — o código nunca foi rodado.
 
 Exemplo:
 ```json

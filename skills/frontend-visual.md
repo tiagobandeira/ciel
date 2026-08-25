@@ -1,3 +1,6 @@
+---
+mode: code
+---
 # Frontend Visual Rico
 
 description: Sites e landing pages com design robusto, animações fluidas e estética imersiva — dark themes, partículas, parallax, glassmorphism.
