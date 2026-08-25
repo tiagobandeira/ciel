@@ -288,6 +288,20 @@ não uma dependência.
 
 → **[Documentação completa: docs/secondary-model.md](docs/secondary-model.md)**
 
+## Skills (opcional)
+
+Skills são arquivos `.md` em `skills/` com instruções detalhadas injetadas diretamente no system prompt do modelo secundário — sem passar pelo orquestrador local. Permitem configurar o secundário para domínios específicos com contexto que um modelo pequeno não conseguiria carregar.
+
+```bash
+/skill                          # lista skills disponíveis
+/skill frontend-visual          # exibe o conteúdo da skill
+/skill frontend-visual cria um site de portfólio animado
+```
+
+Skills incluídas: `frontend-visual`, `code-review`, `refactor`, `docs-generator`, `data-analysis`.
+
+→ **[Documentação completa: docs/skills.md](docs/skills.md)**
+
 ## Limitações
 
 - `run_script` executa qualquer `.py` que o modelo solicitar — use `--safe` se não confiar no input.

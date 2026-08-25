@@ -803,7 +803,7 @@ def main():
     # ── prompt_toolkit: autocomplete ──────────────────────────────────────────
     CMDS = [
         "/sair", "/limpar", "/novo", "/task", "/tools", "/agente", 
-        "/source", "/source --listar","/source --remover","/source --global","/source --limpar-orfas", "/limpar-temp",
+        "/source", "/source --listar","/source --remover","/source --global","/source --limpar-orfas","/skill", "/limpar-temp",
         "/promover ", "/copiar", "/tokens", "/ajuda",
         "/history", "/history salvar", "/history exportar",
     ]
@@ -813,7 +813,8 @@ def main():
         tool_names  = list(tools_dict.keys())
         agent_names = [f"/agente {a}" for a in list_agents()]
         task_names   = [f"/task {p.stem}" for p in Path("tasks").glob("*.md")] if Path("tasks").exists() else []
-        return WordCompleter(CMDS + tool_names + agent_names + task_names, sentence=True)
+        skill_names = [f"/skill {p.stem}" for p in Path("skills").glob("*.md")] if Path("skills").exists() else []
+        return WordCompleter(CMDS + tool_names + agent_names + task_names + skill_names, sentence=True)
 
     completer = make_completer(tools)
 
@@ -1244,6 +1245,100 @@ def main():
                     console.print(f"  [red]erro ao indexar: {e}[/red]\n")
             continue        
 
+        # ── /skill ───────────────────────────────────────────────────────────
+        if user_input == "/skill":
+            SKILLS_DIR = Path("skills")
+            if not SKILLS_DIR.exists() or not list(SKILLS_DIR.glob("*.md")):
+                console.print("  [bright_black]nenhuma skill disponível em skills/[/bright_black]\n")
+            else:
+                console.print("\n[yellow]skills disponíveis:[/yellow]")
+                for sk in sorted(SKILLS_DIR.glob("*.md")):
+                    # extrai descrição (primeira linha não-título)
+                    try:
+                        lines = sk.read_text(encoding="utf-8").splitlines()
+                        desc = ""
+                        past = False
+                        for ln in lines:
+                            s = ln.strip()
+                            if not past:
+                                if s.startswith("#"):
+                                    past = True
+                                continue
+                            if s:
+                                desc = s[:70]
+                                break
+                    except Exception:
+                        desc = ""
+                    console.print(f"  [cyan]{sk.stem}[/cyan]  [bright_black]{desc}[/bright_black]")
+                console.print()
+            continue
+
+        if user_input.startswith("/skill "):
+            partes       = user_input.split(None, 2)   # ['/skill', nome, prompt?]
+            skill_name   = partes[1].strip() if len(partes) > 1 else ""
+            skill_prompt = partes[2].strip() if len(partes) > 2 else ""
+            skill_path   = Path("skills") / f"{skill_name}.md"
+
+            if not skill_name:
+                console.print("  [yellow]uso: /skill <nome> <prompt>[/yellow]\n")
+                continue
+
+            if not skill_path.exists():
+                console.print(f"  [red]skill '{skill_name}' não encontrada em skills/[/red]\n")
+                continue
+
+            # /skill <nome> sem prompt — só exibe a skill
+            if not skill_prompt:
+                content = skill_path.read_text(encoding="utf-8")
+                console.print(Panel(
+                    escape(content[:800]) + ("[bright_black]…[/bright_black]" if len(content) > 800 else ""),
+                    title=f"[yellow]skill: {skill_name}[/yellow]",
+                    border_style=CLR_BORDER,
+                    padding=(0, 1),
+                ))
+                console.print()
+                continue
+
+            # /skill <nome> <prompt> — delega ao agente com skill ativa
+
+            # Monta um prompt que instrui o orquestrador a usar essa skill
+            injected = (
+                f"{skill_prompt}\n\n"
+                f"[instrução do sistema: use a tool secondary_model com skill=\"{skill_name}\"]"
+            )
+
+            ts = datetime.now().strftime("%a %H:%M")
+            history.append({"role": "user", "content": f"/skill {skill_name} {skill_prompt}", "ts": ts})
+            print_history_entry("user", f"[skill: {skill_name}] {skill_prompt}", ts)
+
+            if current_session_id is not None:
+                store.append_turn(current_session_id, "user", injected, ts)
+
+            result, t_in, t_out = run_agent(
+                injected, tools, schema, args.model, agent_info,
+                history=history[:-1],
+                session_id=str(current_session_id) if current_session_id else None,
+            )
+            session_tokens_in  += t_in
+            session_tokens_out += t_out
+
+            if isinstance(result, dict) and result.get("status") == "needs_tool":
+                result, tools, schema = _handle_auto_tool(
+                    result, injected, tools, schema,
+                    args.model, agent_info, history, safe=args.safe,
+                )
+                header(args.model, agent_info["name"], tools, safe=args.safe)
+                completer = make_completer(tools)
+
+            ts = datetime.now().strftime("%a %H:%M")
+            history.append({"role": "agent", "content": result, "ts": ts})
+            print_history_entry("agent", result, ts, t_in, t_out)
+            print_turn_separator()
+
+            if current_session_id is not None:
+                store.append_turn(current_session_id, "agent", result, ts)
+            continue
+
         if user_input in ("/ajuda", "/help", "/?"):
             console.print(Panel(
                 "  [yellow]/sair[/yellow]                    encerra (pergunta se salva)\n"
@@ -1260,6 +1355,9 @@ def main():
                 "  [yellow]/source [white]--remover <id>[/white][/yellow]     remove uma fonte pelo ID\n"
                 "  [yellow]/source [white]--limpar-orfas[/white][/yellow]    remove fontes de sessões deletadas\n"
                 "  [yellow]/source [white]--global <arquivo>[/white][/yellow] indexa como fonte compartilhada\n"
+                "  [yellow]/skill[/yellow]                   lista skills disponíveis\n"
+                "  [yellow]/skill [white]<nome>[/white][/yellow]            exibe conteúdo da skill\n"
+                "  [yellow]/skill [white]<nome> <prompt>[/white][/yellow]   executa prompt usando a skill\n"
                 "  [yellow]/limpar-temp[/yellow]             remove tools temporárias\n"
                 "  [yellow]/promover[/yellow]                promove tool temp → permanente\n"
                 "  [yellow]/tokens[/yellow]                  Mostra tokens gastos na sessão atual\n"

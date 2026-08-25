@@ -38,7 +38,7 @@ list_sources, search_knowledge, read_source,
 calculator, get_local_datetime,
 create_tool, run_script, install_tool, http_request,
 web_search_extended, temp_log,
-secondary_model
+secondary_model, list_skills
 
 ## Tasks
 
@@ -88,3 +88,29 @@ Passe no `prompt` uma descrição clara e completa do problema.
 Não resuma demais — o modelo secundário precisa do contexto real.
 Se a resposta vier com caminho de arquivo ou pasta, informe o usuário diretamente.
 No modo text, se necessário use `read_file` para ler a resposta completa.
+
+## Skills
+
+Skills são arquivos `.md` em `skills/` com instruções detalhadas, exemplos longos
+e contexto especializado — injetadas diretamente no system prompt do modelo secundário.
+Permitem configurar o secundário para tarefas que exigem contexto extenso e precisão,
+sem sobrecarregar o orquestrador local.
+
+**Quando usar uma skill:**
+- O usuário pediu `/skill <nome>` explicitamente
+- A tarefa se encaixa numa skill disponível (verifique com `list_skills`)
+- O problema precisa de convenções, exemplos ou contexto que um `.md` especializado cobre bem
+
+**Quando NÃO usar:**
+- Tarefas genéricas sem domínio específico
+- Quando nenhuma skill disponível se encaixa à tarefa
+
+**Como usar:**
+1. Se não souber quais skills existem, chame `list_skills` primeiro
+2. Passe `skill="nome-da-skill"` na chamada a `secondary_model`
+3. O conteúdo da skill é injetado automaticamente no system prompt do secundário
+
+Exemplo:
+```json
+{ "tool": "secondary_model", "args": { "prompt": "...", "mode": "code", "skill": "frontend-visual" } }
+```
