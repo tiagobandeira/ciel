@@ -7,6 +7,9 @@ Formato do .md:
   ## Tools permitidas       ← 'todas' ou lista de nomes separados por vírgula/newline
   ## Comportamento          ← regras adicionais pro prompt
   ## Formato de resposta    ← override do formato JSON (opcional)
+  ## Skills                 ← skills atreladas à persona (opcional)
+                              formato: <nome-da-skill>: <nível>
+                              níveis: obrigatoria | sugerida | opcional
 """
 
 import re
@@ -25,6 +28,26 @@ Se precisar usar uma tool:
 Se a tarefa estiver concluída:
 {"done": true, "message": "mensagem curta pro usuário"}
 """
+
+# Níveis de prioridade de skill e a instrução correspondente injetada no prompt.
+# Adicione ou ajuste níveis aqui — o texto vai direto pro orquestrador.
+SKILL_LEVELS: dict[str, str] = {
+    "obrigatoria": (
+        "use sempre que a tarefa se encaixar nessa skill — "
+        "não espere o usuário pedir, chame secondary_model com essa skill automaticamente"
+    ),
+    "sugerida": (
+        "considere usar quando a tarefa se encaixar — "
+        "você decide se é necessário antes de responder"
+    ),
+    "opcional": (
+        "disponível para uso via comando do usuário ou decisão própria — "
+        "comportamento padrão de skill"
+    ),
+}
+
+# Nível aplicado quando a skill é listada no agente sem nível explícito
+_DEFAULT_SKILL_LEVEL = "opcional"
 
 
 def list_agents() -> list[str]:
@@ -66,6 +89,76 @@ def _parse_allowed_tools(raw: str) -> list[str] | None:
     return [n.strip().strip("-").strip() for n in names if n.strip()]
 
 
+def _parse_skills(raw: str) -> list[dict]:
+    """
+    Parseia a seção '## Skills' do agente.
+
+    Formato aceito (uma skill por linha):
+      frontend-visual: obrigatoria
+      code-review: sugerida
+      data-analysis            ← sem nível → cai em _DEFAULT_SKILL_LEVEL
+
+    Retorna lista de dicts:
+      [{"name": "frontend-visual", "level": "obrigatoria"}, ...]
+
+    Linhas em branco e comentários (#) são ignorados.
+    Níveis desconhecidos caem em _DEFAULT_SKILL_LEVEL com aviso no stderr.
+    """
+    import sys
+
+    skills: list[dict] = []
+    for raw_line in raw.splitlines():
+        line = raw_line.strip().strip("-").strip()
+        if not line or line.startswith("#"):
+            continue
+
+        if ":" in line:
+            name, _, level_raw = line.partition(":")
+            name = name.strip()
+            level = level_raw.strip().lower()
+        else:
+            name = line
+            level = _DEFAULT_SKILL_LEVEL
+
+        if not name:
+            continue
+
+        if level not in SKILL_LEVELS:
+            print(
+                f"[agent_loader] nível de skill desconhecido '{level}' "
+                f"em '{name}' — usando '{_DEFAULT_SKILL_LEVEL}'",
+                file=sys.stderr,
+            )
+            level = _DEFAULT_SKILL_LEVEL
+
+        skills.append({"name": name, "level": level})
+
+    return skills
+
+
+def _build_skills_block(skills: list[dict]) -> str:
+    """
+    Monta o bloco de texto injetado no system prompt do orquestrador.
+    Retorna string vazia se não houver skills.
+    """
+    if not skills:
+        return ""
+
+    lines = ["## Skills desta persona"]
+    lines.append(
+        "Você tem as seguintes skills disponíveis. "
+        "Respeite o nível de cada uma ao decidir quando usá-las:\n"
+    )
+    for skill in skills:
+        instruction = SKILL_LEVELS[skill["level"]]
+        lines.append(f"- **{skill['name']}** [{skill['level']}]: {instruction}")
+
+    lines.append(
+        "\nPara usar uma skill, passe `skill=\"<nome>\"` na chamada a `secondary_model`."
+    )
+    return "\n".join(lines)
+
+
 def load_agent(agent_name: str) -> dict:
     """
     Carrega e parseia o .md do agente.
@@ -77,6 +170,7 @@ def load_agent(agent_name: str) -> dict:
         "system_prompt": str,        ← prompt montado pronto pra usar
         "allowed_tools": list | None, ← None = todas
         "description": str,          ← linha de descrição curta
+        "skills": list[dict],        ← [{"name": str, "level": str}, ...]
       }
     """
     path = AGENTS_DIR / f"{agent_name}.md"
@@ -90,14 +184,17 @@ def load_agent(agent_name: str) -> dict:
     text = path.read_text(encoding="utf-8")
     sections = _parse_sections(text)
 
-    name = sections.get("__title__", agent_name)
-    persona = sections.get("persona", "")
-    tools_raw = sections.get("tools permitidas", "todas")
-    behavior = sections.get("comportamento", "")
-    fmt = sections.get("formato de resposta", "")
+    name        = sections.get("__title__", agent_name)
+    persona     = sections.get("persona", "")
+    tools_raw   = sections.get("tools permitidas", "todas")
+    behavior    = sections.get("comportamento", "")
+    fmt         = sections.get("formato de resposta", "")
+    skills_raw  = sections.get("skills", "")
     description = persona.splitlines()[0] if persona else "(sem descrição)"
 
     allowed_tools = _parse_allowed_tools(tools_raw)
+    skills        = _parse_skills(skills_raw)
+    skills_block  = _build_skills_block(skills)
 
     # Monta o system prompt
     parts = [f"# {name}\n"]
@@ -105,6 +202,8 @@ def load_agent(agent_name: str) -> dict:
         parts.append(persona)
     if behavior:
         parts.append(f"\n## Regras de comportamento\n{behavior}")
+    if skills_block:
+        parts.append(f"\n{skills_block}")
     if fmt:
         parts.append(f"\n## Formato de resposta\n{fmt}")
     else:
@@ -113,15 +212,13 @@ def load_agent(agent_name: str) -> dict:
     system_prompt = "\n".join(parts)
 
     return {
-        "name": name,
-        "id": agent_name,
+        "name":          name,
+        "id":            agent_name,
         "system_prompt": system_prompt,
         "allowed_tools": allowed_tools,
-        "description": description,
+        "description":   description,
+        "skills":        skills,
     }
-
-
-
 
 
 # Tools sempre disponíveis em qualquer agente — não precisam ser listadas no .md
@@ -131,7 +228,7 @@ CORE_TOOLS = {
     "calculator", "get_local_datetime",
     "create_tool", "run_script", "install_tool", "http_request",
     "web_search_extended", "temp_log",
-    "secondary_model"
+    "secondary_model","list_skills"
 }
 
 
