@@ -14,6 +14,7 @@ import sys
 import json
 import base64
 import re
+import inspect
 import argparse
 from pathlib import Path
 from datetime import datetime
@@ -500,11 +501,11 @@ def run_agent(
 
             except TypeError as e:
                 # mostra assinatura real pro modelo corrigir os args ──────────
-                import inspect
                 sig      = inspect.signature(tools[tool_name]["fn"])
                 feedback = (
                     f"Args inválidos para '{tool_name}': {e}. "
-                    f"Assinatura correta: {tool_name}{sig}"
+                    f"Assinatura correta: {tool_name}{sig}. "
+                    f"Args recebidos: {list(args.keys())}"
                 )
                 print_step(step, "erro", feedback, CLR_ERR)
             except Exception as e:
