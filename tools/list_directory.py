@@ -4,12 +4,15 @@ import os
 from pathlib import Path
 
 
-def run(directory: str = ".", ext: str = "", recursive: bool = False) -> str:
+def run(directory: str = ".", ext: str = "", recursive: bool = False, path: str = "") -> str:
     """
     directory: caminho do diretório a listar (padrão: diretório atual)
     ext: filtra por extensão, ex: '.py', '.txt', '.md' (vazio = todos)
     recursive: se True, lista subdiretórios também (padrão: False)
     """
+    # aceita 'path' como alias de 'directory' — modelos tendem a usar path por convenção
+    if path and directory == ".":
+        directory = path
     try:
         base = Path(directory)
 
