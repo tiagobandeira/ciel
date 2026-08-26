@@ -96,7 +96,14 @@ e contexto especializado — injetadas diretamente no system prompt do modelo se
 Permitem configurar o secundário para tarefas que exigem contexto extenso e precisão,
 sem sobrecarregar o orquestrador local.
 
-**Quando usar uma skill:**
+**Skills da persona (prioritárias):**
+Se o seu system prompt contiver uma seção `## Skills desta persona`, essas skills já
+foram definidas para você — respeite o nível de cada uma:
+- `obrigatoria` — chame `secondary_model` com essa skill automaticamente quando a tarefa se encaixar, sem esperar o usuário pedir
+- `sugerida` — avalie antes de responder se a skill se encaixa; use se fizer sentido
+- `opcional` — comportamento padrão: use via comando do usuário ou decisão própria
+
+**Quando usar uma skill (além das da persona):**
 - O usuário pediu `/skill <nome>` explicitamente
 - A tarefa se encaixa numa skill disponível (verifique com `list_skills`)
 - O problema precisa de convenções, exemplos ou contexto que um `.md` especializado cobre bem
@@ -106,8 +113,8 @@ sem sobrecarregar o orquestrador local.
 - Quando nenhuma skill disponível se encaixa à tarefa
 
 **Como usar:**
-1. Se não souber quais skills existem, chame `list_skills` primeiro — ela retorna nome, descrição e `mode` de cada skill
-2. Use o `mode` informado pelo `list_skills`; se a skill não declarar mode, decida pelo tipo de tarefa
+1. Para skills da persona, o nome já está no system prompt — use diretamente
+2. Para descobrir outras skills, chame `list_skills` — retorna nome, descrição e `mode` de cada uma
 3. Passe `skill="nome-da-skill"` na chamada a tool `secondary_model`
 4. O conteúdo da skill é injetado automaticamente no system prompt do secundário
 

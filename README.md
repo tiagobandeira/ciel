@@ -300,6 +300,12 @@ Skills são arquivos `.md` em `skills/` com instruções detalhadas injetadas di
 
 Skills incluídas: `frontend-visual`, `code-review`, `refactor`, `docs-generator`, `data-analysis`.
 
+### Skills integradas ao agente
+
+Skills também podem ser vinculadas diretamente a um agente em seu arquivo `.md`, por nível de prioridade. Quando o agente é carregado, as skills listadas são injetadas automaticamente no system prompt do modelo secundário.
+
+> **Atenção ao contexto:** cada skill adicionada aumenta o número de tokens enviados na chamada ao modelo secundário. Ao usar agentes com skills vinculadas, considere aumentar `max_tokens` em `ciel_config.json` para evitar respostas truncadas — respeitando o limite máximo da API do provider escolhido.
+
 → **[Documentação completa: docs/skills.md](docs/skills.md)**
 
 ## Limitações
