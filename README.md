@@ -191,20 +191,20 @@ Tools criadas dinamicamente ficam em `tools/temp/` e não são versionadas pelo 
 ## Estrutura do projeto
 
 ```
-PyAgentCLI/
+Ciel/
 ├── README.md
 ├── cli.py
+├── server.py
 ├── agent_loader.py
+├── tools_registry.py
 ├── history_store.py
 ├── history_ui.py
-├── tools_registry.py
-├── server.py
+├── ciel_config.example.json
 ├── agents/
-│   ├── dev_helper.md
-│   ├── enem_tutor.md
 │   ├── general.md
-│   ├── loja_manager.md
-│   └── prof_assistant.md
+│   ├── dev_helper.md
+│   ├── frontend.md
+│   └── rpg_master.md
 ├── tools/
 │   ├── calculator.py
 │   ├── create_tool.py
@@ -220,6 +220,7 @@ PyAgentCLI/
 │   ├── read_url.py
 │   ├── run_script.py
 │   ├── search_knowledge.py
+│   ├── secondary_model.py
 │   ├── web_search_extended.py
 │   └── write_file.py
 ├── knowledge/
@@ -228,17 +229,35 @@ PyAgentCLI/
 │   ├── ingest.py
 │   ├── ingest_url.py
 │   └── retriever.py
+├── skills/
+│   ├── code-review.md
+│   ├── data-analysis.md
+│   ├── docs-generator.md
+│   ├── frontend-visual.md
+│   └── refactor.md
+├── tasks/
+│   ├── iniciar_rpg.md
+│   └── noticias_do_dia.md
 ├── system/
 │   ├── core_prompt.md
 │   └── tool_template.md
 ├── prompts/
 │   └── web_search.md
+├── web/
+│   ├── static/
+│   │   ├── app.js
+│   │   └── style.css
+│   └── templates/
+│       └── index.html
 └── docs/
     ├── KNOWLEDGE_ROADMAP.md
     ├── TESTING.md
+    ├── secondary-model.md
+    ├── skills.md
     ├── sources.md
     ├── tasks.md
-    └── tools.md
+    ├── tools.md
+    └── tutorial.md
 ```
 
 ## Arquitetura

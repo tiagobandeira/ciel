@@ -4,13 +4,16 @@ import os
 from pathlib import Path
 
 
-def run(directory: str = ".", ext: str = "", recursive: bool = False, path: str = "") -> str:
+def run(directory: str = ".", ext: str = "", recursive: bool = False, **kwargs) -> str:
     """
     directory: caminho do diretório a listar (padrão: diretório atual)
     ext: filtra por extensão, ex: '.py', '.txt', '.md' (vazio = todos)
     recursive: se True, lista subdiretórios também (padrão: False)
     """
-    # aceita 'path' como alias de 'directory' — modelos tendem a usar path por convenção
+    # aceita 'path' como alias de 'directory' via **kwargs — fica fora do schema
+    # para não criar ambiguidade com 'directory', mas mantém compatibilidade com
+    # modelos que historicamente chutavam 'path'
+    path = kwargs.get("path", "")
     if path and directory == ".":
         directory = path
     try:
