@@ -494,7 +494,7 @@ def _load_mock_responses() -> dict:
         return {}
 
 
-def _run_mock(mock_type: str, mode: str, skill: str) -> str:
+def _run_mock(mock_type: str, mode: str, skill: str, prompt: str = "") -> str:
     """
     Simula a resposta do modelo secundário para testes de fluxo.
 
@@ -509,11 +509,15 @@ def _run_mock(mock_type: str, mode: str, skill: str) -> str:
       "quota"     → simula cota esgotada
     """
     _MOCK_BANNER = "[MOCK]"
+    has_files = "## Contexto — arquivos fornecidos" in prompt
+    prompt_preview = prompt[:200].replace("\n", " ")
     print(
         f"\n{_MOCK_BANNER} secondary_model chamado\n"
-        f"  mode  : {mode}\n"
-        f"  skill : {skill or '(nenhuma)'}\n"
-        f"  tipo  : {mock_type}\n"
+        f"  mode   : {mode}\n"
+        f"  skill  : {skill or '(nenhuma)'}\n"
+        f"  tipo   : {mock_type}\n"
+        f"  files  : {'✓ bloco de contexto injetado' if has_files else '✗ sem arquivos'}\n"
+        f"  prompt : {prompt_preview}...\n"
     )
 
     # carrega customizações do arquivo externo
@@ -612,6 +616,37 @@ def _run_mock(mock_type: str, mode: str, skill: str) -> str:
     )
 
 
+
+def _inject_files(prompt: str, files: list) -> str:
+    """
+    Lê os arquivos da lista e injeta o conteúdo no prompt como bloco de contexto.
+
+    Arquivos ilegíveis geram um aviso inline em vez de abortar.
+    O bloco é inserido antes do prompt original para que o modelo
+    receba o contexto antes da instrução.
+    """
+    if not files:
+        return prompt
+
+    blocks = []
+    for path_str in files:
+        path = Path(path_str)
+        if not path.exists():
+            blocks.append(f"### {path_str}\n[arquivo não encontrado]")
+            continue
+        try:
+            content = path.read_text(encoding="utf-8")
+            blocks.append(f"### {path_str}\n```\n{content}\n```")
+        except Exception as e:
+            blocks.append(f"### {path_str}\n[erro ao ler: {e}]")
+
+    if not blocks:
+        return prompt
+
+    context = "## Contexto — arquivos fornecidos\n\n" + "\n\n".join(blocks)
+    return f"{context}\n\n---\n\n{prompt}"
+
+
 def run(
     prompt: str,
     mode: str = "text",
@@ -619,6 +654,7 @@ def run(
     system: str = "",
     save_response: bool = False,
     skill: str = "",
+    files: list = None,
 ) -> str:
     """
     prompt: descrição completa do problema para o modelo secundário
@@ -627,13 +663,18 @@ def run(
     system: instrução de sistema opcional (sobrescreve o padrão do modo)
     save_response: se True, força salvar em arquivo mesmo que resposta seja curta (só no modo text)
     skill: nome da skill em skills/ a ser injetada no system prompt (ex: 'django-api')
+    files: lista de caminhos de arquivos locais a injetar como contexto no prompt
     """
     cfg = _load_config()
+
+    # ── injeta arquivos no prompt (antes de calcular cota) ────────────────────
+    if files:
+        prompt = _inject_files(prompt, files)
 
     # ── mock para testes de fluxo ─────────────────────────────────────────────
     if cfg.get("mock_secondary", False):
         mock_type = cfg.get("mock_type", "code")
-        return _run_mock(mock_type, mode, skill)
+        return _run_mock(mock_type, mode, skill, prompt)
 
     # ── verifica cota ─────────────────────────────────────────────────────────
     prompt_chars = len(prompt)
