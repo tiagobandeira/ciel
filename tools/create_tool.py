@@ -11,6 +11,44 @@ import sys
 from pathlib import Path
 
 
+# ── sanitização de escaping ───────────────────────────────────────────────────
+
+def _sanitize_code(code: str) -> str:
+    """
+    Corrige problemas comuns de escaping quando o modelo gera tool_code
+    como string JSON mal escapada.
+
+    Casos cobertos:
+      - módulo-docstring com 2 aspas no fechamento em vez de 3
+        ex: '\"\"\"Descrição.\"\"\\n' → '\"\"\"Descrição.\"\"\"\\n'
+        (ocorre quando o modelo gera \"\"\" no JSON e uma aspa é consumida no decode)
+      - linha só com 2 aspas (fechamento inline de docstring)
+        ex: '    \"\"' → '    \"\"\"'
+      - quebras de linha mistas (\\r\\n ou \\r → \\n)
+      - tabs misturados com espaços (tab → 4 espaços)
+    """
+    lines = code.split('\n')
+    fixed = []
+    for line in lines:
+        stripped = line.rstrip()
+        # linha que abre E fecha docstring de módulo mas termina com 2 aspas
+        # ex: '\"\"\"Descrição.\"\"'  → '\"\"\"Descrição.\"\"\"'
+        if (stripped.startswith('"""') and stripped.endswith('""')
+                and not stripped.endswith('"""')):
+            line = stripped + '"'
+        # linha só com indentação + 2 aspas — fechamento de docstring multiline
+        # ex: '    \"\"' → '    \"\"\"'
+        elif stripped == '""':
+            indent = len(line) - len(line.lstrip())
+            line = ' ' * indent + '"""'
+        fixed.append(line)
+
+    code = '\n'.join(fixed)
+    code = code.replace('\r\n', '\n').replace('\r', '\n')
+    code = code.replace('\t', '    ')
+    return code
+
+
 # ── validação estática ────────────────────────────────────────────────────────
 
 def _validate(code: str) -> tuple[bool, str]:
@@ -119,8 +157,6 @@ def _try_import_and_fix(path: Path) -> str | None:
             if not ok:
                 return log
         except Exception:
-            # outros erros (ex: efeitos colaterais no import) — ignora,
-            # o registry vai lidar depois
             return None
     return "Muitas dependências faltando — adicione REQUIREMENTS ao código."
 
@@ -137,12 +173,15 @@ def run(tool_name: str, tool_code: str) -> str:
     if not safe_name:
         return "Erro: tool_name inválido. Use letras, números e underscore."
 
-    # 2. valida estrutura sem executar
+    # 2. sanitiza código — corrige escaping residual antes de validar
+    tool_code = _sanitize_code(tool_code)
+
+    # 3. valida estrutura sem executar
     ok, error_msg = _validate(tool_code)
     if not ok:
         return f"Erro de validação — tool não criada.\n{error_msg}"
 
-    # 3. instala dependências declaradas em REQUIREMENTS
+    # 4. instala dependências declaradas em REQUIREMENTS
     requirements = _extract_requirements(tool_code)
     install_log  = ""
     if requirements:
@@ -151,8 +190,8 @@ def run(tool_name: str, tool_code: str) -> str:
             return f"Erro ao instalar dependências {requirements} — tool não criada.\n{pip_log}"
         install_log = f"\n{pip_log}"
 
-    # 4. salva o arquivo
-    tools_dir = Path(__file__).parent  # /tools (create_tool.py fica dentro de /tools)
+    # 5. salva o arquivo
+    tools_dir = Path(__file__).parent
     tools_dir.mkdir(exist_ok=True)
     file_path = tools_dir / f"{safe_name}.py"
 
@@ -161,7 +200,7 @@ def run(tool_name: str, tool_code: str) -> str:
     except OSError as e:
         return f"Erro ao salvar arquivo: {e}"
 
-    # 5. fallback: auto-install se o modelo esqueceu o REQUIREMENTS
+    # 6. fallback: auto-install se o modelo esqueceu o REQUIREMENTS
     err = _try_import_and_fix(file_path)
     if err:
         file_path.unlink(missing_ok=True)

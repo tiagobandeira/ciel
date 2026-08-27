@@ -7,7 +7,8 @@ ou quando uma tarefa exigir uma operação que nenhuma tool existente cobre.
 
 ## Contrato obrigatório
 
-Toda tool é um arquivo `.py` com esta estrutura (na ordem exata):
+Toda tool é um arquivo `.py` com esta estrutura **na ordem exata** —
+o validador de `create_tool` rejeita qualquer desvio:
 
 ```
 1. módulo-docstring        ← obrigatório, primeira linha
@@ -18,6 +19,7 @@ Toda tool é um arquivo `.py` com esta estrutura (na ordem exata):
 ```
 
 ### 1. Módulo-docstring
+
 Lida pelo `tools_registry` e exibida no painel do agente. Uma linha, clara.
 
 ```python
@@ -25,6 +27,7 @@ Lida pelo `tools_registry` e exibida no painel do agente. Uma linha, clara.
 ```
 
 ### 2. REQUIREMENTS (opcional)
+
 Declara pacotes externos que a tool precisa. O `create_tool` os instala via
 `pip` antes de salvar o arquivo. Use especificadores de versão quando necessário.
 
@@ -36,20 +39,45 @@ REQUIREMENTS = ["requests", "beautifulsoup4>=4.12", "pandas==2.2.0"]
 - Só declare o que a tool realmente importa — não inclua pacotes já disponíveis
 
 ### 3. Função `run()`
-Ponto de entrada chamado pelo agente. Deve:
+
+Ponto de entrada chamado pelo agente. Regras obrigatórias:
+
+- **Anote os tipos dos parâmetros** — o registry usa `inspect.signature` para
+  gerar o schema; sem anotação, o modelo não vê o tipo no prompt
+- **Documente parâmetros no docstring de `run()`** no padrão `param: descrição`
+  — o registry extrai as descrições linha a linha; sem isso, o schema fica sem `description`
 - Aceitar apenas tipos simples (`str`, `int`, `float`, `bool`, `list`)
 - **Sempre retornar `str`** — resultado, confirmação ou mensagem de erro
 - Nunca usar `print()` para comunicar resultado — o retorno é o canal
-- Tratar exceções internamente e retornar a mensagem de erro como string
+- Tratar exceções internamente, nunca propagar
 
 ```python
-def run(param_a: str, param_b: int = 10) -> str:
+def run(path: str, encoding: str = "utf-8") -> str:
+    """
+    path: caminho do arquivo a ler
+    encoding: encoding do arquivo (padrão utf-8)
+    """
     try:
-        ...
-        return str(resultado)
+        return Path(path).read_text(encoding=encoding)
     except Exception as e:
         return f"Erro: {e}"
 ```
+
+**Schema gerado pelo registry para o exemplo acima:**
+```json
+{
+  "name": "ler_arquivo",
+  "parameters": [
+    {"name": "path",     "type": "str",                        "description": "caminho do arquivo a ler"},
+    {"name": "encoding", "type": "str", "default": "'utf-8'", "description": "encoding do arquivo (padrão utf-8)"}
+  ]
+}
+```
+
+> **Atenção:** aliases de compatibilidade retroativa devem usar `**kwargs`,
+> não parâmetros explícitos. Parâmetros em `**kwargs` são ignorados pelo
+> registry e não aparecem no schema — use isso intencionalmente quando
+> quiser ocultar um parâmetro do modelo.
 
 ---
 
@@ -84,11 +112,14 @@ def run(<param1>: str, <param2>: str = "<padrão>") -> str:
 |---|---|
 | Módulo-docstring como **primeira** linha | Colocar imports ou REQUIREMENTS antes do docstring |
 | `REQUIREMENTS` para libs externas | Importar lib externa sem declará-la em REQUIREMENTS |
+| Anotar tipos em `run()` | Parâmetros sem anotação de tipo |
+| Docstring de parâmetros em `run()` no padrão `param: descrição` | Documentar parâmetros só no módulo-docstring |
 | `run()` retorna `str` sempre | `run()` retornar `None` ou lançar exceção |
 | Tratar exceções dentro de `run()` | Deixar exceções propagarem pro agente |
 | Nome em `snake_case` | Nome com espaços, hífens ou maiúsculas |
 | Parâmetros simples (str, int, float, bool, list) | Parâmetros complexos (objetos, funções, dicts aninhados) |
 | Stdlib quando suficiente | Dependência externa para algo que `urllib`/`json`/`csv` já fazem |
+| Aliases em `**kwargs` para compatibilidade retroativa | Parâmetros explícitos que não devem aparecer no schema |
 
 ---
 
@@ -126,4 +157,4 @@ def run(<param1>: str, <param2>: str = "<padrão>") -> str:
 - **Uma tool, uma responsabilidade**: tools focadas são mais fáceis de reutilizar e depurar.
 - **Nomeie pelo verbo + objeto**: `buscar_cep`, `listar_arquivos`, `converter_csv` — não `tool1`.
 - **Prefira stdlib**: `urllib.request` funciona sem dependência; só use `requests` se precisar de features extras (sessões, auth, retry).
-- **Após criar**: confirme ao usuário e avise que o agente precisa ser reiniciado para carregar a nova tool.
+- **Schema é o contrato**: o modelo só sabe usar a tool pelo que aparece no schema — tipos e descrições incompletos causam erros de args em runtime.

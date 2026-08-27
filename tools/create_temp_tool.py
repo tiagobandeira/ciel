@@ -29,6 +29,39 @@ def _log_creation(tool_name: str):
         f.write(f"| {tool_name} | {today} | 0 | - |\n")
 
 
+def _sanitize_code(code: str) -> str:
+    """
+    Corrige problemas comuns de escaping quando o modelo gera código
+    como string JSON mal escapada.
+
+    Casos cobertos:
+      - módulo-docstring com 2 aspas no fechamento em vez de 3
+        ex: '\"\"\"Descrição.\"\"\\n' → '\"\"\"Descrição.\"\"\"\\n'
+      - linha só com 2 aspas (fechamento inline de docstring)
+        ex: '    \"\"' → '    \"\"\"'
+      - quebras de linha mistas (\\r\\n ou \\r → \\n)
+      - tabs misturados com espaços (tab → 4 espaços)
+    """
+    lines = code.split('\n')
+    fixed = []
+    for line in lines:
+        stripped = line.rstrip()
+        # linha que abre E fecha docstring de módulo mas termina com 2 aspas
+        if (stripped.startswith('"""') and stripped.endswith('""')
+                and not stripped.endswith('"""')):
+            line = stripped + '"'
+        # linha só com indentação + 2 aspas — fechamento de docstring multiline
+        elif stripped == '""':
+            indent = len(line) - len(line.lstrip())
+            line = ' ' * indent + '"""'
+        fixed.append(line)
+
+    code = '\n'.join(fixed)
+    code = code.replace('\r\n', '\n').replace('\r', '\n')
+    code = code.replace('\t', '    ')
+    return code
+
+
 def _try_import_and_fix(path: Path) -> str | None:
     """
     Tenta importar o módulo. Se falhar com ModuleNotFoundError,
@@ -66,6 +99,9 @@ def run(tool_name: str, tool_code: str) -> str:
 
     TOOLS_TEMP_DIR.mkdir(parents=True, exist_ok=True)
     tool_path = TOOLS_TEMP_DIR / f"{tool_name}.py"
+
+    # sanitiza código antes de salvar — corrige escaping residual do modelo
+    tool_code = _sanitize_code(tool_code)
 
     try:
         tool_path.write_text(tool_code, encoding="utf-8")
