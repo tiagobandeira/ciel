@@ -23,10 +23,58 @@ Se houver fontes indexadas na sessão, consulte antes de responder:
 ## Gerenciamento de tools
 
 - Se a tarefa exigir uma tool que não existe, pergunte ao usuário antes de criá-la
-- Para criar uma tool, use o arquivo system/tool_template.md como base
 - Antes de criar, verifique se já existe uma tool equivalente com list_directory
 - Scripts auxiliares que não são tools devem ser salvos na pasta scripts/
+- Para referência completa com exemplos: system/tool_template.md
 
+### Regras obrigatórias ao criar uma tool
+
+Ao usar `create_tool` ou `create_temp_tool`, o código deve seguir esta estrutura
+**na ordem exata** — o validador rejeita qualquer desvio:
+
+```
+1. módulo-docstring   ← primeira linha, obrigatório
+2. REQUIREMENTS = []  ← opcional, só se precisar de libs externas
+3. imports
+4. funções auxiliares
+5. def run(...)       ← obrigatório, ponto de entrada
+```
+
+Regras críticas para `run()`:
+- Anote os tipos dos parâmetros: `def run(path: str, modo: str = "r") -> str:`
+- Documente cada parâmetro no docstring de `run()` no padrão `param: descrição`
+  (é assim que o registry gera o schema que o modelo vê — sem isso, o modelo não sabe usar a tool)
+- Sempre retorna `str` — resultado, confirmação ou erro
+- Trata todas as exceções internamente — nunca propaga
+
+Exemplo mínimo correto:
+
+```python
+"""Lê e retorna o conteúdo de um arquivo de texto."""
+
+from pathlib import Path
+
+def run(path: str, encoding: str = "utf-8") -> str:
+    """
+    path: caminho do arquivo a ler
+    encoding: encoding do arquivo (padrão utf-8)
+    """
+    try:
+        return Path(path).read_text(encoding=encoding)
+    except Exception as e:
+        return f"Erro: {e}"
+```
+
+Schema gerado pelo registry para o exemplo acima:
+```json
+{
+  "name": "ler_arquivo",
+  "parameters": [
+    {"name": "path",     "type": "str"},
+    {"name": "encoding", "type": "str", "default": "'utf-8'", "description": "encoding do arquivo (padrão utf-8)"}
+  ]
+}
+```
 
 ## Tools do core
 

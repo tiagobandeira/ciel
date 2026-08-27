@@ -297,25 +297,43 @@ def _ask_model_for_tool_proposal(messages: list, model: str) -> dict | None:
     """
     Faz uma chamada extra ao modelo perguntando se uma nova tool
     resolveria a tarefa. Retorna a proposta parseada ou None.
+
+    Descarta o system prompt do agente e substitui por um minimal —
+    sem schema agêntico, sem instrução de formato JSON agêntico —
+    para que o modelo não tente responder no formato {"tool": ...}
+    em vez de {"criar_tool": true, ...}.
     """
-    probe = messages + [{
-        "role": "user",
-        "content": (
-            "Você não conseguiu completar a tarefa com as tools disponíveis. "
-            "Analise a tarefa e responda APENAS em JSON puro, sem texto adicional:\n\n"
-            "Se uma nova tool poderia resolver:\n"
-            '{"criar_tool": true, "nome": "nome_em_snake_case", '
-            '"descricao": "o que a tool faz em uma linha", '
-            '"parametros": [{"nome": "param", "tipo": "str", "descricao": "o que é"}]}\n\n'
-            "Se a tarefa é impossível ou não depende de uma tool:\n"
-            '{"criar_tool": false}'
-        ),
-    }]
+    # descarta o system prompt do agente (que força o formato agêntico)
+    # e mantém só o histórico de mensagens user/assistant
+    history_only = [m for m in messages if m["role"] != "system"]
+
+    probe = [
+        {
+            "role": "system",
+            "content": (
+                "Você é um analista de capacidades de agentes. "
+                "Responda APENAS com JSON puro, sem markdown, sem texto adicional."
+            ),
+        },
+        *history_only,
+        {
+            "role": "user",
+            "content": (
+                "Você não conseguiu completar a tarefa com as tools disponíveis.\n"
+                "Analise o histórico e responda APENAS em JSON puro:\n\n"
+                "Se uma nova tool resolveria o problema:\n"
+                '{"criar_tool": true, "nome": "nome_em_snake_case", '
+                '"descricao": "o que a tool faz em uma linha", '
+                '"parametros": [{"nome": "param", "tipo": "str", "descricao": "o que é"}]}\n\n'
+                "Se a tarefa é impossível ou não depende de tool nova:\n"
+                '{"criar_tool": false}'
+            ),
+        },
+    ]
     try:
-        raw , _ ,_ = call_model(probe, model)
+        raw, _, _ = call_model(probe, model)
         parsed = parse_response(raw)
         if parsed.get("criar_tool") is True:
-            # valida campos mínimos
             if parsed.get("nome") and parsed.get("descricao"):
                 return parsed
     except Exception:
