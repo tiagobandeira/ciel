@@ -951,18 +951,33 @@ class SessionList(Widget):
         tbl = self.query_one("#sessions-table", DataTable)
         tbl.clear()
         if not tbl.columns:
-            tbl.add_columns("id", "title", "date")
+            tbl.add_columns("entry")
         try:
             store = self.app._store
             if store is None:
                 return
             sessions = store.list_sessions()
-            for row in sessions[:20]:   # máximo 20 na sidebar
+            current  = str(self.app._session_id) if self.app._session_id else None
+            _DAYS_PT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+            for row in sessions[:20]:
                 sid   = str(row["id"])
                 title = (row["title"] or "(sem título)")
-                short = title[:16] + "…" if len(title) > 16 else title
-                date  = (row["updated_at"] or "")[:10]
-                tbl.add_row(sid, short, date, key=sid)
+                icon  = "◉" if sid == current else "○"
+                branch = "↪ " if row["parent_session_id"] else ""
+                # remove prefixo "[branch] " que o history_store adiciona
+                clean_title = title.removeprefix("[branch] ") if branch else title
+                raw_date = (row["updated_at"] or "")
+                try:
+                    from datetime import datetime as _dt
+                    d = _dt.fromisoformat(raw_date[:19])
+                    date_str = f"{_DAYS_PT[d.weekday()]} {d.day:02d}/{d.month:02d}"
+                except Exception:
+                    date_str = raw_date[:10]
+                TITLE_W = 20
+                avail   = TITLE_W - len(branch)
+                short   = clean_title[:avail] + "…" if len(clean_title) > avail else clean_title
+                entry   = f"{icon} {branch}{short}"
+                tbl.add_row(entry, key=sid)
         except Exception:
             pass
 
@@ -1338,6 +1353,7 @@ class CielTUI(App):
         height: 1fr;
         background: {P['panel']};
         border: none;
+        color: {P['muted']};
     }}
     DataTable > .datatable--cursor {{
         background: {P['hi']};
