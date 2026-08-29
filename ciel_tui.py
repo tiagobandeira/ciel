@@ -2493,13 +2493,51 @@ class CielTUI(App):
                     ))
 
         elif verb in ("/limpar-temp", "/limptemp"):
-            self._log_write(msg_system("tools temporárias removidas", "ok"))
+            from pathlib import Path
+            temp_dir = Path("tools/temp")
+            removidas = []
+            if temp_dir.exists():
+                for f in temp_dir.glob("*.py"):
+                    if f.name != "__init__.py":
+                        f.unlink()
+                        removidas.append(f.stem)
+            if removidas:
+                self._reload_tools(log)
+                self._log_write(msg_system(
+                    f"tools temp removidas: {', '.join(removidas)}", "ok"
+                ))
+            else:
+                self._log_write(msg_system("nenhuma tool temporária encontrada", "info"))
 
         elif verb == "/promover":
             if len(parts) < 2:
                 self._log_write(msg_system("uso: /promover <nome-tool>", "warn"))
             else:
-                self._log_write(msg_system(f"tool '{parts[1]}' promovida a permanente", "ok"))
+                from pathlib import Path
+                tool_name = parts[1].removesuffix(".py")
+                dst = Path("tools") / f"{tool_name}.py"
+
+                # procura em tools/temp/ e no fallback tools/tools/temp/ (bug do agente)
+                candidates = [
+                    Path("tools/temp")       / f"{tool_name}.py",
+                    Path("tools/tools/temp") / f"{tool_name}.py",
+                ]
+                src = next((p for p in candidates if p.exists()), None)
+
+                if src is None:
+                    self._log_write(msg_system(
+                        f"tool temp '{tool_name}' não encontrada em tools/temp/", "err"
+                    ))
+                elif dst.exists():
+                    self._log_write(msg_system(
+                        f"já existe uma tool permanente com esse nome: '{tool_name}'", "warn"
+                    ))
+                else:
+                    src.rename(dst)
+                    self._reload_tools(log)
+                    self._log_write(msg_system(
+                        f"'{tool_name}' promovida para tools permanentes", "ok"
+                    ))
 
         elif verb == "/sair":
             self._log_write(msg_system("encerrando…", "info"))
@@ -2508,6 +2546,15 @@ class CielTUI(App):
         else:
             self._log_write(msg_system(
                 f"comando desconhecido: '{verb}'.  /ajuda lista os comandos.", "warn"))
+
+    def _reload_tools(self, log: RichLog) -> None:
+        """Recarrega tools do disco e atualiza self._tools / self._schema."""
+        new_tools = load_tools()
+        filtered  = filter_tools(new_tools, self._agent_info.get("allowed_tools"))
+        if self.safe_mode:
+            filtered = {k: v for k, v in filtered.items() if k not in self.UNSAFE_TOOLS}
+        self._tools  = filtered
+        self._schema = tools_schema(filtered)
 
     # ── workers ───────────────────────────────────────────────────────────────
 
