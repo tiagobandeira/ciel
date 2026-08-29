@@ -308,6 +308,7 @@ COMMANDS: list[tuple[str, str]] = [
     ("/history",           "lista sessões salvas"),
     ("/history salvar",    "salva sessão atual"),
     ("/history exportar",  "exporta como .md"),
+    ("/history <agente>",  "filtra sessões por agente"),
     ("/source <arquivo>",  "indexa na base de conhecimento"),
     ("/source --listar",   "lista fontes"),
     ("/source --global",   "fonte compartilhada"),
@@ -2318,6 +2319,7 @@ class CielTUI(App):
                 ("/history",              "lista sessões salvas"),
                 ("/history salvar",       "salva sessão atual"),
                 ("/history exportar",     "exporta como .md"),
+                ("/history <agente>",    "filtra sessões por agente"),
                 ("/source <arquivo>",     "indexa na base de conhecimento"),
                 ("/source --listar",      "lista fontes"),
                 ("/source --global <f>",  "fonte compartilhada"),
@@ -2454,14 +2456,17 @@ class CielTUI(App):
                 else:
                     self._log_write(msg_system("nenhuma sessão ativa para exportar", "warn"))
             else:
-                # abre o modal de sessões (SessionList já está na sidebar)
+                # /history <agente> filtra por agente; sem arg lista todos
+                agent_filter = sub if sub else None
                 try:
-                    sessions = self._store.list_sessions() if self._store else []
+                    sessions = self._store.list_sessions(agent_filter) if self._store else []
                     if not sessions:
-                        self._log_write(msg_system("nenhuma sessão salva ainda", "info"))
+                        msg = f"nenhuma sessão salva para '{agent_filter}'" if agent_filter else "nenhuma sessão salva ainda"
+                        self._log_write(msg_system(msg, "info"))
                     else:
+                        titulo = f"histórico — {agent_filter}" if agent_filter else "histórico — todos os agentes"
                         t = Text()
-                        t.append("\n  sessões salvas\n", style=f"bold {P['accent']}")
+                        t.append(f"\n  {titulo}\n", style=f"bold {P['accent']}")
                         for row in sessions[:15]:
                             date  = (row["updated_at"] or "")[:16]
                             title = (row["title"] or "(sem título)")[:38]
