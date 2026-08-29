@@ -1942,7 +1942,7 @@ class CielTUI(App):
 
         # carrega agente e tools reais
         self._load_agent(self.current_agent)
-
+        self._refresh_skill_commands()
         t = Text()
         t.append("\n  ciel", style=f"bold {P['accent']}")
         t.append("  agentic CLI local", style=f"dim {P['silver']}")
@@ -2363,7 +2363,38 @@ class CielTUI(App):
             if len(parts) < 2:
                 self._open_skill_modal()
             else:
-                self._log_write(msg_system(f"skill '{parts[1]}' ativada", "ok"))
+                # raw.split(None, 2) para separar nome do prompt (que pode ter espaços)
+                from pathlib import Path
+                raw_parts  = raw.split(None, 2)
+                skill_name = raw_parts[1].strip()
+                skill_prompt = raw_parts[2].strip() if len(raw_parts) > 2 else ""
+                skill_path = Path("skills") / f"{skill_name}.md"
+
+                if not skill_path.exists():
+                    self._log_write(msg_system(
+                        f"skill '{skill_name}' não encontrada em skills/", "err"
+                    ))
+                elif not skill_prompt:
+                    # /skill <nome> — exibe conteúdo da skill
+                    content = skill_path.read_text(encoding="utf-8")
+                    preview = content[:800] + ("…" if len(content) > 800 else "")
+                    t = Text()
+                    t.append(f"\n  skill: {skill_name}\n", style=f"bold {P['accent']}")
+                    t.append(f"  {'─' * 60}\n", style=f"dim {P['muted']}")
+                    for line in preview.splitlines():
+                        t.append(f"  {line}\n", style=P["text"])
+                    self._log_write(t)
+                else:
+                    # /skill <nome> <prompt> — injeta instrução e executa
+                    injected = (
+                        f"{skill_prompt}\n\n"
+                        f"[instrução do sistema: use a tool secondary_model"
+                        f" com skill=\"{skill_name}\"]"
+                    )
+                    self._log_write(msg_system(
+                        f"skill: {skill_name}  │  {skill_prompt[:60]}", "info"
+                    ))
+                    self._agent_turn(injected, log)
 
         elif verb == "/agente":
             if len(parts) < 2:
@@ -2552,6 +2583,17 @@ class CielTUI(App):
             self._log_write(msg_system(
                 f"comando desconhecido: '{verb}'.  /ajuda lista os comandos.", "warn"))
 
+    def _refresh_skill_commands(self) -> None:
+        """Popula COMMANDS com as skills disponíveis em skills/ dinamicamente."""
+        from pathlib import Path
+        # remove entradas de skill antigas para não duplicar
+        global COMMANDS
+        COMMANDS[:] = [(c, d) for c, d in COMMANDS if not c.startswith("/skill ")]
+        skills_dir = Path("skills")
+        if skills_dir.exists():
+            for sk in sorted(skills_dir.glob("*.md")):
+                COMMANDS.append((f"/skill {sk.stem}", f"skill: {sk.stem}"))
+
     def _reload_tools(self, log: RichLog) -> None:
         """Recarrega tools do disco e atualiza self._tools / self._schema."""
         new_tools = load_tools()
@@ -2579,7 +2621,16 @@ class CielTUI(App):
 
         def on_step(step: int, label: str, content: str, status: str) -> None:
             if status in ("tool", "error", "parse_error"):
-                self.call_from_thread(log.write, msg_tool(label, content, step))
+                # secondary_model: extrai skill= e mostra preview do prompt
+                if label == "secondary_model" and "skill=" in content:
+                    import re as _re
+                    m = _re.search(r'skill=["\']?([^\s"\'},]+)', content)
+                    skill_tag = f"  [skill: {m.group(1)}]" if m else ""
+                    prompt_preview = content[:80].replace("\n", " ")
+                    display_label = f"secondary_model{skill_tag}"
+                    self.call_from_thread(log.write, msg_tool(display_label, prompt_preview, step))
+                else:
+                    self.call_from_thread(log.write, msg_tool(label, content, step))
 
         def on_done(message: str, steps: int, t_in: int, t_out: int) -> None:
             self.tok_in  += t_in
