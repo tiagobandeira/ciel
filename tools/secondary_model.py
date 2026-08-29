@@ -796,6 +796,16 @@ def run(
     if _usage:
         _err.print(_format_token_usage(_usage, cfg))
 
+    # registra no token_tracker para a TUI (no-op se não estiver disponível)
+    try:
+        import token_tracker
+        token_tracker.add(
+            _usage.get("prompt_tokens", 0),
+            _usage.get("completion_tokens", 0),
+        )
+    except Exception:
+        pass
+
     # ── atualiza cota ─────────────────────────────────────────────────────────
     if content is None:
         return "Erro: todas as tentativas falharam sem resposta do modelo secundário."
