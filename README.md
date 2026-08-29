@@ -23,6 +23,43 @@ Assim, você pode executar o CIEL no PC e utilizá-lo também pelo celular ou ou
 
 ![Ciel Local Server](docs/assets/screenshot_server.png)
 
+## 🖥️ Versão TUI (opcional)
+
+O **Ciel TUI** é uma interface de terminal interativa construída com [Textual](https://github.com/Textualize/textual), projetada para quem prefere trabalhar no terminal com mais conforto visual — sem abrir mão da velocidade do CLI.
+
+![Ciel TUI](docs/assets/screenshot_tui.png)
+
+A TUI mantém todos os recursos do CLI e adiciona navegação por teclado, painéis interativos e feedback visual em tempo real. É uma dependência opcional — o CLI continua funcionando normalmente sem ela.
+
+**Dependência extra:**
+
+```bash
+pip install textual
+```
+
+**Executar:**
+
+```bash
+python ciel.py                         # abre TUI automaticamente se Textual instalado
+python ciel.py --tui                   # força TUI
+python ciel.py --tui --agent dev_helper
+```
+
+**Atalhos principais:**
+
+| Tecla | Ação |
+|---|---|
+| `Ctrl+K` | Abre editor do conteúdo colado (pill) |
+| `Ctrl+G` | Confirma edição no pill |
+| `Ctrl+D` | Deleta o pill |
+| `Ctrl+S` | Salva sessão |
+| `Ctrl+N` | Nova sessão |
+| `Ctrl+B` | Alterna sidebar |
+| `Ctrl+Y` | Modo seleção — copia trechos do chat |
+| `Ctrl+L` | Limpa o chat |
+| `F1`–`F4` | Tool / Task / Skill / Agente |
+→ **[Documentação completa: docs/tui.md](docs/tui.md)**
+
 ## Instalação
 
 > Primeira vez? Siga o **[tutorial passo a passo](docs/tutorial.md)** — do zero ao primeiro chat.
@@ -194,6 +231,9 @@ Tools criadas dinamicamente ficam em `tools/temp/` e não são versionadas pelo 
 Ciel/
 ├── README.md
 ├── cli.py
+├── ciel_tui.py
+├── ciel.py
+├── agent_loop.py
 ├── server.py
 ├── agent_loader.py
 ├── tools_registry.py
