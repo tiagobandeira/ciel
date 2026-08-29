@@ -91,6 +91,61 @@ from tools_registry import load_tools, tools_schema
 from agent_loader import load_agent, filter_tools, list_agents
 from history_store import HistoryStore, DB_PATH
 
+
+# ─── helpers de task (espelhados de cli.py) ───────────────────────────────────
+
+def load_task(path) -> dict | None:
+    from pathlib import Path
+    path = Path(path)
+    if not path.exists():
+        return None
+    text  = path.read_text(encoding="utf-8")
+    nome = objetivo = resultado = ""
+    acoes: list[str] = []
+    section = None
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("## task:"):
+            nome = s.split(":", 1)[1].strip()
+        elif s.startswith("objetivo:"):
+            objetivo = s.split(":", 1)[1].strip(); section = None
+        elif s in ("ações:", "acoes:"):
+            section = "acoes"
+        elif s.startswith("resultado esperado:"):
+            resultado = s.split(":", 1)[1].strip(); section = None
+        elif section == "acoes" and s.startswith("-"):
+            acoes.append(s[1:].strip())
+    if not nome or not acoes:
+        return None
+    return {"nome": nome, "objetivo": objetivo, "acoes": acoes, "resultado": resultado}
+
+
+def find_tasks(query: str, tasks_dir) -> list:
+    from pathlib import Path
+    tasks_dir = Path(tasks_dir)
+    if not tasks_dir.exists():
+        return []
+    q = query.lower().replace(" ", "-")
+    matches = [p for p in tasks_dir.glob("*.md") if q in p.stem.lower()]
+    matches.sort(key=lambda p: (0 if p.stem.lower() == q else 1, p.stem))
+    return matches
+
+
+def build_task_prompt(task: dict) -> str:
+    acoes_fmt = "\n".join(f"  {i+1}. {a}" for i, a in enumerate(task["acoes"]))
+    return (
+        f"Execute a seguinte task: {task['nome']}\n\n"
+        f"Objetivo: {task['objetivo']}\n\n"
+        f"Ações a executar em ordem:\n{acoes_fmt}\n\n"
+        f"Resultado esperado: {task['resultado']}\n\n"
+        f"Siga as ações na ordem indicada. Se uma ação especificar [tool: nome], "
+        f"use essa tool. Caso contrário, escolha a tool mais adequada disponível."
+    )
+
+
+MAX_STEPS_TASK = 9  # +3 vs padrão, igual à CLI
+
+
 # monitor de sistema — opcionais
 try:
     import psutil as _psutil
@@ -1920,8 +1975,15 @@ class CielTUI(App):
         if suggest.display:
             cmd = suggest.current_cmd()
             if cmd:
-                base = cmd.split()[0]
-                event.input.value = base + " "
+                # se o comando tem subcomando (ex: "/history salvar"), insere completo
+                # e adiciona espaço só se for comando base sem argumento fixo
+                parts = cmd.split()
+                if len(parts) == 1 or parts[-1].startswith("<"):
+                    # comando simples ou com placeholder: insere base + espaço
+                    event.input.value = parts[0] + " "
+                else:
+                    # tem subcomando fixo (ex: "salvar", "exportar"): insere completo
+                    event.input.value = cmd
                 event.input.cursor_position = len(event.input.value)
             suggest.hide()
             return
@@ -1960,8 +2022,11 @@ class CielTUI(App):
             elif event.key == "tab":
                 cmd = suggest.current_cmd()
                 if cmd:
-                    base = cmd.split()[0]
-                    inp.value = base + " "
+                    parts = cmd.split()
+                    if len(parts) == 1 or parts[-1].startswith("<"):
+                        inp.value = parts[0] + " "
+                    else:
+                        inp.value = cmd
                     inp.cursor_position = len(inp.value)
                 suggest.hide(); event.prevent_default()
             elif event.key == "escape":
@@ -2107,6 +2172,37 @@ class CielTUI(App):
 
     # ── modal helpers ─────────────────────────────────────────────────────────
 
+    def _run_task_by_name(self, name: str, log: RichLog) -> None:
+        """Resolve o .md, monta o task_prompt estruturado e despacha para _agent_turn."""
+        from pathlib import Path
+        tasks_dir = Path("tasks")
+
+        # tenta caminho direto primeiro; depois busca por stem
+        task_path = Path(name) if name.endswith(".md") else tasks_dir / f"{name}.md"
+        if not task_path.exists():
+            candidates = find_tasks(name, tasks_dir)
+            if not candidates:
+                self._log_write(msg_system(
+                    f"task '{name}' não encontrada em tasks/", "err"
+                ))
+                return
+            task_path = candidates[0]  # melhor match
+
+        task = load_task(task_path)
+        if not task:
+            self._log_write(msg_system(
+                f"arquivo '{task_path.name}' não segue o formato de task", "err"
+            ))
+            return
+
+        n_acoes = len(task["acoes"])
+        self._log_write(msg_system(
+            f"task: {task['nome']}  │  {n_acoes} ações  │  até {MAX_STEPS_TASK} steps",
+            "info",
+        ))
+        task_prompt = build_task_prompt(task)
+        self._agent_turn(task_prompt, log, max_steps=MAX_STEPS_TASK)
+
     def _open_task_modal(self) -> None:
         from pathlib import Path
         tasks_dir = Path("tasks")
@@ -2129,8 +2225,7 @@ class CielTUI(App):
         def on_result(choice):
             if choice and choice != "(nenhuma task encontrada)":
                 log = self.query_one("#chat-log", RichLog)
-                self._log_write(msg_system(f"executando task '{choice}'…", "info"))
-                self._agent_turn(f"/task {choice}", log)
+                self._run_task_by_name(choice, log)
 
         self.set_focus(None)
         self.push_screen(
@@ -2260,9 +2355,7 @@ class CielTUI(App):
             if len(parts) < 2:
                 self._open_task_modal()
             else:
-                task_name = parts[1]
-                self._log_write(msg_system(f"executando task '{task_name}'…", "info"))
-                self._agent_turn(f"/task {task_name}", log)
+                self._run_task_by_name(parts[1], log)
 
         elif verb == "/skill":
             if len(parts) < 2:
@@ -2383,7 +2476,21 @@ class CielTUI(App):
                     self._log_write(msg_system(f"erro ao listar sessões: {e}", "err"))
 
         elif verb == "/copiar":
-            self._log_write(msg_system("última resposta copiada para o clipboard", "ok"))
+            agent_entries = [e for e in self._history if e["role"] == "agent"]
+            if not agent_entries:
+                self._log_write(msg_system("nenhuma resposta para copiar ainda", "warn"))
+            else:
+                texto = agent_entries[-1]["content"]
+                try:
+                    import pyperclip
+                    pyperclip.copy(texto)
+                    preview = texto[:60].replace("\n", " ")
+                    self._log_write(msg_system(f"copiado: \"{preview}…\"", "ok"))
+                except Exception:
+                    self._log_write(msg_system(
+                        "clipboard não disponível — instale xclip ou xsel no Linux",
+                        "warn",
+                    ))
 
         elif verb in ("/limpar-temp", "/limptemp"):
             self._log_write(msg_system("tools temporárias removidas", "ok"))
@@ -2405,7 +2512,7 @@ class CielTUI(App):
     # ── workers ───────────────────────────────────────────────────────────────
 
     @work(thread=True)
-    def _agent_turn(self, user_text: str, log: RichLog) -> None:
+    def _agent_turn(self, user_text: str, log: RichLog, max_steps: int = 6) -> None:
         """Worker real: chama run_agent com callbacks thread-safe."""
         self.call_from_thread(self._set_thinking, True)
 
@@ -2486,6 +2593,7 @@ class CielTUI(App):
             on_done=on_done,
             on_limit=on_limit,
             on_error=on_error,
+            max_steps=max_steps,
         )
 
         # le tokens acumulados do modelo secundario neste turno
