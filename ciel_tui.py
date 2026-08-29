@@ -142,8 +142,7 @@ def ts() -> str:
 
 def msg_user(text: str) -> Text:
     t = Text()
-    t.append(f" {ts()} ", style=f"dim {P['muted']}")
-    t.append("você", style=f"bold {P['gold']}")
+    t.append("  você", style=f"bold {P['gold']}")
     t.append(f"  {text}", style=P["text"])
     return t
 
@@ -156,8 +155,7 @@ def msg_user_pill(pill_content: str, prompt: str) -> Text:
     indent = "      "   # alinha com o texto após "você  "
 
     t = Text()
-    t.append(f" {ts()} ", style=f"dim {P['muted']}")
-    t.append("você", style=f"bold {P['gold']}")
+    t.append("  você", style=f"bold {P['gold']}")
     t.append(f"  ", style="")
 
     # badge do pill
@@ -187,8 +185,7 @@ def msg_user_pill(pill_content: str, prompt: str) -> Text:
 
 def msg_agent(agent: str, text: str, tok_in: int = 0, tok_out: int = 0) -> Group:
     header = Text()
-    header.append(f" {ts()} ", style=f"dim {P['muted']}")
-    header.append(f"{agent}", style=f"bold {P['accent']}")
+    header.append(f"  {agent}", style=f"bold {P['accent']}")
     if tok_in or tok_out:
         header.append(f"  ↑{tok_in:,} ↓{tok_out:,}", style=f"dim {P['muted']}")
     body = RichMarkdown(text)
@@ -197,10 +194,9 @@ def msg_agent(agent: str, text: str, tok_in: int = 0, tok_out: int = 0) -> Group
 def msg_tool(tool: str, result: str, step: int = 0) -> Text:
     t = Text()
     prefix = f"step {step}" if step else "    "
-    t.append(f" {ts()} ", style=f"dim {P['muted']}")
-    t.append(f"{prefix}  ", style=f"dim {P['muted']}")
+    t.append(f"  {prefix}  ", style=f"dim {P['muted']}")
     t.append(tool, style=f"bold {P['cyan']}")
-    indent = " " * (1 + len(ts()) + 2 + len(prefix) + 2)
+    indent = " " * (2 + len(prefix) + 2)
     t.append(f"\n{indent}", style="")
     t.append("└─ ", style=f"dim {P['muted']}")
     t.append(result[:100], style=f"dim {P['silver']}")
@@ -210,8 +206,7 @@ def msg_system(text: str, kind: str = "info") -> Text:
     clr  = {"info": P["silver"], "ok": P["green"], "warn": P["orange"], "err": P["crimson"]}
     icon = {"info": "─", "ok": "✓", "warn": "!", "err": "✗"}
     t = Text()
-    t.append(f" {ts()} ", style=f"dim {P['muted']}")
-    t.append(f"{icon[kind]} ", style=f"bold {clr[kind]}")
+    t.append(f"  {icon[kind]} ", style=f"bold {clr[kind]}")
     t.append(text, style=clr[kind])
     return t
 
@@ -238,34 +233,7 @@ FAKE_SKILLS = [
     ("gerador_teste",  "Gera testes unitários"),
     ("tradutor",       "Tradução pt/en/es"),
 ]
-FAKE_TOOLS_LIST = [
-    "search_knowledge", "list_sources", "read_source",
-    "read_file", "write_file", "calculator",
-    "get_local_datetime", "web_search_extended",
-    "http_request", "run_script", "create_tool", "create_temp_tool",
-]
-FAKE_SESSIONS = [
-    ("#56", "Início de RPG: O Santuário…", "rpg_master",  "22/08 02:28"),
-    ("#55", "Análise espectral primos",    "general",     "21/08 14:10"),
-    ("#54", "Debug tools/calculator",      "dev_helper",  "20/08 09:33"),
-    ("#53", "Elaboração ENEM",             "enem_tutor",  "19/08 22:01"),
-    ("#52", "Revisão README projeto",      "general",     "18/08 11:45"),
-    ("#51", "Campanha RPG cap.3",          "rpg_master",  "17/08 23:00"),
-]
-FAKE_FAKE_TOOLS = [
-    ("search_knowledge", "3 fragmentos (score > 0.7)"),
-    ("read_file",        "lido: 2.1 KB"),
-    ("web_search_extended", "5 resultados"),
-    ("calculator",       "= 1764"),
-    ("write_file",       "salvo: output.md"),
-]
-FAKE_RESPONSES = {
-    "general":    ["Entendido. Aqui está o que encontrei.", "Processando… pronto."],
-    "dev_helper": ["Script criado. Verifique as dependências.", "Identifiquei o problema na linha 42."],
-    "researcher": ["Resumo das fontes: 3 documentos relevantes.", "Fragmento encontrado (score 0.87)."],
-    "enem_tutor": ["Questão resolvida. Quer outro exercício?", "Dica: revise a regra de três simples."],
-    "rpg_master": ["Você não hesita. A lâmina penetra fundo…", "O ambiente vibra com poder ancestral."],
-}
+
 
 # ─── Modal de seleção interativo ─────────────────────────────────────────────
 
@@ -983,18 +951,33 @@ class SessionList(Widget):
         tbl = self.query_one("#sessions-table", DataTable)
         tbl.clear()
         if not tbl.columns:
-            tbl.add_columns("id", "title", "date")
+            tbl.add_columns("entry")
         try:
             store = self.app._store
             if store is None:
                 return
             sessions = store.list_sessions()
-            for row in sessions[:20]:   # máximo 20 na sidebar
+            current  = str(self.app._session_id) if self.app._session_id else None
+            _DAYS_PT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+            for row in sessions[:20]:
                 sid   = str(row["id"])
                 title = (row["title"] or "(sem título)")
-                short = title[:16] + "…" if len(title) > 16 else title
-                date  = (row["updated_at"] or "")[:10]
-                tbl.add_row(sid, short, date, key=sid)
+                icon  = "◉" if sid == current else "○"
+                branch = "↪ " if row["parent_session_id"] else ""
+                # remove prefixo "[branch] " que o history_store adiciona
+                clean_title = title.removeprefix("[branch] ") if branch else title
+                raw_date = (row["updated_at"] or "")
+                try:
+                    from datetime import datetime as _dt
+                    d = _dt.fromisoformat(raw_date[:19])
+                    date_str = f"{_DAYS_PT[d.weekday()]} {d.day:02d}/{d.month:02d}"
+                except Exception:
+                    date_str = raw_date[:10]
+                TITLE_W = 20
+                avail   = TITLE_W - len(branch)
+                short   = clean_title[:avail] + "…" if len(clean_title) > avail else clean_title
+                entry   = f"{icon} {branch}{short}"
+                tbl.add_row(entry, key=sid)
         except Exception:
             pass
 
@@ -1036,74 +1019,6 @@ class Sidebar(Widget):
 
 
 # ─── Monitor de sistema ──────────────────────────────────────────────────────
-
-class SysMonitor(Widget):
-    """Monitora CPU e RAM (+ VRAM se NVIDIA disponível). Atualiza a cada 2s."""
-
-    _HIST = 20  # pontos no sparkline
-
-    def __init__(self, **kw):
-        super().__init__(**kw)
-        self._cpu_hist:  list[float] = [0.0] * self._HIST
-        self._ram_pct:   float = 0.0
-        self._ram_used:  float = 0.0
-        self._ram_total: float = 0.0
-        self._vram_pct:  float | None = None
-        self._vram_used: float | None = None
-        self._vram_total:float | None = None
-
-    def compose(self) -> ComposeResult:
-        yield Static("", id="sys-cpu-label")
-        yield Sparkline(self._cpu_hist, id="sys-cpu-spark")
-        yield Static("", id="sys-ram-label")
-        if _HAS_NVML:
-            yield Static("", id="sys-vram-label")
-
-    def on_mount(self) -> None:
-        self._poll()
-        self.set_interval(2.0, self._poll)
-
-    def _poll(self) -> None:
-        if not _HAS_PSUTIL:
-            return
-        # CPU
-        cpu = _psutil.cpu_percent(interval=None)
-        self._cpu_hist = self._cpu_hist[1:] + [cpu]
-        spark = self.query_one("#sys-cpu-spark", Sparkline)
-        spark.data = self._cpu_hist
-        # label CPU
-        cpu_clr = P["crimson"] if cpu >= 90 else P["orange"] if cpu >= 70 else P["green"]
-        t = Text()
-        t.append("  CPU  ", style=f"dim {P['silver']}")
-        t.append(f"{cpu:5.1f}%", style=f"bold {cpu_clr}")
-        self.query_one("#sys-cpu-label", Static).update(t)
-        # RAM
-        mem = _psutil.virtual_memory()
-        self._ram_pct   = mem.percent
-        self._ram_used  = mem.used  / 1024**3
-        self._ram_total = mem.total / 1024**3
-        ram_clr = P["crimson"] if mem.percent >= 90 else P["orange"] if mem.percent >= 70 else P["cyan"]
-        t = Text()
-        t.append("  RAM  ", style=f"dim {P['silver']}")
-        t.append(f"{mem.percent:5.1f}%  ", style=f"bold {ram_clr}")
-        t.append(f"{self._ram_used:.1f}/{self._ram_total:.0f}GB", style=f"dim {P['silver']}")
-        self.query_one("#sys-ram-label", Static).update(t)
-        # VRAM (NVIDIA)
-        if _HAS_NVML:
-            try:
-                h    = _pynvml.nvmlDeviceGetHandleByIndex(0)
-                info = _pynvml.nvmlDeviceGetMemoryInfo(h)
-                used  = info.used  / 1024**3
-                total = info.total / 1024**3
-                pct   = used / total * 100
-                vram_clr = P["crimson"] if pct >= 90 else P["orange"] if pct >= 70 else P["gold"]
-                t = Text()
-                t.append("  VRAM ", style=f"dim {P['silver']}")
-                t.append(f"{pct:5.1f}%  ", style=f"bold {vram_clr}")
-                t.append(f"{used:.1f}/{total:.0f}GB", style=f"dim {P['silver']}")
-                self.query_one("#sys-vram-label", Static).update(t)
-            except Exception:
-                pass
 
 class SysMonitor(Widget):
     """Monitora CPU (Sparkline) e RAM (barra de progresso). Atualiza a cada 2s."""
@@ -1438,6 +1353,7 @@ class CielTUI(App):
         height: 1fr;
         background: {P['panel']};
         border: none;
+        color: {P['muted']};
     }}
     DataTable > .datatable--cursor {{
         background: {P['hi']};
@@ -2434,19 +2350,37 @@ class CielTUI(App):
         elif verb == "/history":
             sub = parts[1] if len(parts) > 1 else ""
             if sub == "salvar":
-                self._log_write(msg_system(f"sessão #{self.session_no} salva", "ok"))
+                self._save_session_bg()
             elif sub == "exportar":
-                self._log_write(msg_system(f"exportado: exports/session_{self.session_no}.md", "ok"))
+                if self._session_id is not None and self._store is not None:
+                    try:
+                        out = self._store.export_markdown(self._session_id)
+                        self._log_write(msg_system(f"exportado: {out}", "ok"))
+                    except Exception as e:
+                        self._log_write(msg_system(f"erro ao exportar: {e}", "err"))
+                else:
+                    self._log_write(msg_system("nenhuma sessão ativa para exportar", "warn"))
             else:
-                t = Text()
-                t.append("\n  sessões salvas\n", style=f"bold {P['accent']}")
-                for sid, title, agent, date in FAKE_SESSIONS:
-                    t.append(f"  {date}  ", style=f"dim {P['muted']}")
-                    t.append(f"{title:<38}", style=P["text"])
-                    t.append(f"  {agent}\n", style=f"dim {P['silver']}")
-                t.append("\n  [b]ranch  [e]xportar  [d]eletar\n",
-                         style=f"dim {P['muted']}")
-                self._log_write(t)
+                # abre o modal de sessões (SessionList já está na sidebar)
+                try:
+                    sessions = self._store.list_sessions() if self._store else []
+                    if not sessions:
+                        self._log_write(msg_system("nenhuma sessão salva ainda", "info"))
+                    else:
+                        t = Text()
+                        t.append("\n  sessões salvas\n", style=f"bold {P['accent']}")
+                        for row in sessions[:15]:
+                            date  = (row["updated_at"] or "")[:16]
+                            title = (row["title"] or "(sem título)")[:38]
+                            agent = row["agent_id"] or ""
+                            t.append(f"  {date}  ", style=f"dim {P['muted']}")
+                            t.append(f"{title:<38}", style=P["text"])
+                            t.append(f"  {agent}\n", style=f"dim {P['silver']}")
+                        t.append("\n  use a sidebar para retomar, branch ou deletar\n",
+                                 style=f"dim {P['muted']}")
+                        self._log_write(t)
+                except Exception as e:
+                    self._log_write(msg_system(f"erro ao listar sessões: {e}", "err"))
 
         elif verb == "/copiar":
             self._log_write(msg_system("última resposta copiada para o clipboard", "ok"))
