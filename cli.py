@@ -30,6 +30,7 @@ from rich.live import Live
 from rich.prompt import Prompt
 from rich.spinner import Spinner
 from rich.theme import Theme
+from rich.markdown import Markdown
 from prompt_toolkit import prompt as pt_prompt
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.styles import Style as PtStyle
@@ -151,7 +152,10 @@ def print_history_entry(role: str, content: str, ts: str = "", tokens_in: int = 
         header_line = f"{label}{ts_str}"
 
     console.print(header_line)
-    console.print(Panel(escape(content), border_style=style, padding=(0, 1)))
+    if role == "agent":
+        console.print(Panel(Markdown(content), border_style=style, padding=(0, 1)))
+    else:
+        console.print(Panel(escape(content), border_style=style, padding=(0, 1)))
     console.print()
 
 
