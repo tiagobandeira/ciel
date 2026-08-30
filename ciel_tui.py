@@ -312,6 +312,8 @@ COMMANDS: list[tuple[str, str]] = [
     ("/source <arquivo>",  "indexa na base de conhecimento"),
     ("/source --listar",   "lista fontes"),
     ("/source --global",   "fonte compartilhada"),
+    ("/source --remover",  "remove fonte por id"),
+    ("/source --limpar-orfas", "remove fontes órfãs"),
     ("/tokens",            "uso de tokens desta sessão"),
     ("/copiar",            "copia última resposta"),
     ("/safe",              "toggle modo seguro"),
@@ -2459,19 +2461,96 @@ class CielTUI(App):
             self._log_write(msg_system(f"modo seguro {estado}", "warn"))
 
         elif verb == "/source":
-            if len(parts) < 2:
-                self._log_write(msg_system("uso: /source <arquivo> | --listar | --global <f>", "warn"))
-            elif parts[1] == "--listar":
-                t = Text()
-                t.append("\n  fontes indexadas\n", style=f"bold {P['accent']}")
-                t.append(f"  [1]  cronica_das_cinzas.md   (session)\n", style=P["text"])
-                t.append(f"  [2]  manual_regras.pdf        (global)\n",  style=P["text"])
-                self._log_write(t)
+            sub = parts[1] if len(parts) > 1 else ""
+
+            if not sub:
+                self._log_write(msg_system(
+                    "uso: /source <arquivo|url> [--global] | --listar | --remover <id> | --limpar-orfas",
+                    "warn",
+                ))
+
+            elif sub == "--listar":
+                aid = self._agent_info.get("id", self.current_agent)
+                sid = str(self._session_id) if self._session_id else None
+                try:
+                    from knowledge.db import list_sources
+                    sources = list_sources(agent_id=aid, session_id=sid)
+                    if not sources:
+                        self._log_write(msg_system("nenhuma fonte indexada", "info"))
+                    else:
+                        t = Text()
+                        t.append(f"\n  {len(sources)} fonte(s) indexada(s)\n",
+                                 style=f"bold {P['accent']}")
+                        for s in sources:
+                            escopo = "compartilhada" if s["session_id"] == "_shared" \
+                                     else f"sessão {s['session_id']}"
+                            t.append(f"  id={s['id']}  ", style=f"bold {P['cyan']}")
+                            t.append(f"{s['filename']}  ", style=P["text"])
+                            t.append(f"({s['n_chunks']} chunks · {escopo})\n",
+                                     style=f"dim {P['muted']}")
+                            if s.get("summary"):
+                                resumo = s["summary"][:80].replace("\n", " ")
+                                t.append(f"         ↳ {resumo}…\n",
+                                         style=f"dim {P['silver']}")
+                        self._log_write(t)
+                except Exception as e:
+                    self._log_write(msg_system(f"erro ao listar fontes: {e}", "err"))
+
+            elif sub == "--limpar-orfas":
+                try:
+                    from knowledge.db import cleanup_orphan_sources
+                    n = cleanup_orphan_sources()
+                    if n:
+                        self._log_write(msg_system(
+                            f"{n} sessão(ões) órfã(s) removida(s) do knowledge.db", "ok"
+                        ))
+                    else:
+                        self._log_write(msg_system("nenhuma fonte órfã encontrada", "info"))
+                except Exception as e:
+                    self._log_write(msg_system(f"erro ao limpar órfãs: {e}", "err"))
+
+            elif sub == "--remover":
+                if len(parts) < 3 or not parts[2].isdigit():
+                    self._log_write(msg_system("uso: /source --remover <id>", "warn"))
+                else:
+                    source_id = int(parts[2])
+                    aid = self._agent_info.get("id", self.current_agent)
+                    try:
+                        from knowledge.db import get_source, delete_source
+                        from pathlib import Path as _Path
+                        source = get_source(source_id)
+                        if not source:
+                            self._log_write(msg_system(
+                                f"fonte id={source_id} não encontrada", "err"
+                            ))
+                        elif source["agent_id"] != aid:
+                            self._log_write(msg_system(
+                                f"fonte id={source_id} não pertence ao agente '{aid}'", "err"
+                            ))
+                        else:
+                            filepath = source.get("filepath", "")
+                            cache_path = _Path(filepath)
+                            if "cache" in cache_path.parts:
+                                try:
+                                    cache_path.unlink(missing_ok=True)
+                                    if cache_path.parent.exists() and \
+                                       not any(cache_path.parent.iterdir()):
+                                        cache_path.parent.rmdir()
+                                except Exception:
+                                    pass
+                            delete_source(source_id)
+                            self._log_write(msg_system(
+                                f"fonte removida (id={source_id} · {source['filename']})", "ok"
+                            ))
+                    except Exception as e:
+                        self._log_write(msg_system(f"erro ao remover fonte: {e}", "err"))
+
             else:
-                is_global = "--global" in parts
-                fname = parts[-1]
-                self._log_write(msg_tool("ingest", f"indexando {fname}…"))
-                self._log_write(msg_system(f"{'[global] ' if is_global else ''}'{fname}' indexado", "ok"))
+                # /source <arquivo|url> [--global]
+                eh_global = "--global" in parts
+                partes_sem_flag = [p for p in parts[1:] if p != "--global"]
+                caminho = " ".join(partes_sem_flag)
+                self._run_source(caminho, eh_global, log)
 
         elif verb == "/history":
             sub = parts[1] if len(parts) > 1 else ""
@@ -2582,6 +2661,71 @@ class CielTUI(App):
         else:
             self._log_write(msg_system(
                 f"comando desconhecido: '{verb}'.  /ajuda lista os comandos.", "warn"))
+
+    @work(thread=True)
+    def _run_source(self, caminho: str, eh_global: bool, log: RichLog) -> None:
+        """Indexa um arquivo ou URL em background."""
+        from pathlib import Path as _Path
+        aid = self._agent_info.get("id", self.current_agent)
+
+        if eh_global:
+            sid = "_shared"
+        else:
+            if self._session_id is None:
+                # cria sessão automaticamente se não existir
+                if self._store:
+                    from datetime import datetime as _dt
+                    new_id = self._store.new_session(
+                        agent_id=aid,
+                        title=f"sessão {_dt.now().strftime('%d/%m %H:%M')}",
+                    )
+                    self._session_id = new_id
+                    self.call_from_thread(
+                        self._log_write,
+                        msg_system(f"sessão criada (id={new_id})", "info"),
+                    )
+            sid = str(self._session_id) if self._session_id else "_shared"
+
+        escopo = "compartilhada" if eh_global else f"sessão {sid}"
+        eh_url = caminho.startswith(("http://", "https://"))
+
+        self.call_from_thread(
+            self._log_write,
+            msg_system(f"{'baixando e ' if eh_url else ''}indexando '{caminho}'…", "info"),
+        )
+
+        try:
+            if eh_url:
+                from knowledge.ingest_url import ingest_url
+                source_id = ingest_url(url=caminho, agent_id=aid,
+                                       session_id=sid, verbose=False)
+            else:
+                from knowledge.ingest import ingest
+                source_id = ingest(filepath=caminho, agent_id=aid,
+                                   session_id=sid, verbose=False)
+
+            self.call_from_thread(
+                self._log_write,
+                msg_system(
+                    f"{'URL' if eh_url else 'fonte'} indexada "
+                    f"(id={source_id} · {escopo})", "ok"
+                ),
+            )
+        except FileNotFoundError:
+            self.call_from_thread(
+                self._log_write,
+                msg_system(f"arquivo não encontrado: '{caminho}'", "err"),
+            )
+        except (ValueError, RuntimeError) as e:
+            self.call_from_thread(
+                self._log_write,
+                msg_system(f"erro: {e}", "err"),
+            )
+        except Exception as e:
+            self.call_from_thread(
+                self._log_write,
+                msg_system(f"erro ao indexar: {e}", "err"),
+            )
 
     def _refresh_skill_commands(self) -> None:
         """Popula COMMANDS com as skills disponíveis em skills/ dinamicamente."""
