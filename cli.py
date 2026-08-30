@@ -29,6 +29,7 @@ from rich.markup import escape
 from rich.live import Live
 from rich.prompt import Prompt
 from rich.spinner import Spinner
+from rich.theme import Theme
 from prompt_toolkit import prompt as pt_prompt
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.styles import Style as PtStyle
@@ -50,16 +51,29 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 UNSAFE_TOOLS = {"run_script"}
 
 # ── paleta ────────────────────────────────────────────────────────────────────
-CLR_BORDER  = "bright_black"
-CLR_USER    = "cyan"
-CLR_AGENT   = "green"
-CLR_TOOL    = "yellow"
-CLR_STEP    = "bright_black"
-CLR_OK      = "green"
-CLR_ERR     = "red"
-CLR_WARN    = "yellow"
+# Inspirada nos personagens Ciel e Rimuru (Tensura)
+# Para mudar a paleta inteira, edite só este dict.
+CIEL_THEME = Theme({
+    "border": "bright_black",
+    "user":   "cyan",
+    "agent":  "green",
+    "tool":   "yellow",
+    "muted":  "bright_black",
+    "ok":     "green",
+    "err":    "red",
+    "warn":   "yellow",
+})
 
-console = Console()
+CLR_BORDER  = "border"
+CLR_USER    = "user"
+CLR_AGENT   = "agent"
+CLR_TOOL    = "tool"
+CLR_STEP    = "muted"
+CLR_OK      = "ok"
+CLR_ERR     = "err"
+CLR_WARN    = "warn"
+
+console = Console(theme=CIEL_THEME)
 
 # ── nome da ferramenta ────────────────────────────────────────────────────────
 NAME = "Ciel CLI"   # altere aqui quando decidir o nome definitivo
@@ -69,7 +83,7 @@ def _banner() -> str:
     """Banner minimalista: ponto + nome em negrito."""
     return (
         f"  [bold white]{NAME}[/bold white] "
-        f"[bright_black](V{VERSION})[/bright_black]"
+        f"[muted](V{VERSION})[/muted]"
     )
 
 
@@ -82,9 +96,9 @@ def header(model: str, agent_name: str, tools: dict, safe: bool = False):
     n_temp = len(tools) - n_perm
     tools_line = f"{len(tools)} tools"
     if n_temp:
-        tools_line += f"  [bright_black]({n_perm} permanentes · {n_temp} temp)[/bright_black]"
+        tools_line += f"  [muted]({n_perm} permanentes · {n_temp} temp)[/muted]"
 
-    safe_badge = "  [yellow]⚠ modo seguro[/yellow]\n" if safe else ""
+    safe_badge = "  [tool]⚠ modo seguro[/tool]\n" if safe else ""
 
     ascii_art = """
              ██████╗██╗███████╗██╗     
@@ -99,12 +113,12 @@ def header(model: str, agent_name: str, tools: dict, safe: bool = False):
         f"{_banner()}\n"
         f"\n"
         f"{safe_badge}"
-        f"  [bright_black]agent:[/bright_black] [cyan]{agent_name}[/cyan]   "
-        f"[bright_black]model:[/bright_black] [white]{model}[/white]\n"
-        f"  [bright_black]tools:[/bright_black] [yellow]{tools_line}[/yellow]\n"
+        f"  [muted]agent:[/muted] [user]{agent_name}[/user]   "
+        f"[muted]model:[/muted] [white]{model}[/white]\n"
+        f"  [muted]tools:[/muted] [tool]{tools_line}[/tool]\n"
         f"{ascii_art}"
         f"\n"
-        f"  [bright_black]/  comandos  ·  tab  completar  ·  /ajuda  ajuda[/bright_black] \n"
+        f"  [muted]/  comandos  ·  tab  completar  ·  /ajuda  ajuda[/muted] \n"
     )
     console.print(Panel(
         content,
@@ -123,11 +137,11 @@ def print_history_entry(role: str, content: str, ts: str = "", tokens_in: int = 
         label = f"[{CLR_AGENT}]agente[/{CLR_AGENT}]"
         style = CLR_AGENT
 
-    ts_str = f" [bright_black]{ts}[/bright_black]" if ts else ""
+    ts_str = f" [muted]{ts}[/muted]" if ts else ""
     
     # tokens alinhados à direita — só exibe se tiver valor
     if tokens_in or tokens_out:
-        tok_str = f"[bright_black]↑{tokens_in:,} ↓{tokens_out:,}[/bright_black]"
+        tok_str = f"[muted]↑{tokens_in:,} ↓{tokens_out:,}[/muted]"
         width = console.width
         # calcula espaço entre label+ts e tokens
         label_plain = f"{role}  {ts}"  # aproximação do tamanho real
@@ -144,7 +158,7 @@ def print_history_entry(role: str, content: str, ts: str = "", tokens_in: int = 
 def print_step(step: int, label: str, content: str, color: str = CLR_STEP):
     console.print(
         f"  [{color}]step {step} › {label}[/{color}]  "
-        f"[bright_black]{escape(content[:120])}[/bright_black]"
+        f"[muted]{escape(content[:120])}[/muted]"
     )
 
 
@@ -155,7 +169,7 @@ def print_rule(label: str = ""):
 def print_agent_footer(n_steps: int):
     """Rodapé discreto com o número de steps usados pelo agente."""
     if n_steps > 1:
-        console.print(f"  [bright_black]{n_steps} steps[/bright_black]\n")
+        console.print(f"  [muted]{n_steps} steps[/muted]\n")
 
 
 def print_turn_separator():
@@ -171,9 +185,9 @@ def print_agents_list():
     for a in agents:
         try:
             info = load_agent(a)
-            console.print(f"  [yellow]{a}[/yellow]  [bright_black]{info['description'][:70]}[/bright_black]")
+            console.print(f"  [tool]{a}[/tool]  [muted]{info['description'][:70]}[/muted]")
         except Exception:
-            console.print(f"  [yellow]{a}[/yellow]")
+            console.print(f"  [tool]{a}[/tool]")
     console.print()
 
 
@@ -185,11 +199,11 @@ def print_auto_tool_proposal(proposal: dict):
 
     console.print()
     console.print(Panel(
-        f"[bold]Nome:[/bold] [yellow]{nome}[/yellow]\n"
+        f"[bold]Nome:[/bold] [tool]{nome}[/tool]\n"
         f"[bold]O que faz:[/bold] {desc}\n"
         f"[bold]Parâmetros:[/bold] "
-        + (", ".join(f"[cyan]{p['nome']}[/cyan] ({p.get('tipo','str')})" for p in params) or "nenhum"),
-        title="[yellow]⚡ Auto Tool — proposta do agente[/yellow]",
+        + (", ".join(f"[user]{p['nome']}[/user] ({p.get('tipo','str')})" for p in params) or "nenhum"),
+        title="[tool]⚡ Auto Tool — proposta do agente[/tool]",
         border_style=CLR_WARN,
         padding=(0, 1),
     ))
@@ -285,7 +299,7 @@ def call_model(messages: list, model: str) -> tuple[str, int, int]:
 def call_model_with_spinner(messages: list, model: str) -> tuple[str, int, int]:
     """Chama o modelo exibindo um spinner enquanto aguarda a resposta."""
     with Live(
-        Spinner("dots", text=" [bright_black]pensando…[/bright_black]"),
+        Spinner("dots", text=" [muted]pensando…[/muted]"),
         console=console,
         refresh_per_second=10,
         transient=True,
@@ -646,8 +660,8 @@ def _handle_auto_tool(
     tools_novas        = set(new_tools.keys()) - tools_antes
 
     from tools_registry import TOOLS_DIR, TOOLS_TEMP_DIR
-    console.print(f"  [bright_black]registry: {TOOLS_DIR} | temp: {TOOLS_TEMP_DIR}[/bright_black]")
-    console.print(f"  [bright_black]tools novas detectadas: {tools_novas or 'nenhuma'}[/bright_black]\n")
+    console.print(f"  [muted]registry: {TOOLS_DIR} | temp: {TOOLS_TEMP_DIR}[/muted]")
+    console.print(f"  [muted]tools novas detectadas: {tools_novas or 'nenhuma'}[/muted]\n")
 
     # aceita o nome da proposta OU qualquer tool nova que apareceu no registry
     tool_criada = tool_name if tool_name in new_tools else (
@@ -728,7 +742,7 @@ def _save_session(
             store.update_title(sid, fallback_title)
 
     # gera resumo + título via modelo
-    console.print("  [bright_black]gerando resumo da sessão…[/bright_black]")
+    console.print("  [muted]gerando resumo da sessão…[/muted]")
     try:
         conv_text = "\n".join(
             f"[{'user' if e['role'] == 'user' else 'agente'}] {e['content']}"
@@ -770,11 +784,11 @@ def _save_session(
         store.update_title(sid, title_from_summary)
         store.save_summary(sid, summary)
         console.print(
-            f"  [green]sessão #{sid} salva.[/green] "
-            f"[bright_black]{title_from_summary}[/bright_black]\n"
+            f"  [ok]sessão #{sid} salva.[/ok] "
+            f"[muted]{title_from_summary}[/muted]\n"
         )
     except Exception as e:
-        console.print(f"  [yellow]resumo falhou ({e}), sessão salva sem resumo.[/yellow]\n")
+        console.print(f"  [tool]resumo falhou ({e}), sessão salva sem resumo.[/tool]\n")
 
     return sid
 
@@ -799,7 +813,7 @@ def main():
     try:
         agent_info = load_agent(args.agent)
     except FileNotFoundError as e:
-        console.print(f"[red]Erro:[/red] {e}")
+        console.print(f"[err]Erro:[/err] {e}")
         sys.exit(1)
 
     # carrega e filtra tools
@@ -841,7 +855,7 @@ def main():
         try:
             user_input = pt_prompt("❯ ", completer=completer, style=pt_style).strip()
         except (KeyboardInterrupt, EOFError):
-            console.print("\n[bright_black]até mais.[/bright_black]")
+            console.print("\n[muted]até mais.[/muted]")
             sys.exit(0)
 
         if not user_input:
@@ -850,7 +864,7 @@ def main():
         if user_input == "/sair":
             # pergunta se quer salvar antes de sair (só se tiver histórico não salvo)
             if history and current_session_id is None:
-                console.print("  [bright_black]salvar esta conversa antes de sair?[/bright_black] \\[s/n] ", end="")
+                console.print("  [muted]salvar esta conversa antes de sair?[/muted] \\[s/n] ", end="")
                 try:
                     confirm_save = input().strip().lower()
                 except (KeyboardInterrupt, EOFError):
@@ -859,7 +873,7 @@ def main():
                     current_session_id = _save_session(
                         store, history, agent_info, args.model, args.agent, console
                     )
-            console.print("[bright_black]até mais.[/bright_black]")
+            console.print("[muted]até mais.[/muted]")
             store.close()
             break
 
@@ -871,7 +885,7 @@ def main():
         if user_input == "/novo":
             # nova sessão: pergunta se salva, descarta histórico e reseta estado
             if history and current_session_id is None:
-                console.print("  [bright_black]salvar a conversa antes de iniciar nova sessão?[/bright_black] \\[s/n] ", end="")
+                console.print("  [muted]salvar a conversa antes de iniciar nova sessão?[/muted] \\[s/n] ", end="")
                 try:
                     confirm_save = input().strip().lower()
                 except (KeyboardInterrupt, EOFError):
@@ -888,15 +902,15 @@ def main():
 
         if user_input == "/tools":
             tbl = Table(box=None, show_header=False, padding=(0, 1))
-            tbl.add_column(style="yellow",       no_wrap=True)
-            tbl.add_column(style="cyan",         no_wrap=True, min_width=11)
-            tbl.add_column(style="bright_black")
+            tbl.add_column(style="tool",       no_wrap=True)
+            tbl.add_column(style="user",         no_wrap=True, min_width=11)
+            tbl.add_column(style="muted")
             for name, meta in sorted(tools.items()):
                 cat  = meta.get("categoria", "permanente")
                 cat_label = f"[temp]" if cat == "temp" else ""
                 desc = meta["description"].split("\n")[0][:55]
                 tbl.add_row(f"⚙ {name}", cat_label, desc)
-            console.print(Panel(tbl, title="[yellow]tools[/yellow]", border_style=CLR_BORDER, padding=(0,1)))
+            console.print(Panel(tbl, title="[tool]tools[/tool]", border_style=CLR_BORDER, padding=(0,1)))
             console.print()
             continue
 
@@ -904,19 +918,19 @@ def main():
             n = len(history)
             hist_info = f"{n} mensagens no histórico" if n else "histórico vazio"
             console.print(
-                f"  [green]{agent_info['name']}[/green]  "
-                f"[bright_black]{agent_info['description']}[/bright_black]\n"
-                f"  [bright_black]{hist_info}[/bright_black]\n"
+                f"  [ok]{agent_info['name']}[/ok]  "
+                f"[muted]{agent_info['description']}[/muted]\n"
+                f"  [muted]{hist_info}[/muted]\n"
             )
             continue
 
         if user_input == "/tokens":
             total = session_tokens_in + session_tokens_out
             console.print(
-                f"\n  [bright_black]tokens desta sessão:[/bright_black]\n"
-                f"  [cyan]entrada:[/cyan]  {session_tokens_in:,}\n"
-                f"  [cyan]saída:[/cyan]    {session_tokens_out:,}\n"
-                f"  [cyan]total:[/cyan]    {total:,}\n"
+                f"\n  [muted]tokens desta sessão:[/muted]\n"
+                f"  [user]entrada:[/user]  {session_tokens_in:,}\n"
+                f"  [user]saída:[/user]    {session_tokens_out:,}\n"
+                f"  [user]total:[/user]    {total:,}\n"
             )
             continue
 
@@ -928,7 +942,7 @@ def main():
             # mesmo agente — só informa
             if novo_nome == agent_info.get("id", args.agent):
                 console.print(
-                    f"  [bright_black]agente atual já é '{novo_nome}'.[/bright_black]\n"
+                    f"  [muted]agente atual já é '{novo_nome}'.[/muted]\n"
                 )
                 continue
 
@@ -939,7 +953,7 @@ def main():
                 agentes_disponiveis = list_agents()
                 console.print(
                     f"  [{CLR_ERR}]agente '{novo_nome}' não encontrado.[/{CLR_ERR}]\n"
-                    f"  [bright_black]disponíveis: {', '.join(agentes_disponiveis)}[/bright_black]\n"
+                    f"  [muted]disponíveis: {', '.join(agentes_disponiveis)}[/muted]\n"
                 )
                 continue
 
@@ -950,8 +964,8 @@ def main():
                 if n else "histórico vazio"
             )
             console.print(
-                f"  trocar para [green]{novo_agent_info['name']}[/green]? "
-                f"[bright_black]{hist_aviso}.[/bright_black] \\[s/n] ",
+                f"  trocar para [ok]{novo_agent_info['name']}[/ok]? "
+                f"[muted]{hist_aviso}.[/muted] \\[s/n] ",
                 end=" "
             )
             try:
@@ -960,13 +974,13 @@ def main():
                 confirm = "n"
 
             if confirm != "s":
-                console.print("  [bright_black]cancelado.[/bright_black]\n")
+                console.print("  [muted]cancelado.[/muted]\n")
                 continue
 
             # pergunta se quer salvar o histórico atual antes de descartar
             if history and current_session_id is None:
                 console.print(
-                    "  [bright_black]salvar a conversa atual antes de trocar?[/bright_black] \\[s/n] ",
+                    "  [muted]salvar a conversa atual antes de trocar?[/muted] \\[s/n] ",
                     end=""
                 )
                 try:
@@ -997,7 +1011,7 @@ def main():
             # /history salvar
             if subcmd == "salvar":
                 if not history:
-                    console.print("  [bright_black]nenhuma conversa para salvar.[/bright_black]\n")
+                    console.print("  [muted]nenhuma conversa para salvar.[/muted]\n")
                 else:
                     current_session_id = _save_session(
                         store, history, agent_info, args.model, args.agent,
@@ -1008,13 +1022,13 @@ def main():
             # /history exportar
             if subcmd == "exportar":
                 if current_session_id is None:
-                    console.print("  [yellow]salve a conversa primeiro com /history salvar[/yellow]\n")
+                    console.print("  [tool]salve a conversa primeiro com /history salvar[/tool]\n")
                 else:
                     try:
                         out = store.export_markdown(current_session_id)
-                        console.print(f"  [green]exportado:[/green] [white]{out}[/white]\n")
+                        console.print(f"  [ok]exportado:[/ok] [white]{out}[/white]\n")
                     except Exception as e:
-                        console.print(f"  [red]erro ao exportar: {e}[/red]\n")
+                        console.print(f"  [err]erro ao exportar: {e}[/err]\n")
                 continue
 
             # /history <agent> ou /history (todas)
@@ -1023,14 +1037,14 @@ def main():
 
             if not sessions:
                 msg = f"nenhuma sessão salva para '{agent_filter}'." if agent_filter else "nenhuma sessão salva ainda."
-                console.print(f"  [bright_black]{msg}[/bright_black]\n")
+                console.print(f"  [muted]{msg}[/muted]\n")
                 continue
 
             title_line = f"histórico — {agent_filter}" if agent_filter else "histórico — todos os agentes"
             picked = SessionPicker(sessions, title=title_line).run()
 
             if picked is None:
-                console.print("  [bright_black]cancelado.[/bright_black]\n")
+                console.print("  [muted]cancelado.[/muted]\n")
                 continue
 
             # mostra a conversa selecionada
@@ -1044,12 +1058,12 @@ def main():
 
             # pergunta o que fazer com ela
             console.print(
-                "  [bright_black]"
+                "  [muted]"
                 "[b] branch (retomar com resumo)   "
                 "[e] exportar .md   "
                 "[d] deletar   "
                 "[enter] voltar"
-                "[/bright_black]\n"
+                "[/muted]\n"
             )
             try:
                 action = input("  ação: ").strip().lower()
@@ -1061,8 +1075,8 @@ def main():
                 summary = picked["summary"]
                 if not summary:
                     console.print(
-                        "  [yellow]esta sessão não tem resumo. "
-                        "O branch vai iniciar sem contexto anterior.[/yellow]\n"
+                        "  [tool]esta sessão não tem resumo. "
+                        "O branch vai iniciar sem contexto anterior.[/tool]\n"
                     )
                     context_injection = None
                 else:
@@ -1070,8 +1084,8 @@ def main():
                         summary, picked["title"] or "", picked["agent_id"]
                     )
                     console.print(
-                        f"  [green]resumo injetado no contexto.[/green] "
-                        f"[bright_black](~{len(summary.split())} palavras)[/bright_black]\n"
+                        f"  [ok]resumo injetado no contexto.[/ok] "
+                        f"[muted](~{len(summary.split())} palavras)[/muted]\n"
                     )
 
                 # troca de agente se necessário
@@ -1081,11 +1095,11 @@ def main():
                         args.agent = picked["agent_id"]
                         tools, schema = _reload_tools(agent_info, args.safe)
                         completer = make_completer(tools)
-                        console.print(f"  [green]agente trocado para '{agent_info['name']}'[/green]\n")
+                        console.print(f"  [ok]agente trocado para '{agent_info['name']}'[/ok]\n")
                     except FileNotFoundError:
                         console.print(
-                            f"  [yellow]agente '{picked['agent_id']}' não encontrado, "
-                            f"mantendo agente atual.[/yellow]\n"
+                            f"  [tool]agente '{picked['agent_id']}' não encontrado, "
+                            f"mantendo agente atual.[/tool]\n"
                         )
 
                 history.clear()
@@ -1097,8 +1111,8 @@ def main():
                 if context_injection:
                     console.print(
                         Panel(
-                            f"[bright_black]{escape(context_injection[:400])}…[/bright_black]",
-                            title="[cyan]contexto injetado[/cyan]",
+                            f"[muted]{escape(context_injection[:400])}…[/muted]",
+                            title="[user]contexto injetado[/user]",
                             border_style=CLR_BORDER,
                             padding=(0, 1),
                         )
@@ -1108,21 +1122,21 @@ def main():
             elif action == "e":
                 try:
                     out = store.export_markdown(picked["id"])
-                    console.print(f"  [green]exportado:[/green] [white]{out}[/white]\n")
+                    console.print(f"  [ok]exportado:[/ok] [white]{out}[/white]\n")
                 except Exception as e:
-                    console.print(f"  [red]erro: {e}[/red]\n")
+                    console.print(f"  [err]erro: {e}[/err]\n")
 
             elif action == "d":
-                console.print(f"  [red]deletar sessão '{picked['title']}'?[/red] \\[s/n] ", end="")
+                console.print(f"  [err]deletar sessão '{picked['title']}'?[/err] \\[s/n] ", end="")
                 try:
                     confirm_del = input().strip().lower()
                 except (KeyboardInterrupt, EOFError):
                     confirm_del = "n"
                 if confirm_del == "s":
                     store.delete_session(picked["id"])
-                    console.print("  [bright_black]sessão removida.[/bright_black]\n")
+                    console.print("  [muted]sessão removida.[/muted]\n")
                 else:
-                    console.print("  [bright_black]cancelado.[/bright_black]\n")
+                    console.print("  [muted]cancelado.[/muted]\n")
             continue
 
         # ── /source ──────────────────────────────────────────────────────────
@@ -1134,33 +1148,33 @@ def main():
             sources = list_sources(agent_id=aid, session_id=sid)
 
             if not sources:
-                console.print("  [bright_black]nenhuma fonte indexada.[/bright_black]\n")
+                console.print("  [muted]nenhuma fonte indexada.[/muted]\n")
             else:
                 console.print(f"  [white]{len(sources)} fonte(s):[/white]\n")
                 for s in sources:
-                    escopo = "[yellow]compartilhada[/yellow]" if s["session_id"] == "_shared" else f"[bright_black]sessão {s['session_id']}[/bright_black]"
+                    escopo = "[tool]compartilhada[/tool]" if s["session_id"] == "_shared" else f"[muted]sessão {s['session_id']}[/muted]"
                     console.print(
-                        f"  [cyan]id={s['id']}[/cyan]  {s['filename']}  "
+                        f"  [user]id={s['id']}[/user]  {s['filename']}  "
                         f"({s['n_chunks']} chunks · {escopo})"
                     )
                     if s.get("summary"):
                         resumo = s["summary"][:80].replace("\n", " ")
-                        console.print(f"         [bright_black]↳ {resumo}…[/bright_black]")
+                        console.print(f"         [muted]↳ {resumo}…[/muted]")
                 console.print()
             continue
         if user_input == "/source --limpar-orfas":
             from knowledge.db import cleanup_orphan_sources
             n = cleanup_orphan_sources()
             if n:
-                console.print(f"  [green]✓ {n} sessão(ões) órfã(s) removida(s) do knowledge.db[/green]\n")
+                console.print(f"  [ok]✓ {n} sessão(ões) órfã(s) removida(s) do knowledge.db[/ok]\n")
             else:
-                console.print("  [bright_black]nenhuma fonte órfã encontrada.[/bright_black]\n")
+                console.print("  [muted]nenhuma fonte órfã encontrada.[/muted]\n")
             continue
 
         if user_input.startswith("/source --remover "):
             partes = user_input.split()
             if len(partes) < 3 or not partes[2].isdigit():
-                console.print("  [yellow]uso: /source --remover <id>[/yellow]\n")
+                console.print("  [tool]uso: /source --remover <id>[/tool]\n")
                 continue
 
             source_id = int(partes[2])
@@ -1170,9 +1184,9 @@ def main():
             source = get_source(source_id)
 
             if not source:
-                console.print(f"  [red]fonte id={source_id} não encontrada.[/red]\n")
+                console.print(f"  [err]fonte id={source_id} não encontrada.[/err]\n")
             elif source["agent_id"] != aid:
-                console.print(f"  [red]fonte id={source_id} não pertence ao agente '{aid}'.[/red]\n")
+                console.print(f"  [err]fonte id={source_id} não pertence ao agente '{aid}'.[/err]\n")
             else:
                 # se for cache de URL, apaga o arquivo local
                 filepath = source.get("filepath", "")
@@ -1187,8 +1201,8 @@ def main():
                         pass
                 delete_source(source_id)
                 console.print(
-                    f"  [green]✓ fonte removida[/green] "
-                    f"[bright_black](id={source_id} · {source['filename']})[/bright_black]\n"
+                    f"  [ok]✓ fonte removida[/ok] "
+                    f"[muted](id={source_id} · {source['filename']})[/muted]\n"
                 )
             continue
 
@@ -1199,7 +1213,7 @@ def main():
             print(partes, " ", partes_sem_flag)
 
             if not partes_sem_flag:
-                console.print("  [yellow]uso: /source <arquivo|url> [--global][/yellow]\n")
+                console.print("  [tool]uso: /source <arquivo|url> [--global][/tool]\n")
                 continue
 
             caminho = " ".join(partes_sem_flag)
@@ -1213,7 +1227,7 @@ def main():
                         agent_id=aid,
                         title=f"sessão {datetime.now().strftime('%d/%m %H:%M')}",
                     )
-                    console.print(f"  [bright_black]sessão criada (id={current_session_id})[/bright_black]")
+                    console.print(f"  [muted]sessão criada (id={current_session_id})[/muted]")
                 sid = str(current_session_id)
 
             escopo = "compartilhada" if eh_global else f"sessão {sid}"
@@ -1222,8 +1236,8 @@ def main():
             eh_url = caminho.startswith(("http://", "https://"))
 
             if eh_url:
-                console.print(f"  [bright_black]baixando e indexando '{caminho}'…[/bright_black]")
-                console.print(f"  [bright_black]debug: agent_id='{aid}' session_id='{sid}'[/bright_black]")
+                console.print(f"  [muted]baixando e indexando '{caminho}'…[/muted]")
+                console.print(f"  [muted]debug: agent_id='{aid}' session_id='{sid}'[/muted]")
                 try:
                     from knowledge.ingest_url import ingest_url
                     source_id = ingest_url(
@@ -1233,19 +1247,19 @@ def main():
                         verbose    = False,
                     )
                     console.print(
-                        f"  [green]✓ URL indexada[/green] "
-                        f"[bright_black](id={source_id} · {escopo})[/bright_black]\n"
+                        f"  [ok]✓ URL indexada[/ok] "
+                        f"[muted](id={source_id} · {escopo})[/muted]\n"
                     )
                 except ValueError as e:
-                    console.print(f"  [red]URL inválida: {e}[/red]\n")
+                    console.print(f"  [err]URL inválida: {e}[/err]\n")
                 except RuntimeError as e:
-                    console.print(f"  [red]erro ao baixar URL: {e}[/red]\n")
+                    console.print(f"  [err]erro ao baixar URL: {e}[/err]\n")
                 except Exception as e:
-                    console.print(f"  [red]erro ao indexar: {e}[/red]\n")
+                    console.print(f"  [err]erro ao indexar: {e}[/err]\n")
             # ── comportamento original: arquivo local ──────────────────────
             else:
-                console.print(f"  [bright_black]indexando '{caminho}'…[/bright_black]")
-                console.print(f"  [bright_black]debug: agent_id='{aid}' session_id='{sid}'[/bright_black]")
+                console.print(f"  [muted]indexando '{caminho}'…[/muted]")
+                console.print(f"  [muted]debug: agent_id='{aid}' session_id='{sid}'[/muted]")
                 try:
                     from knowledge.ingest import ingest
                     source_id = ingest(
@@ -1255,22 +1269,22 @@ def main():
                         verbose    = False,
                     )
                     console.print(
-                        f"  [green]✓ fonte indexada[/green] "
-                        f"[bright_black](id={source_id} · {escopo})[/bright_black]\n"
+                        f"  [ok]✓ fonte indexada[/ok] "
+                        f"[muted](id={source_id} · {escopo})[/muted]\n"
                     )
                 except FileNotFoundError:
-                    console.print(f"  [red]arquivo não encontrado: '{caminho}'[/red]\n")
+                    console.print(f"  [err]arquivo não encontrado: '{caminho}'[/err]\n")
                 except Exception as e:
-                    console.print(f"  [red]erro ao indexar: {e}[/red]\n")
+                    console.print(f"  [err]erro ao indexar: {e}[/err]\n")
             continue        
 
         # ── /skill ───────────────────────────────────────────────────────────
         if user_input == "/skill":
             SKILLS_DIR = Path("skills")
             if not SKILLS_DIR.exists() or not list(SKILLS_DIR.glob("*.md")):
-                console.print("  [bright_black]nenhuma skill disponível em skills/[/bright_black]\n")
+                console.print("  [muted]nenhuma skill disponível em skills/[/muted]\n")
             else:
-                console.print("\n[yellow]skills disponíveis:[/yellow]")
+                console.print("\n[tool]skills disponíveis:[/tool]")
                 for sk in sorted(SKILLS_DIR.glob("*.md")):
                     # extrai descrição (primeira linha não-título)
                     try:
@@ -1288,7 +1302,7 @@ def main():
                                 break
                     except Exception:
                         desc = ""
-                    console.print(f"  [cyan]{sk.stem}[/cyan]  [bright_black]{desc}[/bright_black]")
+                    console.print(f"  [user]{sk.stem}[/user]  [muted]{desc}[/muted]")
                 console.print()
             continue
 
@@ -1299,19 +1313,19 @@ def main():
             skill_path   = Path("skills") / f"{skill_name}.md"
 
             if not skill_name:
-                console.print("  [yellow]uso: /skill <nome> <prompt>[/yellow]\n")
+                console.print("  [tool]uso: /skill <nome> <prompt>[/tool]\n")
                 continue
 
             if not skill_path.exists():
-                console.print(f"  [red]skill '{skill_name}' não encontrada em skills/[/red]\n")
+                console.print(f"  [err]skill '{skill_name}' não encontrada em skills/[/err]\n")
                 continue
 
             # /skill <nome> sem prompt — só exibe a skill
             if not skill_prompt:
                 content = skill_path.read_text(encoding="utf-8")
                 console.print(Panel(
-                    escape(content[:800]) + ("[bright_black]…[/bright_black]" if len(content) > 800 else ""),
-                    title=f"[yellow]skill: {skill_name}[/yellow]",
+                    escape(content[:800]) + ("[muted]…[/muted]" if len(content) > 800 else ""),
+                    title=f"[tool]skill: {skill_name}[/tool]",
                     border_style=CLR_BORDER,
                     padding=(0, 1),
                 ))
@@ -1360,32 +1374,32 @@ def main():
 
         if user_input in ("/ajuda", "/help", "/?"):
             console.print(Panel(
-                "  [yellow]/sair[/yellow]                    encerra (pergunta se salva)\n"
-                "  [yellow]/limpar[/yellow]                  limpa a tela\n"
-                "  [yellow]/novo[/yellow]                    nova sessão (pergunta se salva)\n"
-                "  [yellow]/task[/yellow]                    lista tasks disponíveis\n"
-                "  [yellow]/task [white]<nome ou prompt>[/white][/yellow]  executa task pelo nome ou busca\n"
-                "  [yellow]/task [white]<arquivo.md>[/white][/yellow]      executa task por caminho direto\n"
-                "  [yellow]/tools[/yellow]                   lista as tools ativas\n"
-                "  [yellow]/agente[/yellow]                  mostra agente e histórico atual\n"
-                "  [yellow]/agente [white]<nome>[/white][/yellow]         troca de agente (nova sessão)\n"
-                "  [yellow]/source [white]<arquivo>[/white][/yellow]        indexa arquivo nas fontes do agente\n"
-                "  [yellow]/source [white]--listar[/white][/yellow]           lista fontes com IDs disponíveis\n"
-                "  [yellow]/source [white]--remover <id>[/white][/yellow]     remove uma fonte pelo ID\n"
-                "  [yellow]/source [white]--limpar-orfas[/white][/yellow]    remove fontes de sessões deletadas\n"
-                "  [yellow]/source [white]--global <arquivo>[/white][/yellow] indexa como fonte compartilhada\n"
-                "  [yellow]/skill[/yellow]                   lista skills disponíveis\n"
-                "  [yellow]/skill [white]<nome>[/white][/yellow]            exibe conteúdo da skill\n"
-                "  [yellow]/skill [white]<nome> <prompt>[/white][/yellow]   executa prompt usando a skill\n"
-                "  [yellow]/limpar-temp[/yellow]             remove tools temporárias\n"
-                "  [yellow]/promover[/yellow]                promove tool temp → permanente\n"
-                "  [yellow]/tokens[/yellow]                  Mostra tokens gastos na sessão atual\n"
-                "  [yellow]/copiar[/yellow]                  copia última resposta do agente\n"
-                "  [yellow]/history[/yellow]                 lista todas as sessões salvas\n"
-                "  [yellow]/history [white]<agente>[/white][/yellow]      filtra sessões por agente\n"
-                "  [yellow]/history salvar[/yellow]          salva/atualiza sessão atual\n"
-                "  [yellow]/history exportar[/yellow]        exporta sessão atual como .md\n"
-                "  [yellow]/ajuda[/yellow]                   este menu",
+                "  [tool]/sair[/tool]                    encerra (pergunta se salva)\n"
+                "  [tool]/limpar[/tool]                  limpa a tela\n"
+                "  [tool]/novo[/tool]                    nova sessão (pergunta se salva)\n"
+                "  [tool]/task[/tool]                    lista tasks disponíveis\n"
+                "  [tool]/task [white]<nome ou prompt>[/white][/tool]  executa task pelo nome ou busca\n"
+                "  [tool]/task [white]<arquivo.md>[/white][/tool]      executa task por caminho direto\n"
+                "  [tool]/tools[/tool]                   lista as tools ativas\n"
+                "  [tool]/agente[/tool]                  mostra agente e histórico atual\n"
+                "  [tool]/agente [white]<nome>[/white][/tool]         troca de agente (nova sessão)\n"
+                "  [tool]/source [white]<arquivo>[/white][/tool]        indexa arquivo nas fontes do agente\n"
+                "  [tool]/source [white]--listar[/white][/tool]           lista fontes com IDs disponíveis\n"
+                "  [tool]/source [white]--remover <id>[/white][/tool]     remove uma fonte pelo ID\n"
+                "  [tool]/source [white]--limpar-orfas[/white][/tool]    remove fontes de sessões deletadas\n"
+                "  [tool]/source [white]--global <arquivo>[/white][/tool] indexa como fonte compartilhada\n"
+                "  [tool]/skill[/tool]                   lista skills disponíveis\n"
+                "  [tool]/skill [white]<nome>[/white][/tool]            exibe conteúdo da skill\n"
+                "  [tool]/skill [white]<nome> <prompt>[/white][/tool]   executa prompt usando a skill\n"
+                "  [tool]/limpar-temp[/tool]             remove tools temporárias\n"
+                "  [tool]/promover[/tool]                promove tool temp → permanente\n"
+                "  [tool]/tokens[/tool]                  Mostra tokens gastos na sessão atual\n"
+                "  [tool]/copiar[/tool]                  copia última resposta do agente\n"
+                "  [tool]/history[/tool]                 lista todas as sessões salvas\n"
+                "  [tool]/history [white]<agente>[/white][/tool]      filtra sessões por agente\n"
+                "  [tool]/history salvar[/tool]          salva/atualiza sessão atual\n"
+                "  [tool]/history exportar[/tool]        exporta sessão atual como .md\n"
+                "  [tool]/ajuda[/tool]                   este menu",
                 title="[white]comandos[/white]",
                 border_style=CLR_BORDER,
                 padding=(0, 1),
@@ -1405,9 +1419,9 @@ def main():
             header(args.model, agent_info["name"], tools, safe=args.safe)
             completer = make_completer(tools)
             if removidas:
-                console.print(f"[bright_black]tools temp removidas: {', '.join(removidas)}[/bright_black]\n")
+                console.print(f"[muted]tools temp removidas: {', '.join(removidas)}[/muted]\n")
             else:
-                console.print("[bright_black]nenhuma tool temporária encontrada.[/bright_black]\n")
+                console.print("[muted]nenhuma tool temporária encontrada.[/muted]\n")
             continue
 
         if user_input.startswith("/promover "):
@@ -1415,15 +1429,15 @@ def main():
             src = Path("tools/temp") / f"{tool_name}.py"
             dst = Path("tools") / f"{tool_name}.py"
             if not src.exists():
-                console.print(f"[red]Tool temp '{tool_name}' não encontrada.[/red]\n")
+                console.print(f"[err]Tool temp '{tool_name}' não encontrada.[/err]\n")
             elif dst.exists():
-                console.print(f"[yellow]Já existe uma tool permanente com esse nome: {tool_name}[/yellow]\n")
+                console.print(f"[tool]Já existe uma tool permanente com esse nome: {tool_name}[/tool]\n")
             else:
                 src.rename(dst)
                 tools, schema = _reload_tools(agent_info, args.safe)
                 header(args.model, agent_info["name"], tools, safe=args.safe)
                 completer = make_completer(tools)
-                console.print(f"[green]'{tool_name}' promovida para tools permanentes.[/green]\n")
+                console.print(f"[ok]'{tool_name}' promovida para tools permanentes.[/ok]\n")
             continue
 
         # Tasks
@@ -1437,16 +1451,16 @@ def main():
                 if TASKS_DIR.exists():
                     tasks_disponiveis = sorted(TASKS_DIR.glob("*.md"))
                     if tasks_disponiveis:
-                        console.print("\n[yellow]tasks disponíveis:[/yellow]")
+                        console.print("\n[tool]tasks disponíveis:[/tool]")
                         for t in tasks_disponiveis:
                             td = load_task(t)
                             obj = td["objetivo"][:60] if td else "formato inválido"
-                            console.print(f"  [cyan]{t.stem}[/cyan]  [bright_black]{obj}[/bright_black]")
+                            console.print(f"  [user]{t.stem}[/user]  [muted]{obj}[/muted]")
                         console.print()
                     else:
-                        console.print("  [bright_black]nenhuma task em tasks/[/bright_black]\n")
+                        console.print("  [muted]nenhuma task em tasks/[/muted]\n")
                 else:
-                    console.print("  [bright_black]pasta tasks/ não encontrada.[/bright_black]\n")
+                    console.print("  [muted]pasta tasks/ não encontrada.[/muted]\n")
                 continue
 
             # tenta carregar como arquivo direto
@@ -1459,11 +1473,11 @@ def main():
                 candidates = find_tasks(arg, TASKS_DIR)
 
             if not candidates:
-                console.print(f"  [red]nenhuma task encontrada para '{arg}'[/red]\n")
+                console.print(f"  [err]nenhuma task encontrada para '{arg}'[/err]\n")
                 continue
 
             if len(candidates) > 1:
-                console.print(f"\n[yellow]tasks encontradas:[/yellow]")
+                console.print(f"\n[tool]tasks encontradas:[/tool]")
                 for i, c in enumerate(candidates, 1):
                     console.print(f"  [{CLR_OK}]{i}[/{CLR_OK}] {c.stem}")
                 escolha = Prompt.ask(
@@ -1476,7 +1490,7 @@ def main():
 
             task = load_task(task_path)
             if not task:
-                console.print(f"  [red]arquivo '{task_path.name}' não segue o formato de task.[/red]\n")
+                console.print(f"  [err]arquivo '{task_path.name}' não segue o formato de task.[/err]\n")
                 continue
 
             # valida tools sugeridas antes de executar
@@ -1490,14 +1504,14 @@ def main():
             tools_ausentes = [t for t in tools_sugeridas if t not in tools]
             if tools_ausentes:
                 console.print(
-                    f"  [yellow]⚠ tools ausentes nesta task: "
-                    f"{', '.join(tools_ausentes)}[/yellow]\n"
-                    f"  [bright_black]o agente tentará criar as tools necessárias.[/bright_black]\n"
+                    f"  [tool]⚠ tools ausentes nesta task: "
+                    f"{', '.join(tools_ausentes)}[/tool]\n"
+                    f"  [muted]o agente tentará criar as tools necessárias.[/muted]\n"
                 )
 
             console.print(
-                f"\n  [cyan]task:[/cyan] {task['nome']}  "
-                f"[bright_black]{len(task['acoes'])} ações · até {MAX_STEPS_TASK} steps[/bright_black]\n"
+                f"\n  [user]task:[/user] {task['nome']}  "
+                f"[muted]{len(task['acoes'])} ações · até {MAX_STEPS_TASK} steps[/muted]\n"
             )
 
             task_prompt = build_task_prompt(task)
@@ -1534,16 +1548,16 @@ def main():
         if user_input == "/copiar":
             agent_entries = [e for e in history if e["role"] == "agent"]
             if not agent_entries:
-                console.print("  [bright_black]nenhuma resposta para copiar.[/bright_black]\n")
+                console.print("  [muted]nenhuma resposta para copiar.[/muted]\n")
             else:
                 texto = agent_entries[-1]["content"]
                 try:
                     pyperclip.copy(texto)
-                    console.print("  [bright_black]última resposta copiada.[/bright_black]\n")
+                    console.print("  [muted]última resposta copiada.[/muted]\n")
                 except pyperclip.PyperclipException:
                     console.print(
-                        "  [yellow]clipboard não disponível neste ambiente.[/yellow]\n"
-                        "  [bright_black]instale xclip ou xsel no Linux, ou verifique permissões.[/bright_black]\n"
+                        "  [tool]clipboard não disponível neste ambiente.[/tool]\n"
+                        "  [muted]instale xclip ou xsel no Linux, ou verifique permissões.[/muted]\n"
                     )
             continue
 
