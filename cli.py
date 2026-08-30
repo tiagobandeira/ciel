@@ -38,7 +38,7 @@ from prompt_toolkit.styles import Style as PtStyle
 from tools_registry import load_tools, tools_schema
 from agent_loader import load_agent, filter_tools, list_agents
 from history_store import HistoryStore, DB_PATH
-from history_ui import SessionPicker, format_conversation_preview, build_context_injection
+from history_ui import SessionPicker, build_context_injection
 
 # ── config ────────────────────────────────────────────────────────────────────
 OLLAMA_URL       = "http://localhost:11434/api/chat"
@@ -1053,12 +1053,11 @@ def main():
 
             # mostra a conversa selecionada
             turns = store.get_turns(picked["id"])
+            session_title = picked["title"] or f"sessão #{picked['id']}"
             console.print()
-            preview = format_conversation_preview(
-                turns,
-                session_title=picked["title"] or f"sessão #{picked['id']}",
-            )
-            console.print(preview)
+            console.print(f"[muted]══ {session_title} ══[/muted]\n")
+            for turn in turns:
+                print_history_entry(turn["role"], turn["content"], turn["ts"])
 
             # pergunta o que fazer com ela
             console.print(
