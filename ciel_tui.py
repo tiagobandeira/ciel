@@ -335,16 +335,17 @@ class CielInput(Input):
     Texto curto (< _PASTE_THRESHOLD linhas) segue o comportamento padrão.
     """
 
-    def _on_paste(self, event: events.Paste) -> None:
+    def on_paste(self, event: events.Paste) -> None:
         text = event.text or ""
         lines = text.splitlines()
+        event.prevent_default()  # impede o Input nativo de inserir o texto também
         if len(lines) >= _PASTE_THRESHOLD:
             # redireciona para o app tratar como PastePill
             event.stop()
             self.app._handle_long_paste(text)
         else:
-            # comportamento padrão do Input (insere primeira linha)
-            super()._on_paste(event)
+            # insere manualmente no cursor (comportamento equivalente ao padrão)
+            self.insert_text_at_cursor(text.splitlines()[0] if lines else text)
 
 
 class CmdSuggest(Static):
