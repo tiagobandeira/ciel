@@ -210,7 +210,23 @@ class MCPClient:
         # PYTHONIOENCODING garante UTF-8 no stdout/stdin do subprocesso no Windows
         # (sem isso, cp1252 é usado por padrão e caracteres não-ASCII corrompem)
         merged_env = {**os.environ, "PYTHONIOENCODING": "utf-8", **self.env}
+
+        # limit de 8 MB — o padrão do asyncio (64 KB) estoura em payloads grandes
+        # como os do mcp-remote (Notion retorna listas de pages em JSON numa linha só)
+        _READER_LIMIT = 8 * 1024 * 1024
+
         try:
+            self._process = await asyncio.create_subprocess_exec(
+                self.command,
+                *self.args,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=merged_env,
+                limit=_READER_LIMIT,
+            )
+        except TypeError:
+            # fallback para versões do Python que não aceitam limit= aqui
             self._process = await asyncio.create_subprocess_exec(
                 self.command,
                 *self.args,
@@ -334,16 +350,39 @@ class MCPClient:
 
     async def _read_loop(self) -> None:
         """Loop contínuo de leitura — roda em background como Task."""
+        _LIMIT = 8 * 1024 * 1024  # 8 MB — mesmo valor do StreamReader
+        buf = b""
         try:
             while True:
                 if self._reader is None:
                     break
-                line = await self._reader.readline()
-                if not line:
-                    # processo fechou stdout
+                try:
+                    chunk = await self._reader.readuntil(b"\n")
+                except asyncio.LimitOverrunError as e:
+                    # linha maior que o buffer interno — lê e descarta
+                    await self._reader.read(e.consumed)
+                    logger.warning("Linha MCP truncada (%d bytes) — ignorada", e.consumed)
+                    buf = b""
+                    continue
+                except asyncio.IncompleteReadError as e:
+                    # processo fechou stdout no meio de uma linha
+                    if e.partial:
+                        self._dispatch(e.partial.decode(errors="replace").strip())
                     self._dispatch_connection_error("Servidor MCP encerrou a conexão inesperadamente.")
                     break
-                self._dispatch(line.decode().strip())
+
+                if not chunk:
+                    self._dispatch_connection_error("Servidor MCP encerrou a conexão inesperadamente.")
+                    break
+
+                buf += chunk
+                if len(buf) > _LIMIT:
+                    logger.warning("Payload MCP excede %d bytes — descartado", _LIMIT)
+                    buf = b""
+                    continue
+
+                self._dispatch(buf.decode(errors="replace").strip())
+                buf = b""
         except asyncio.CancelledError:
             pass
         except Exception as e:
