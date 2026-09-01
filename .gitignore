@@ -33,7 +33,6 @@ tasks/iniciar_rpg.md
 agents/rpg_master.md
 
 mcp_servers.json
-.env
 telegram_channels.json
 
 # Variáveis de ambiente
