@@ -39,6 +39,7 @@ from tools_registry import load_tools, tools_schema
 from agent_loader import load_agent, filter_tools, list_agents
 from history_store import HistoryStore, DB_PATH
 from history_ui import SessionPicker, build_context_injection
+from mcp.manager import MCPManager
 
 # ── config ────────────────────────────────────────────────────────────────────
 OLLAMA_URL       = "http://localhost:11434/api/chat"
@@ -530,6 +531,25 @@ def run_agent(
                     all_updated = load_tools()
                     tools.clear()
                     tools.update(filter_tools(all_updated, agent_info.get("allowed_tools")))
+                    tools.update(mcp_manager.all_tools())
+                    schema.clear()
+                    schema.extend(tools_schema(tools))
+                    messages[0]["content"] = build_system_prompt(agent_info, schema)
+                    print_step(step, "registry", f"{len(tools)} tools carregadas", CLR_OK)
+
+                # reload automático após adicionar/remover servidor MCP ────────
+                if tool_name == "mcp_add_server" and "conectado" in str(feedback):
+                    tools.update(mcp_manager.server_tools(feedback.split("'")[1] if "'" in feedback else ""))
+                    tools.update(mcp_manager.all_tools())  # garante consistência
+                    schema.clear()
+                    schema.extend(tools_schema(tools))
+                    messages[0]["content"] = build_system_prompt(agent_info, schema)
+                    print_step(step, "registry", f"{len(tools)} tools carregadas", CLR_OK)
+
+                if tool_name == "mcp_remove_server" and "removido" in str(feedback):
+                    removed_name = feedback.split("'")[1] if "'" in feedback else ""
+                    if removed_name:
+                        mcp_manager.remove_server_tools(removed_name, tools)
                     schema.clear()
                     schema.extend(tools_schema(tools))
                     messages[0]["content"] = build_system_prompt(agent_info, schema)
@@ -827,6 +847,27 @@ def main():
     if args.safe:
         tools = {k: v for k, v in tools.items() if k not in UNSAFE_TOOLS}
 
+    # ── MCP: conecta servidores persistidos e injeta tools ────────────────────
+    mcp_manager = MCPManager()
+    mcp_results = mcp_manager.connect_all()
+    if mcp_results:
+        ok_count   = sum(1 for v in mcp_results.values() if v)
+        fail_count = len(mcp_results) - ok_count
+        if ok_count:
+            tools.update(mcp_manager.all_tools())
+        if fail_count:
+            failed_names = [k for k, v in mcp_results.items() if not v]
+            console.print(f"  [warn]MCP: {fail_count} servidor(es) não conectaram: {failed_names}[/warn]")
+
+    # injeta referência ao manager nas tools administrativas MCP
+    # cada tool usa _manager = None + _get_manager() como fallback;
+    # aqui sobrescrevemos _manager no escopo global da função para que
+    # todas usem o mesmo manager instanciado acima (com o tools dict ativo)
+    _mcp_admin_tools = ("mcp_add_server", "mcp_list_servers", "mcp_remove_server")
+    for tool_name in _mcp_admin_tools:
+        if tool_name in tools:
+            tools[tool_name]["fn"].__globals__["_manager"] = mcp_manager
+
     schema  = tools_schema(tools)
     history: list[dict] = []
 
@@ -839,10 +880,11 @@ def main():
 
     # ── prompt_toolkit: autocomplete ──────────────────────────────────────────
     CMDS = [
-        "/sair", "/limpar", "/novo", "/task", "/tools", "/agente", 
+        "/sair", "/limpar", "/novo", "/task", "/tools", "/agente",
         "/source", "/source --listar","/source --remover","/source --global","/source --limpar-orfas","/skill", "/limpar-temp",
         "/promover ", "/copiar", "/tokens", "/ajuda",
         "/history", "/history salvar", "/history exportar",
+        "/mcp", "/mcp -v",
     ]
     pt_style = PtStyle.from_dict({"prompt": "ansibrightcyan bold"})
 
@@ -879,6 +921,7 @@ def main():
                     )
             console.print("[muted]até mais.[/muted]")
             store.close()
+            mcp_manager.disconnect_all()
             break
 
         if user_input == "/limpar":
@@ -915,6 +958,31 @@ def main():
                 desc = meta["description"].split("\n")[0][:55]
                 tbl.add_row(f"⚙ {name}", cat_label, desc)
             console.print(Panel(tbl, title="[tool]tools[/tool]", border_style=CLR_BORDER, padding=(0,1)))
+            console.print()
+            continue
+
+        if user_input in ("/mcp", "/mcp -v"):
+            verbose = user_input == "/mcp -v"
+            servers = mcp_manager.list_servers()
+            if not servers:
+                console.print("  [muted]nenhum servidor MCP configurado.[/muted]")
+                console.print("  [muted]use mcp_add_server para adicionar.[/muted]\n")
+            else:
+                tbl = Table(box=None, show_header=False, padding=(0, 1))
+                tbl.add_column(style="ok",    no_wrap=True)
+                tbl.add_column(style="tool",  no_wrap=True)
+                tbl.add_column(style="muted", no_wrap=True)
+                tbl.add_column(style="muted")
+                for s in servers:
+                    icon   = "●" if s["connected"] else "○"
+                    status = s["status"]
+                    tbl.add_row(icon, s["name"], f"[{s['type']}]", status)
+                    if verbose and s["tools"]:
+                        for t in s["tools"]:
+                            tbl.add_row("", f"  • {t}", "", "")
+                    if s["error"]:
+                        tbl.add_row("", f"  ⚠ {s['error']}", "", "")
+                console.print(Panel(tbl, title="[tool]MCP servers[/tool]", border_style=CLR_BORDER, padding=(0,1)))
             console.print()
             continue
 
