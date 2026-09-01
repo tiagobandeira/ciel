@@ -440,7 +440,8 @@ def run_agent(
     web_base_url: str | None = None,
     context_injection: str | None = None,
     session_id: str | None = None,
-    max_steps: int = MAX_STEPS,   
+    max_steps: int = MAX_STEPS,
+    mcp_manager=None,
 ) -> str | dict:
     """
     Executa o loop agêntico.
@@ -531,7 +532,8 @@ def run_agent(
                     all_updated = load_tools()
                     tools.clear()
                     tools.update(filter_tools(all_updated, agent_info.get("allowed_tools")))
-                    tools.update(mcp_manager.all_tools())
+                    if mcp_manager:
+                        tools.update(mcp_manager.all_tools())
                     schema.clear()
                     schema.extend(tools_schema(tools))
                     messages[0]["content"] = build_system_prompt(agent_info, schema)
@@ -539,8 +541,9 @@ def run_agent(
 
                 # reload automático após adicionar/remover servidor MCP ────────
                 if tool_name == "mcp_add_server" and "conectado" in str(feedback):
-                    tools.update(mcp_manager.server_tools(feedback.split("'")[1] if "'" in feedback else ""))
-                    tools.update(mcp_manager.all_tools())  # garante consistência
+                    if mcp_manager:
+                        tools.update(mcp_manager.server_tools(feedback.split("'")[1] if "'" in feedback else ""))
+                        tools.update(mcp_manager.all_tools())  # garante consistência
                     schema.clear()
                     schema.extend(tools_schema(tools))
                     messages[0]["content"] = build_system_prompt(agent_info, schema)
@@ -548,7 +551,7 @@ def run_agent(
 
                 if tool_name == "mcp_remove_server" and "removido" in str(feedback):
                     removed_name = feedback.split("'")[1] if "'" in feedback else ""
-                    if removed_name:
+                    if mcp_manager and removed_name:
                         mcp_manager.remove_server_tools(removed_name, tools)
                     schema.clear()
                     schema.extend(tools_schema(tools))
@@ -1594,6 +1597,7 @@ def main():
                 history=history[:-1],
                 session_id=str(current_session_id) if current_session_id else None,
                 max_steps=MAX_STEPS_TASK,          # <-- usa o limite expandido
+                mcp_manager=mcp_manager,
             )
             session_tokens_in  += t_in
             session_tokens_out += t_out
@@ -1651,6 +1655,7 @@ def main():
             history=history[:-1],
             context_injection=context_injection,
             session_id=str(current_session_id) if current_session_id else None,
+            mcp_manager=mcp_manager,
         )
         session_tokens_in  += t_in
         session_tokens_out += t_out
