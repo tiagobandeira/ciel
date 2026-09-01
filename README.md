@@ -116,6 +116,8 @@ python server.py                          # versão server local
 | `/task`                       | lista todas as tasks disponíveis                  |
 | `/task <nome>`                | executa task pelo nome (parcial ou exato)         |
 | `/task <arquivo.md>`          | executa task pelo caminho direto                  |
+| `/mcp`                        | lista servidores MCP conectados e status          |
+| `/mcp -v`                     | lista com todas as tools de cada servidor         |
 | `/ajuda`                      | exibe todos os comandos disponíveis               |
 | `/sair`                       | encerra                                           |
 
@@ -204,6 +206,26 @@ Rode com `python cli.py --agent meu_agente`.
 | `## Comportamento`       | não         | Regras adicionais de decisão                       |
 | `## Formato de resposta` | não         | Override do JSON padrão (avançado)                 |
 
+## MCP — integrações externas
+
+O Ciel suporta o [Model Context Protocol](https://modelcontextprotocol.io), permitindo conectar servidores externos e usar suas ferramentas diretamente no agente — sem modificar código.
+
+```bash
+# conectar um servidor (pelo agente ou direto)
+mcp_add_server(name="telegram", type="stdio",
+               command="python", args="mcp/telegram/server.py",
+               env="TELEGRAM_BOT_TOKEN=seu_token")
+
+# verificar servidores conectados
+/mcp -v
+```
+
+As tools do servidor aparecem automaticamente no registry com namespace `mcp_{servidor}__{tool}` e o agente passa a usá-las como qualquer outra tool. A configuração persiste em `mcp_servers.json` e é recarregada a cada sessão.
+
+O projeto inclui um servidor MCP para **Telegram** (`mcp/telegram/`) pronto para usar. Outros servidores MCP públicos (NPM, PyPI) também funcionam sem adaptação.
+
+→ **[Documentação completa: docs/mcp.md](docs/mcp.md)** · **[Tutorial Telegram: docs/mcp_telegram_tutorial.md](docs/mcp_telegram_tutorial.md)**
+
 ## Segurança
 
 Este projeto tem duas superfícies de risco que você deve conhecer:
@@ -240,11 +262,22 @@ Ciel/
 ├── history_store.py
 ├── history_ui.py
 ├── ciel_config.example.json
+├── mcp_servers.json              ← gerado automaticamente
+├── telegram_channels.json        ← gerado automaticamente
 ├── agents/
 │   ├── general.md
 │   ├── dev_helper.md
 │   ├── frontend.md
 │   └── rpg_master.md
+├── mcp/
+│   ├── __init__.py
+│   ├── client.py                 ← protocolo JSON-RPC 2.0, stdio/SSE
+│   ├── adapter.py                ← converte schemas MCP → ToolRegistry
+│   ├── manager.py                ← ciclo de vida dos servidores
+│   └── telegram/
+│       ├── __init__.py
+│       ├── server.py             ← servidor MCP para Telegram (Bot API)
+│       └── channels.py           ← cache local de canais
 ├── tools/
 │   ├── calculator.py
 │   ├── create_tool.py
@@ -255,6 +288,9 @@ Ciel/
 │   ├── http_request.py
 │   ├── list_directory.py
 │   ├── list_sources.py
+│   ├── mcp_add_server.py         ← registra e conecta servidor MCP
+│   ├── mcp_list_servers.py       ← lista servidores e status
+│   ├── mcp_remove_server.py      ← remove e desconecta servidor
 │   ├── read_file.py
 │   ├── read_source.py
 │   ├── read_url.py
@@ -292,6 +328,8 @@ Ciel/
 └── docs/
     ├── KNOWLEDGE_ROADMAP.md
     ├── TESTING.md
+    ├── mcp.md                    ← documentação do pacote MCP
+    ├── mcp_telegram_tutorial.md  ← tutorial de integração Telegram
     ├── secondary-model.md
     ├── skills.md
     ├── sources.md
