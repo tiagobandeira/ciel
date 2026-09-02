@@ -279,11 +279,22 @@ class MCPClient:
         self._pending.clear()
 
         if self._process:
+            # fecha stdin primeiro — sinaliza EOF ao servidor, evita BrokenPipeError
+            if self._process.stdin:
+                try:
+                    self._process.stdin.close()
+                except (BrokenPipeError, ValueError, OSError):
+                    pass
             try:
                 self._process.terminate()
                 await asyncio.wait_for(self._process.wait(), timeout=5.0)
             except (asyncio.TimeoutError, ProcessLookupError):
-                self._process.kill()
+                try:
+                    self._process.kill()
+                except ProcessLookupError:
+                    pass
+            except (BrokenPipeError, ValueError, OSError):
+                pass  # pipe fechado durante shutdown — normal
             self._process = None
 
         logger.info("MCP desconectado.")
@@ -385,6 +396,8 @@ class MCPClient:
                 buf = b""
         except asyncio.CancelledError:
             pass
+        except (ValueError, BrokenPipeError, OSError):
+            pass  # pipe fechado durante shutdown — encerramento normal
         except Exception as e:
             self._dispatch_connection_error(f"Erro no read loop: {e}")
 
@@ -575,8 +588,22 @@ class SyncMCPClient:
         return self._client.is_alive()
 
     def close(self) -> None:
-        self._run(self._client.close())
-        self._loop.close()
+        if self._loop.is_closed():
+            return
+        try:
+            self._run(self._client.close())
+        except Exception:
+            pass  # pipe já fechado ou processo já morto — normal no shutdown
+        finally:
+            try:
+                pending = asyncio.all_tasks(self._loop)
+                if pending:
+                    self._loop.run_until_complete(
+                        asyncio.gather(*pending, return_exceptions=True)
+                    )
+            except Exception:
+                pass
+            self._loop.close()
 
     @property
     def server_info(self) -> ServerInfo | None:
