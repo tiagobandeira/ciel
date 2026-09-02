@@ -820,12 +820,100 @@ def _save_session(
     return sid
 
 
+def run_task_headless(task_path: Path, args) -> int:
+    """
+    Executa uma task sem abrir o loop interativo.
+    Retorna 0 em sucesso, 1 em erro — adequado para cron e scripts.
+
+    Saída: só texto puro, sem rich, para que logs de cron sejam legíveis.
+    """
+    import logging
+    logging.basicConfig(
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        level=logging.INFO,
+        stream=sys.stdout,
+    )
+    log = logging.getLogger("ciel.task")
+
+    # ── carrega task ───────────────────────────────────────────────────────
+    task = load_task(task_path)
+    if not task:
+        log.error("Arquivo '%s' não segue o formato de task.", task_path)
+        return 1
+
+    log.info("task: %s (%d ações)", task["nome"], len(task["acoes"]))
+
+    # ── carrega agente e tools ─────────────────────────────────────────────
+    try:
+        agent_info = load_agent(args.agent)
+    except FileNotFoundError as e:
+        log.error("%s", e)
+        return 1
+
+    all_tools = load_tools()
+    tools     = filter_tools(all_tools, agent_info["allowed_tools"])
+
+    if args.safe:
+        tools = {k: v for k, v in tools.items() if k not in UNSAFE_TOOLS}
+
+    # ── MCP ────────────────────────────────────────────────────────────────
+    mcp_manager = MCPManager()
+    mcp_results = mcp_manager.connect_all()
+    ok_count    = sum(1 for v in mcp_results.values() if v)
+    fail_count  = len(mcp_results) - ok_count
+    if ok_count:
+        tools.update(mcp_manager.all_tools())
+    if fail_count:
+        failed = [k for k, v in mcp_results.items() if not v]
+        log.warning("MCP: %d servidor(es) não conectaram: %s", fail_count, failed)
+
+    _mcp_admin_tools = ("mcp_add_server", "mcp_list_servers", "mcp_remove_server")
+    for tn in _mcp_admin_tools:
+        if tn in tools:
+            tools[tn]["fn"].__globals__["_manager"] = mcp_manager
+
+    schema = tools_schema(tools)
+    log.info("tools carregadas: %d", len(tools))
+
+    # ── valida tools sugeridas ─────────────────────────────────────────────
+    tools_ausentes = []
+    for acao in task["acoes"]:
+        m = re.search(r"\[tool:\s*(\w+)\]", acao)
+        if m and m.group(1) not in tools:
+            tools_ausentes.append(m.group(1))
+    if tools_ausentes:
+        log.warning("tools sugeridas ausentes: %s (o agente tentará suprir)", tools_ausentes)
+
+    # ── executa ────────────────────────────────────────────────────────────
+    task_prompt = build_task_prompt(task)
+    try:
+        result, t_in, t_out = run_agent(
+            task_prompt, tools, schema, args.model, agent_info,
+            max_steps=MAX_STEPS_TASK,
+            mcp_manager=mcp_manager,
+        )
+    except Exception as e:
+        log.error("run_agent falhou: %s", e)
+        return 1
+    finally:
+        mcp_manager.disconnect_all()
+
+    if isinstance(result, dict) and result.get("status") == "needs_tool":
+        log.error("task incompleta — tool necessária não disponível: %s", result)
+        return 1
+
+    log.info("tokens: ↑%d ↓%d", t_in, t_out)
+    log.info("resultado:\n%s", result)
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="Agent CLI")
     parser.add_argument("--model",       default=DEFAULT_MODEL,  help="modelo Ollama")
     parser.add_argument("--agent",       default=DEFAULT_AGENT,  help="persona do agente (nome do .md em /agents)")
     parser.add_argument("--safe",        action="store_true",    help="desabilita tools de execução arbitrária")
     parser.add_argument("--list-agents", action="store_true",    help="lista agentes disponíveis e sai")
+    parser.add_argument("--task",        metavar="TASK",         help="executa task headless e sai (nome ou caminho .md)")
     args = parser.parse_args()
 
     # ── contadores de sessão ───────────────────────────────────────────────
@@ -835,6 +923,23 @@ def main():
     if args.list_agents:
         print_agents_list()
         sys.exit(0)
+
+    # ── modo headless: executa task e sai ─────────────────────────────────
+    if args.task:
+        TASKS_DIR = Path("tasks")
+        raw = args.task
+        task_path = Path(raw) if raw.endswith(".md") else TASKS_DIR / f"{raw}.md"
+        if not task_path.exists():
+            # tenta busca por nome parcial
+            candidates = find_tasks(raw, TASKS_DIR)
+            if not candidates:
+                print(f"[erro] task não encontrada: '{raw}'", file=sys.stderr)
+                sys.exit(1)
+            if len(candidates) > 1:
+                print(f"[erro] ambíguo — tasks encontradas: {[c.stem for c in candidates]}", file=sys.stderr)
+                sys.exit(1)
+            task_path = candidates[0]
+        sys.exit(run_task_headless(task_path, args))
 
     # carrega agente
     try:
