@@ -234,7 +234,7 @@ As tools do servidor aparecem automaticamente no registry com namespace `mcp_{se
 
 O projeto inclui um servidor MCP para **Telegram** (`mcp/telegram/`) pronto para usar. Outros servidores MCP públicos (NPM, PyPI) também funcionam sem adaptação.
 
-→ **[Documentação completa: docs/mcp.md](docs/mcp.md)** · **[Tutorial Telegram: docs/mcp_telegram_tutorial.md](docs/mcp_telegram_tutorial.md)**
+→ **[Documentação completa: docs/mcp.md](docs/mcp.md)** · **[Tutorial Telegram: docs/mcp_telegram_tutorial.md](docs/mcp_telegram_tutorial.md)** · **[Tutorial Notion: docs/mcp_notion_tutorial.md](docs/mcp_notion_tutorial.md)**
 
 ## Segurança
 
