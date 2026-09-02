@@ -95,13 +95,19 @@ e oferece criar via auto tool. Útil para tasks que dependem de integrações es
 
 ---
 
-## Automação com cron
+## Modo headless
 
-Tasks são compatíveis com execução não-interativa. Exemplo de chamada via cron:
+Tasks podem ser executadas sem abrir o terminal interativo, via flag `--task`:
+
+```bash
+python cli.py --task tasks/noticias_do_dia.md
+```
+
+O agente executa a task e encerra. Sem prompt, sem sessão interativa — ideal para automações, scripts externos e pipelines.
+
+### Automação com cron
 
 ```bash
 # todo dia às 8h — busca e envia notícias
 0 8 * * * cd /caminho/do/projeto && python cli.py --task tasks/noticias-auto.md
 ```
-
-> Requer suporte a `--task <arquivo>` via argparse — extensão futura do CLI.
