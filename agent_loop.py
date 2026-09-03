@@ -226,6 +226,7 @@ def run_agent(
     session_id: str | None = None,
     max_steps: int = MAX_STEPS,
     ollama_url: str = OLLAMA_URL,
+    mcp_manager=None,
     # callbacks
     on_step: OnStep | None = None,
     on_model_start: OnModelStart | None = None,
@@ -334,6 +335,26 @@ def run_agent(
                     all_updated = load_tools()
                     tools.clear()
                     tools.update(filter_tools(all_updated, agent_info.get("allowed_tools")))
+                    if mcp_manager is not None:
+                        tools.update(mcp_manager.all_tools())
+                    schema.clear()
+                    schema.extend(tools_schema(tools))
+                    messages[0]["content"] = _build_system_prompt(agent_info, schema)
+                    _call(on_step, step, "registry", f"{len(tools)} tools carregadas", "done")
+
+                # reload automático após adicionar servidor MCP
+                if tool_name == "mcp_add_server" and mcp_manager is not None and "conectado" in str(feedback):
+                    tools.update(mcp_manager.all_tools())
+                    schema.clear()
+                    schema.extend(tools_schema(tools))
+                    messages[0]["content"] = _build_system_prompt(agent_info, schema)
+                    _call(on_step, step, "registry", f"{len(tools)} tools carregadas", "done")
+
+                # reload automático após remover servidor MCP
+                if tool_name == "mcp_remove_server" and mcp_manager is not None and "removido" in str(feedback):
+                    removed_name = feedback.split("'")[1] if "'" in str(feedback) else ""
+                    if removed_name:
+                        mcp_manager.remove_server_tools(removed_name, tools)
                     schema.clear()
                     schema.extend(tools_schema(tools))
                     messages[0]["content"] = _build_system_prompt(agent_info, schema)
