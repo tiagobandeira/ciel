@@ -36,7 +36,7 @@ from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.styles import Style as PtStyle
 
 from tools_registry import load_tools, tools_schema
-from agent_loader import load_agent, filter_tools, list_agents
+from agent_loader import load_agent, filter_tools, filter_mcp_tools, list_agents
 from history_store import HistoryStore, DB_PATH
 from history_ui import SessionPicker, build_context_injection
 from mcp.manager import MCPManager
@@ -532,8 +532,7 @@ def run_agent(
                     all_updated = load_tools()
                     tools.clear()
                     tools.update(filter_tools(all_updated, agent_info.get("allowed_tools")))
-                    if mcp_manager:
-                        tools.update(mcp_manager.all_tools())
+                    _apply_mcp_tools(tools, mcp_manager, agent_info)
                     schema.clear()
                     schema.extend(tools_schema(tools))
                     messages[0]["content"] = build_system_prompt(agent_info, schema)
@@ -541,9 +540,7 @@ def run_agent(
 
                 # reload automático após adicionar/remover servidor MCP ────────
                 if tool_name == "mcp_add_server" and "conectado" in str(feedback):
-                    if mcp_manager:
-                        tools.update(mcp_manager.server_tools(feedback.split("'")[1] if "'" in feedback else ""))
-                        tools.update(mcp_manager.all_tools())  # garante consistência
+                    _apply_mcp_tools(tools, mcp_manager, agent_info)
                     schema.clear()
                     schema.extend(tools_schema(tools))
                     messages[0]["content"] = build_system_prompt(agent_info, schema)
@@ -601,12 +598,31 @@ def _build_create_instruction(proposal: dict) -> str:
 
 
 def _reload_tools(agent_info: dict, safe: bool) -> tuple[dict, list]:
-    """Recarrega tools do disco e devolve (tools, schema) filtrados."""
+    """Recarrega tools locais do disco e devolve (tools, schema) filtrados.
+    Não inclui tools MCP — use _reload_tools_with_mcp quando o mcp_manager
+    estiver disponível para incluir e filtrar servers MCP também.
+    """
     all_tools = load_tools()
     tools     = filter_tools(all_tools, agent_info["allowed_tools"])
     if safe:
         tools = {k: v for k, v in tools.items() if k not in UNSAFE_TOOLS}
     return tools, tools_schema(tools)
+
+
+def _apply_mcp_tools(tools: dict, mcp_manager, agent_info: dict) -> None:
+    """
+    Injeta tools MCP no dict de tools já filtrado, respeitando
+    allowed_mcp_servers do agente. Modifica tools in-place.
+
+    allowed_mcp_servers=None  → todos os servidores visíveis
+    allowed_mcp_servers=[]    → nenhum servidor MCP injetado
+    allowed_mcp_servers=[...] → só os servidores listados
+    """
+    if mcp_manager is None:
+        return
+    allowed_servers = agent_info.get("allowed_mcp_servers")  # None = todos
+    mcp_tools = filter_mcp_tools(mcp_manager.all_tools(), allowed_servers)
+    tools.update(mcp_tools)
 
 
 def _handle_auto_tool(
@@ -862,7 +878,7 @@ def run_task_headless(task_path: Path, args) -> int:
     ok_count    = sum(1 for v in mcp_results.values() if v)
     fail_count  = len(mcp_results) - ok_count
     if ok_count:
-        tools.update(mcp_manager.all_tools())
+        _apply_mcp_tools(tools, mcp_manager, agent_info)
     if fail_count:
         failed = [k for k, v in mcp_results.items() if not v]
         log.warning("MCP: %d servidor(es) não conectaram: %s", fail_count, failed)
@@ -962,7 +978,7 @@ def main():
         ok_count   = sum(1 for v in mcp_results.values() if v)
         fail_count = len(mcp_results) - ok_count
         if ok_count:
-            tools.update(mcp_manager.all_tools())
+            _apply_mcp_tools(tools, mcp_manager, agent_info)
         if fail_count:
             failed_names = [k for k, v in mcp_results.items() if not v]
             console.print(f"  [warn]MCP: {fail_count} servidor(es) não conectaram: {failed_names}[/warn]")
@@ -1076,20 +1092,31 @@ def main():
                 console.print("  [muted]nenhum servidor MCP configurado.[/muted]")
                 console.print("  [muted]use mcp_add_server para adicionar.[/muted]\n")
             else:
+                allowed_servers = agent_info.get("allowed_mcp_servers")  # None = todos
+                def _server_active(name: str) -> bool:
+                    return allowed_servers is None or name in allowed_servers
+
                 tbl = Table(box=None, show_header=False, padding=(0, 1))
                 tbl.add_column(style="ok",    no_wrap=True)
                 tbl.add_column(style="tool",  no_wrap=True)
                 tbl.add_column(style="muted", no_wrap=True)
+                tbl.add_column(style="muted", no_wrap=True)
                 tbl.add_column(style="muted")
                 for s in servers:
                     icon   = "●" if s["connected"] else "○"
-                    status = s["status"]
-                    tbl.add_row(icon, s["name"], f"[{s['type']}]", status)
+                    active = _server_active(s["name"])
+                    agent_badge = (
+                        f"[ok]ativo[/ok]"
+                        if active else
+                        f"[muted]desativado ({agent_info['id']})[/muted]"
+                    )
+                    tbl.add_row(icon, s["name"], f"[{s['type']}]", agent_badge, s["status"])
                     if verbose and s["tools"]:
                         for t in s["tools"]:
-                            tbl.add_row("", f"  • {t}", "", "")
+                            tool_badge = "" if active else "[muted]✗[/muted]"
+                            tbl.add_row("", f"  • {t}", "", tool_badge, "")
                     if s["error"]:
-                        tbl.add_row("", f"  ⚠ {s['error']}", "", "")
+                        tbl.add_row("", f"  ⚠ {s['error']}", "", "", "")
                 console.print(Panel(tbl, title="[tool]MCP servers[/tool]", border_style=CLR_BORDER, padding=(0,1)))
             console.print()
             continue
@@ -1176,6 +1203,8 @@ def main():
             agent_info = novo_agent_info
             args.agent = novo_nome
             tools, schema = _reload_tools(agent_info, args.safe)
+            _apply_mcp_tools(tools, mcp_manager, agent_info)
+            schema = tools_schema(tools)
             history.clear()
             current_session_id = None
             context_injection  = None
@@ -1273,6 +1302,8 @@ def main():
                         agent_info = load_agent(picked["agent_id"])
                         args.agent = picked["agent_id"]
                         tools, schema = _reload_tools(agent_info, args.safe)
+                        _apply_mcp_tools(tools, mcp_manager, agent_info)
+                        schema = tools_schema(tools)
                         completer = make_completer(tools)
                         console.print(f"  [ok]agente trocado para '{agent_info['name']}'[/ok]\n")
                     except FileNotFoundError:

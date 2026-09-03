@@ -5,6 +5,7 @@ Formato do .md:
   # Nome do Agente          ← título (obrigatório)
   ## Persona                ← bloco de personalidade/contexto
   ## Tools permitidas       ← 'todas' ou lista de nomes separados por vírgula/newline
+  ## Servidores MCP         ← 'todos', 'nenhum' ou lista de nomes de servidores
   ## Comportamento          ← regras adicionais pro prompt
   ## Formato de resposta    ← override do formato JSON (opcional)
   ## Skills                 ← skills atreladas à persona (opcional)
@@ -187,14 +188,16 @@ def load_agent(agent_name: str) -> dict:
     name        = sections.get("__title__", agent_name)
     persona     = sections.get("persona", "")
     tools_raw   = sections.get("tools permitidas", "todas")
+    mcp_raw     = sections.get("servidores mcp", "todos")
     behavior    = sections.get("comportamento", "")
     fmt         = sections.get("formato de resposta", "")
     skills_raw  = sections.get("skills", "")
     description = persona.splitlines()[0] if persona else "(sem descrição)"
 
-    allowed_tools = _parse_allowed_tools(tools_raw)
-    skills        = _parse_skills(skills_raw)
-    skills_block  = _build_skills_block(skills)
+    allowed_tools       = _parse_allowed_tools(tools_raw)
+    allowed_mcp_servers = _parse_allowed_mcp_servers(mcp_raw)
+    skills              = _parse_skills(skills_raw)
+    skills_block        = _build_skills_block(skills)
 
     # Monta o system prompt
     parts = [f"# {name}\n"]
@@ -212,12 +215,13 @@ def load_agent(agent_name: str) -> dict:
     system_prompt = "\n".join(parts)
 
     return {
-        "name":          name,
-        "id":            agent_name,
-        "system_prompt": system_prompt,
-        "allowed_tools": allowed_tools,
-        "description":   description,
-        "skills":        skills,
+        "name":                name,
+        "id":                  agent_name,
+        "system_prompt":       system_prompt,
+        "allowed_tools":       allowed_tools,
+        "allowed_mcp_servers": allowed_mcp_servers,
+        "description":         description,
+        "skills":              skills,
     }
 
 
@@ -241,3 +245,54 @@ def filter_tools(tools: dict, allowed: list | None) -> dict:
         return tools
     combined = CORE_TOOLS | set(allowed)
     return {k: v for k, v in tools.items() if k in combined}
+
+
+def _parse_allowed_mcp_servers(raw: str) -> list[str] | None:
+    """
+    Parseia a seção '## Servidores MCP' do agente.
+
+    Retorna:
+      None          → sem restrição (todos os servidores conectados visíveis)
+      []            → nenhum servidor MCP visível
+      ["a", "b"]   → somente esses servidores visíveis
+
+    Valores aceitos para "todos": todos, all, *
+    Valores aceitos para "nenhum": nenhum, none, -
+    Aceita vírgulas ou newlines como separadores.
+    """
+    raw = raw.strip().lower()
+    if raw in ("todos", "all", "*"):
+        return None
+    if raw in ("nenhum", "none", "-"):
+        return []
+    names = re.split(r"[,\n]+", raw)
+    return [n.strip().strip("-").strip() for n in names if n.strip()]
+
+
+def filter_mcp_tools(mcp_tools: dict, allowed_servers: list[str] | None) -> dict:
+    """
+    Filtra tools MCP pelo allowed_mcp_servers do agente.
+
+    Tools MCP têm namespace 'mcp_{servidor}__{tool}'.
+
+      allowed_servers=None  → todas as tools passam (sem restrição)
+      allowed_servers=[]    → nenhuma tool MCP visível
+      allowed_servers=[...] → só tools dos servidores listados
+
+    Não afeta tools locais — só entradas cujo nome começa com 'mcp_' e
+    contém '__' (namespace gerado pelo adapter MCP).
+    """
+    if allowed_servers is None:
+        return mcp_tools
+    allowed_set = set(allowed_servers)
+    filtered = {}
+    for tool_name, meta in mcp_tools.items():
+        if tool_name.startswith("mcp_") and "__" in tool_name:
+            # extrai nome do servidor: mcp_{servidor}__{tool}
+            server_name = tool_name[len("mcp_"):tool_name.index("__")]
+            if server_name in allowed_set:
+                filtered[tool_name] = meta
+        else:
+            # tool local que por acaso começa com mcp_ (raro) — passa normalmente
+            filtered[tool_name] = meta
+    return filtered

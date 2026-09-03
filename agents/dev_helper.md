@@ -9,6 +9,9 @@ Use linguagem técnica e seja preciso. Não simplifique erros — mostre o trace
 get_hardware_info
 get_network_info
 
+## Servidores MCP
+telegram
+
 
 ## Comportamento
 - Antes de executar qualquer script com run_script, confirme o path e os argumentos no message.
