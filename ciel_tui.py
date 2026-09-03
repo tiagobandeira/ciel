@@ -2706,20 +2706,36 @@ class CielTUI(App):
                         "info",
                     ))
                 else:
+                    allowed_servers = self._agent_info.get("allowed_mcp_servers")  # None = todos
+                    def _server_active(name: str) -> bool:
+                        return allowed_servers is None or name in allowed_servers
+
                     t = Text()
                     t.append(f"\n  servidores MCP ({len(servers)})\n",
                              style=f"bold {P['accent']}")
                     for s in servers:
-                        icon  = "●" if s["connected"] else "○"
-                        color = P["green"] if s["connected"] else P["crimson"]
+                        icon   = "●" if s["connected"] else "○"
+                        color  = P["green"] if s["connected"] else P["crimson"]
+                        active = _server_active(s["name"])
                         t.append(f"  {icon} ", style=f"bold {color}")
                         t.append(f"{s['name']}", style=f"bold {P['text']}")
                         t.append(f"  [{s['type']}]", style=f"dim {P['muted']}")
+                        if active:
+                            t.append(f"  ativo", style=f"bold {P['green']}")
+                        else:
+                            t.append(
+                                f"  desativado ({self._agent_info['id']})",
+                                style=f"dim {P['muted']}",
+                            )
                         t.append(f"  {s['status']}\n", style=f"dim {P['silver']}")
                         if verbose and s.get("tools"):
                             for tool_name in s["tools"]:
-                                t.append(f"      • {tool_name}\n",
-                                         style=f"dim {P['cyan']}")
+                                if active:
+                                    t.append(f"      • {tool_name}\n",
+                                             style=f"dim {P['cyan']}")
+                                else:
+                                    t.append(f"      • {tool_name}  ✗\n",
+                                             style=f"dim {P['muted']}")
                         if s.get("error"):
                             t.append(f"    ⚠ {s['error']}\n",
                                      style=f"dim {P['orange']}")
