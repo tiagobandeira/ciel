@@ -88,7 +88,7 @@ from textual.widgets.option_list import Option
 # ── integração com o loop agêntico ───────────────────────────────────────────
 from agent_loop import run_agent, AgentResult
 from tools_registry import load_tools, tools_schema
-from agent_loader import load_agent, filter_tools, list_agents
+from agent_loader import load_agent, filter_tools, filter_mcp_tools, list_agents
 from history_store import HistoryStore, DB_PATH
 from mcp.manager import MCPManager
 
@@ -1723,7 +1723,10 @@ class CielTUI(App):
 
         # reinjeta tools MCP se o manager já estiver inicializado
         if self._mcp_manager is not None:
-            tools.update(self._mcp_manager.all_tools())
+            tools.update(filter_mcp_tools(
+                self._mcp_manager.all_tools(),
+                self._agent_info.get("allowed_mcp_servers"),
+            ))
             # reinjeta referência do manager nas tools administrativas
             _mcp_admin_tools = ("mcp_add_server", "mcp_list_servers", "mcp_remove_server")
             for tn in _mcp_admin_tools:
@@ -2816,7 +2819,10 @@ class CielTUI(App):
             filtered = {k: v for k, v in filtered.items() if k not in self.UNSAFE_TOOLS}
         # reinjeta tools MCP para não perdê-las no reload
         if self._mcp_manager is not None:
-            filtered.update(self._mcp_manager.all_tools())
+            filtered.update(filter_mcp_tools(
+                self._mcp_manager.all_tools(),
+                self._agent_info.get("allowed_mcp_servers"),
+            ))
             _mcp_admin_tools = ("mcp_add_server", "mcp_list_servers", "mcp_remove_server")
             for tn in _mcp_admin_tools:
                 if tn in filtered:
@@ -2844,7 +2850,10 @@ class CielTUI(App):
 
         if ok_count:
             # Atualiza tools e schema com o que foi conectado
-            self._tools.update(self._mcp_manager.all_tools())
+            self._tools.update(filter_mcp_tools(
+                self._mcp_manager.all_tools(),
+                self._agent_info.get("allowed_mcp_servers"),
+            ))
             self._schema = tools_schema(self._tools)
 
             # Garante injeção do manager nas tools admin (pode não ter ocorrido
@@ -2983,7 +2992,10 @@ class CielTUI(App):
                 filtered = {k: v for k, v in filtered.items() if k not in self.UNSAFE_TOOLS}
             # reinjeta tools MCP para não perdê-las no reload automático
             if self._mcp_manager is not None:
-                filtered.update(self._mcp_manager.all_tools())
+                filtered.update(filter_mcp_tools(
+                    self._mcp_manager.all_tools(),
+                    self._agent_info.get("allowed_mcp_servers"),
+                ))
                 _mcp_admin_tools = ("mcp_add_server", "mcp_list_servers", "mcp_remove_server")
                 for tn in _mcp_admin_tools:
                     if tn in filtered:
