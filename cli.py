@@ -1092,20 +1092,31 @@ def main():
                 console.print("  [muted]nenhum servidor MCP configurado.[/muted]")
                 console.print("  [muted]use mcp_add_server para adicionar.[/muted]\n")
             else:
+                allowed_servers = agent_info.get("allowed_mcp_servers")  # None = todos
+                def _server_active(name: str) -> bool:
+                    return allowed_servers is None or name in allowed_servers
+
                 tbl = Table(box=None, show_header=False, padding=(0, 1))
                 tbl.add_column(style="ok",    no_wrap=True)
                 tbl.add_column(style="tool",  no_wrap=True)
                 tbl.add_column(style="muted", no_wrap=True)
+                tbl.add_column(style="muted", no_wrap=True)
                 tbl.add_column(style="muted")
                 for s in servers:
                     icon   = "●" if s["connected"] else "○"
-                    status = s["status"]
-                    tbl.add_row(icon, s["name"], f"[{s['type']}]", status)
+                    active = _server_active(s["name"])
+                    agent_badge = (
+                        f"[ok]ativo[/ok]"
+                        if active else
+                        f"[muted]desativado ({agent_info['id']})[/muted]"
+                    )
+                    tbl.add_row(icon, s["name"], f"[{s['type']}]", agent_badge, s["status"])
                     if verbose and s["tools"]:
                         for t in s["tools"]:
-                            tbl.add_row("", f"  • {t}", "", "")
+                            tool_badge = "" if active else "[muted]✗[/muted]"
+                            tbl.add_row("", f"  • {t}", "", tool_badge, "")
                     if s["error"]:
-                        tbl.add_row("", f"  ⚠ {s['error']}", "", "")
+                        tbl.add_row("", f"  ⚠ {s['error']}", "", "", "")
                 console.print(Panel(tbl, title="[tool]MCP servers[/tool]", border_style=CLR_BORDER, padding=(0,1)))
             console.print()
             continue
