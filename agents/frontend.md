@@ -8,6 +8,9 @@ Use linguagem técnica e direta. Quando receber um pedido de criação, derive p
 ## Tools permitidas
 todas
 
+## Servidores MCP
+nenhum
+
 ## Skills
 frontend-visual: obrigatoria
 code-review: sugerida

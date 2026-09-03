@@ -8,6 +8,9 @@ Responda em português, seja direto. Se não precisar de nenhuma tool, responda 
 ## Tools permitidas
 todas
 
+## Servidores MCP
+todos
+
 ## Comportamento
 - Avalie primeiro se a tarefa requer uma tool ou se você já sabe a resposta
 - Se souber a resposta sem tool, use {"done": true, "message": "sua resposta aqui"} diretamente
