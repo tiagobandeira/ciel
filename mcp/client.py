@@ -573,6 +573,33 @@ class SyncMCPClient:
         return cls(MCPClient.sse(url, headers, timeout, max_retries))
 
     def _run(self, coro):
+        """
+        Executa uma coroutine no loop interno.
+
+        Garante compatibilidade quando chamado de uma thread não-principal:
+        - Python < 3.10 (Unix): o SafeChildWatcher padrão não funciona fora da
+          main thread. Trocamos por ThreadedChildWatcher antes de criar subprocessos.
+        - Python 3.10+: ThreadedChildWatcher já é o padrão — nenhum ajuste necessário.
+        - Windows: ProactorEventLoop não usa child watchers.
+        """
+        import sys
+        import threading
+
+        if (
+            sys.platform != "win32"
+            and sys.version_info < (3, 10)
+            and threading.current_thread() is not threading.main_thread()
+        ):
+            try:
+                watcher = asyncio.ThreadedChildWatcher()
+                asyncio.set_child_watcher(watcher)
+                watcher.attach_loop(self._loop)
+            except AttributeError:
+                # Python 3.12+ removeu essas APIs — ThreadedChildWatcher já é padrão
+                pass
+            except Exception:
+                pass
+
         return self._loop.run_until_complete(coro)
 
     def connect(self) -> ServerInfo:
