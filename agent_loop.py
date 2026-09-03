@@ -331,12 +331,15 @@ def run_agent(
                 # reload automático após criação de tool
                 if tool_name in ("create_tool", "create_temp_tool") and "Erro" not in str(feedback):
                     from tools_registry import load_tools, tools_schema
-                    from agent_loader import filter_tools
+                    from agent_loader import filter_tools, filter_mcp_tools
                     all_updated = load_tools()
                     tools.clear()
                     tools.update(filter_tools(all_updated, agent_info.get("allowed_tools")))
                     if mcp_manager is not None:
-                        tools.update(mcp_manager.all_tools())
+                        tools.update(filter_mcp_tools(
+                            mcp_manager.all_tools(),
+                            agent_info.get("allowed_mcp_servers"),
+                        ))
                     schema.clear()
                     schema.extend(tools_schema(tools))
                     messages[0]["content"] = _build_system_prompt(agent_info, schema)
@@ -344,7 +347,11 @@ def run_agent(
 
                 # reload automático após adicionar servidor MCP
                 if tool_name == "mcp_add_server" and mcp_manager is not None and "conectado" in str(feedback):
-                    tools.update(mcp_manager.all_tools())
+                    from agent_loader import filter_mcp_tools
+                    tools.update(filter_mcp_tools(
+                        mcp_manager.all_tools(),
+                        agent_info.get("allowed_mcp_servers"),
+                    ))
                     schema.clear()
                     schema.extend(tools_schema(tools))
                     messages[0]["content"] = _build_system_prompt(agent_info, schema)

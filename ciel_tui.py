@@ -88,7 +88,7 @@ from textual.widgets.option_list import Option
 # ── integração com o loop agêntico ───────────────────────────────────────────
 from agent_loop import run_agent, AgentResult
 from tools_registry import load_tools, tools_schema
-from agent_loader import load_agent, filter_tools, list_agents
+from agent_loader import load_agent, filter_tools, filter_mcp_tools, list_agents
 from history_store import HistoryStore, DB_PATH
 from mcp.manager import MCPManager
 
@@ -1723,7 +1723,10 @@ class CielTUI(App):
 
         # reinjeta tools MCP se o manager já estiver inicializado
         if self._mcp_manager is not None:
-            tools.update(self._mcp_manager.all_tools())
+            tools.update(filter_mcp_tools(
+                self._mcp_manager.all_tools(),
+                self._agent_info.get("allowed_mcp_servers"),
+            ))
             # reinjeta referência do manager nas tools administrativas
             _mcp_admin_tools = ("mcp_add_server", "mcp_list_servers", "mcp_remove_server")
             for tn in _mcp_admin_tools:
@@ -2703,20 +2706,36 @@ class CielTUI(App):
                         "info",
                     ))
                 else:
+                    allowed_servers = self._agent_info.get("allowed_mcp_servers")  # None = todos
+                    def _server_active(name: str) -> bool:
+                        return allowed_servers is None or name in allowed_servers
+
                     t = Text()
                     t.append(f"\n  servidores MCP ({len(servers)})\n",
                              style=f"bold {P['accent']}")
                     for s in servers:
-                        icon  = "●" if s["connected"] else "○"
-                        color = P["green"] if s["connected"] else P["crimson"]
+                        icon   = "●" if s["connected"] else "○"
+                        color  = P["green"] if s["connected"] else P["crimson"]
+                        active = _server_active(s["name"])
                         t.append(f"  {icon} ", style=f"bold {color}")
                         t.append(f"{s['name']}", style=f"bold {P['text']}")
                         t.append(f"  [{s['type']}]", style=f"dim {P['muted']}")
+                        if active:
+                            t.append(f"  ativo", style=f"bold {P['green']}")
+                        else:
+                            t.append(
+                                f"  desativado ({self._agent_info['id']})",
+                                style=f"dim {P['muted']}",
+                            )
                         t.append(f"  {s['status']}\n", style=f"dim {P['silver']}")
                         if verbose and s.get("tools"):
                             for tool_name in s["tools"]:
-                                t.append(f"      • {tool_name}\n",
-                                         style=f"dim {P['cyan']}")
+                                if active:
+                                    t.append(f"      • {tool_name}\n",
+                                             style=f"dim {P['cyan']}")
+                                else:
+                                    t.append(f"      • {tool_name}  ✗\n",
+                                             style=f"dim {P['muted']}")
                         if s.get("error"):
                             t.append(f"    ⚠ {s['error']}\n",
                                      style=f"dim {P['orange']}")
@@ -2816,7 +2835,10 @@ class CielTUI(App):
             filtered = {k: v for k, v in filtered.items() if k not in self.UNSAFE_TOOLS}
         # reinjeta tools MCP para não perdê-las no reload
         if self._mcp_manager is not None:
-            filtered.update(self._mcp_manager.all_tools())
+            filtered.update(filter_mcp_tools(
+                self._mcp_manager.all_tools(),
+                self._agent_info.get("allowed_mcp_servers"),
+            ))
             _mcp_admin_tools = ("mcp_add_server", "mcp_list_servers", "mcp_remove_server")
             for tn in _mcp_admin_tools:
                 if tn in filtered:
@@ -2844,7 +2866,10 @@ class CielTUI(App):
 
         if ok_count:
             # Atualiza tools e schema com o que foi conectado
-            self._tools.update(self._mcp_manager.all_tools())
+            self._tools.update(filter_mcp_tools(
+                self._mcp_manager.all_tools(),
+                self._agent_info.get("allowed_mcp_servers"),
+            ))
             self._schema = tools_schema(self._tools)
 
             # Garante injeção do manager nas tools admin (pode não ter ocorrido
@@ -2983,7 +3008,10 @@ class CielTUI(App):
                 filtered = {k: v for k, v in filtered.items() if k not in self.UNSAFE_TOOLS}
             # reinjeta tools MCP para não perdê-las no reload automático
             if self._mcp_manager is not None:
-                filtered.update(self._mcp_manager.all_tools())
+                filtered.update(filter_mcp_tools(
+                    self._mcp_manager.all_tools(),
+                    self._agent_info.get("allowed_mcp_servers"),
+                ))
                 _mcp_admin_tools = ("mcp_add_server", "mcp_list_servers", "mcp_remove_server")
                 for tn in _mcp_admin_tools:
                     if tn in filtered:
