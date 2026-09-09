@@ -68,6 +68,7 @@ A linha `description:` é usada pela tool `list_skills` para exibir a descriçã
 | `/skill` | lista todas as skills disponíveis em `skills/` |
 | `/skill <nome>` | exibe o conteúdo da skill |
 | `/skill <nome> <prompt>` | executa o prompt usando a skill no modelo secundário |
+| `/analisar <caminho>` | absorve skill externa e a replica como primitivas nativas (Grande Sábio) |
 
 ### Exemplos
 
@@ -82,6 +83,12 @@ A linha `description:` é usada pela tool `list_skills` para exibir a descriçã
 /skill frontend-visual cria um site de planetário interativo com animações e design futurista
 
 /skill django-api cria uma API REST de gerenciamento de tarefas com autenticação JWT
+
+# absorver skill externa do repositório oficial da Anthropic
+/analisar ~/downloads/skills-main/skills/docx
+
+# absorver skill simples em .md
+/analisar ~/downloads/minha-skill.md
 ```
 
 O autocompletar (Tab) sugere os nomes das skills disponíveis após `/skill `.
@@ -261,6 +268,98 @@ Se mode=code e o formato de output não for HTML/CSS/JS padrão,
 especifique aqui as extensões e estrutura do JSON esperado.
 Isso evita que o modelo use o template padrão incorretamente.
 ```
+
+---
+
+## Compatibilidade com o padrão da comunidade
+
+O Ciel suporta absorção de skills externas que seguem o padrão Agent Skills — o formato aberto adotado pela Anthropic e pela comunidade em geral. Isso permite usar skills do repositório oficial ou de terceiros diretamente no Ciel.
+
+### O padrão Agent Skills
+
+O padrão é definido em [agentskills.io](http://agentskills.io) e adotado pelo repositório oficial da Anthropic:
+
+→ **[github.com/anthropics/skills](https://github.com/anthropics/skills)** — skills de referência cobrindo criação de documentos, análise de dados, design, desenvolvimento e automações enterprise.
+
+→ **[Como criar skills personalizadas](https://support.claude.com/pt/articles/12512198-como-criar-habilidades-personalizadas)** — guia oficial da Anthropic com estrutura, campos obrigatórios e boas práticas.
+
+Uma skill no padrão da comunidade é um diretório com pelo menos:
+
+```
+minha-skill/
+  SKILL.md       ← instruções + frontmatter YAML (name, description)
+  script.py      ← opcional: código executável
+  resources/     ← opcional: arquivos de referência
+```
+
+O `SKILL.md` segue este formato mínimo:
+
+```markdown
+---
+name: nome-da-skill
+description: O que a skill faz e quando usá-la (até 200 chars)
+dependencies: pacote1>=1.0, pacote2  # opcional
+---
+
+# Nome da Skill
+
+Instruções, exemplos e convenções que o modelo deve seguir.
+```
+
+### Como o Ciel absorve skills externas — o Grande Sábio
+
+O Ciel não executa skills externas diretamente. Em vez disso, o comando `/analisar` aciona o **Grande Sábio** (modelo secundário), que lê todos os arquivos da skill e a replica como primitivas nativas:
+
+```
+skill externa (SKILL.md + scripts + resources)
+        │
+        ▼
+  /analisar <caminho>
+        │
+        ▼
+  Grande Sábio analisa e classifica
+        │
+        ├── plugin   → gera tools em tools/
+        ├── pipeline → gera tasks em tasks/
+        └── context  → salva instrução em skills/
+        │
+        ▼
+  manifesto skills/<nome>_meta.json
+  registry recarregado automaticamente
+```
+
+A absorção é feita uma vez. Depois disso, as primitivas geradas rodam localmente sem custo adicional de tokens.
+
+### Tipos de absorção
+
+| Tipo | Quando ocorre | O que o Ciel gera |
+|---|---|---|
+| **plugin** | skill traz capacidades independentes (tools/scripts) | tools nativas em `tools/` |
+| **pipeline** | skill define processo sequencial com etapas | tasks em `tasks/` + tools |
+| **context** | skill é instrução pura sem código executável | `.md` em `skills/` para uso via `/skill` |
+
+### O que é compatível e o que não é
+
+Skills do padrão da comunidade que contêm apenas `SKILL.md` com instruções são absorvidas como **context** ou **plugin** de forma transparente. A maioria das skills disponíveis no repositório oficial se encaixa aqui.
+
+Skills com scripts Python ou Node.js são absorvidas como **plugin** — o Grande Sábio analisa o código e gera tools equivalentes no formato Ciel. A lógica é preservada; a interface (`def run(...)`) é adaptada.
+
+O que não é portado automaticamente: dependências de ambiente muito específicas, chamadas a APIs proprietárias sem equivalente local, ou scripts que assumem o runtime do Claude.ai. Nesses casos, o Grande Sábio salva o contexto como instrução residual e informa o que não foi possível replicar.
+
+### Exemplo prático
+
+A skill `docx` do repositório oficial da Anthropic foi absorvida pelo Ciel via `/analisar`:
+
+```bash
+/analisar C:\...\skills-main\skills\docx
+# Grande Sábio analisou 17 arquivos · 87,405 chars
+# → 6 tools geradas: docx_criar, docx_ler, docx_substituir_texto,
+#                    docx_aceitar_mudancas, docx_comentar, docx_converter_pdf
+# → contexto residual: skills/docx.md (notas de limitações)
+# → manifesto: skills/docx_meta.json
+```
+
+Depois da absorção, as tools ficam disponíveis nativamente — o orquestrador local as usa sem precisar chamar o modelo secundário.
 
 ---
 
