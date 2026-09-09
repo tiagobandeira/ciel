@@ -1009,6 +1009,7 @@ def main():
         "/promover ", "/copiar", "/tokens", "/ajuda",
         "/history", "/history salvar", "/history exportar",
         "/mcp", "/mcp -v",
+        "/analisar",
     ]
     pt_style = PtStyle.from_dict({"prompt": "ansibrightcyan bold"})
 
@@ -1016,8 +1017,9 @@ def main():
         tool_names  = list(tools_dict.keys())
         agent_names = [f"/agente {a}" for a in list_agents()]
         task_names   = [f"/task {p.stem}" for p in Path("tasks").glob("*.md")] if Path("tasks").exists() else []
-        skill_names = [f"/skill {p.stem}" for p in Path("skills").glob("*.md")] if Path("skills").exists() else []
-        return WordCompleter(CMDS + tool_names + agent_names + task_names + skill_names, sentence=True)
+        skill_names    = [f"/skill {p.stem}"    for p in Path("skills").glob("*.md")] if Path("skills").exists() else []
+        analisar_names = [f"/analisar {p.stem}" for p in Path("skills").glob("*.md")] if Path("skills").exists() else []
+        return WordCompleter(CMDS + tool_names + agent_names + task_names + skill_names + analisar_names, sentence=True)
 
     completer = make_completer(tools)
 
@@ -1601,6 +1603,7 @@ def main():
                 "  [tool]/skill[/tool]                   lista skills disponíveis\n"
                 "  [tool]/skill [white]<nome>[/white][/tool]            exibe conteúdo da skill\n"
                 "  [tool]/skill [white]<nome> <prompt>[/white][/tool]   executa prompt usando a skill\n"
+                "  [tool]/analisar [white]<caminho>[/white][/tool]       absorve skill externa como primitivas Ciel\n"
                 "  [tool]/limpar-temp[/tool]             remove tools temporárias\n"
                 "  [tool]/promover[/tool]                promove tool temp → permanente\n"
                 "  [tool]/tokens[/tool]                  Mostra tokens gastos na sessão atual\n"
@@ -1648,6 +1651,62 @@ def main():
                 header(args.model, agent_info["name"], tools, safe=args.safe)
                 completer = make_completer(tools)
                 console.print(f"[ok]'{tool_name}' promovida para tools permanentes.[/ok]\n")
+            continue
+
+        # ── /analisar — absorção de skill externa (Grande Sábio) ─────────────
+        if user_input.startswith("/analisar"):
+            partes = user_input.split(None, 1)
+            arg    = partes[1].strip() if len(partes) > 1 else ""
+
+            if not arg:
+                console.print(
+                    "\n  [tool]uso:[/tool] /analisar [white]<caminho>[/white]\n"
+                    "  [muted]exemplos:[/muted]\n"
+                    "    /analisar skills/externa/\n"
+                    "    /analisar ~/downloads/minha-skill.md\n"
+                )
+                continue
+
+            if "skill_import" not in tools:
+                console.print(
+                    "  [err]tool 'skill_import' não encontrada.[/err]\n"
+                    "  [muted]verifique se tools/skill_import.py está no registry.[/muted]\n"
+                )
+                continue
+
+            console.print(
+                f"\n  [user]Grande Sábio[/user] "
+                f"[muted]analisando '{arg}'…[/muted]\n"
+            )
+
+            try:
+                resultado = tools["skill_import"]["fn"](path=arg)
+            except Exception as e:
+                resultado = f"Erro ao executar skill_import: {e}"
+
+            console.print(
+                Panel(
+                    escape(resultado),
+                    title="[user]Grande Sábio — absorção concluída[/user]",
+                    border_style=CLR_USER,
+                    padding=(0, 1),
+                )
+            )
+            console.print()
+
+            # recarrega registry sem limpar a tela — usuário vê o resultado
+            tools, schema = _reload_tools(agent_info, args.safe)
+            _apply_mcp_tools(tools, mcp_manager, agent_info)
+            schema = tools_schema(tools)
+            completer = make_completer(tools)
+
+            # mostra só o delta: quantas tools existem agora
+            n_perm = sum(1 for v in tools.values() if v.get("categoria", "permanente") == "permanente")
+            n_temp = len(tools) - n_perm
+            tools_line = f"{len(tools)} tools"
+            if n_temp:
+                tools_line += f"  ({n_perm} permanentes · {n_temp} temp)"
+            console.print(f"  [muted]registry atualizado · {tools_line}[/muted]\n")
             continue
 
         # Tasks

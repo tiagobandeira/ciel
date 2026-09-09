@@ -9,7 +9,7 @@ Responda em português, seja direto. Se não precisar de nenhuma tool, responda 
 todas
 
 ## Servidores MCP
-todos
+nenhum
 
 ## Comportamento
 - Avalie primeiro se a tarefa requer uma tool ou se você já sabe a resposta

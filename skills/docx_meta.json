@@ -1,0 +1,17 @@
+{
+  "skill_name": "docx",
+  "type": "plugin",
+  "description": "Cria, lê, edita, anota e verifica documentos Word (.docx) — replicação nativa da skill docx da Anthropic.",
+  "entry_task": "",
+  "tasks": [],
+  "tools": [
+    "docx_criar.py",
+    "docx_ler.py",
+    "docx_substituir_texto.py",
+    "docx_aceitar_mudancas.py",
+    "docx_comentar.py",
+    "docx_converter_pdf.py"
+  ],
+  "residual": "skills\\docx.md",
+  "absorbed_at": "20260908_221500"
+}
