@@ -625,6 +625,64 @@ def _apply_mcp_tools(tools: dict, mcp_manager, agent_info: dict) -> None:
     tools.update(mcp_tools)
 
 
+def _connect_agent_mcp(
+    mcp_manager,
+    agent_info: dict,
+    tools: dict,
+    show_spinner: bool = False,
+) -> None:
+    """
+    Conecta apenas os servidores MCP listados no agente ativo e injeta
+    suas tools em `tools` (in-place). Atualiza o schema depois.
+
+    - allowed_mcp_servers == []       → não conecta nada (ex: general)
+    - allowed_mcp_servers == None     → conecta todos (retrocompat.)
+    - allowed_mcp_servers == ["x"]    → conecta só "x"
+
+    Desconecta servidores que não pertencem ao agente antes de conectar,
+    para que uma troca de agente limpe as tools do anterior.
+    """
+    allowed = agent_info.get("allowed_mcp_servers")  # [] | None | [...]
+
+    # agente sem MCP (ex: "nenhum" virou [] no agent_loader) — não faz nada
+    if allowed is not None and len(allowed) == 0:
+        return
+
+    def _do_connect():
+        if allowed is None:
+            # retrocompatibilidade: agente sem restrição conecta tudo
+            return mcp_manager.connect_all()
+        return mcp_manager.connect_servers(allowed)
+
+    if show_spinner:
+        servers_label = ", ".join(allowed) if allowed else "todos"
+        with Live(
+            Spinner("dots", text=f" [muted]conectando MCP: {servers_label}…[/muted]"),
+            console=console,
+            refresh_per_second=10,
+            transient=True,
+        ):
+            mcp_results = _do_connect()
+    else:
+        mcp_results = _do_connect()
+
+    if not mcp_results:
+        return
+
+    ok_count   = sum(1 for v in mcp_results.values() if v)
+    fail_count = len(mcp_results) - ok_count
+
+    if ok_count:
+        _apply_mcp_tools(tools, mcp_manager, agent_info)
+
+    if fail_count:
+        failed_names = [k for k, v in mcp_results.items() if not v]
+        console.print(
+            f"  [warn]MCP: {fail_count} servidor(es) não conectaram: "
+            f"{failed_names}[/warn]\n"
+        )
+
+
 def _handle_auto_tool(
     result: dict,
     user_input: str,
@@ -872,16 +930,9 @@ def run_task_headless(task_path: Path, args) -> int:
     if args.safe:
         tools = {k: v for k, v in tools.items() if k not in UNSAFE_TOOLS}
 
-    # ── MCP ────────────────────────────────────────────────────────────────
+    # ── MCP: conecta só os servidores do agente ───────────────────────────
     mcp_manager = MCPManager()
-    mcp_results = mcp_manager.connect_all()
-    ok_count    = sum(1 for v in mcp_results.values() if v)
-    fail_count  = len(mcp_results) - ok_count
-    if ok_count:
-        _apply_mcp_tools(tools, mcp_manager, agent_info)
-    if fail_count:
-        failed = [k for k, v in mcp_results.items() if not v]
-        log.warning("MCP: %d servidor(es) não conectaram: %s", fail_count, failed)
+    _connect_agent_mcp(mcp_manager, agent_info, tools, show_spinner=False)
 
     _mcp_admin_tools = ("mcp_add_server", "mcp_list_servers", "mcp_remove_server")
     for tn in _mcp_admin_tools:
@@ -971,27 +1022,8 @@ def main():
     if args.safe:
         tools = {k: v for k, v in tools.items() if k not in UNSAFE_TOOLS}
 
-    # ── MCP: conecta servidores persistidos e injeta tools ────────────────────
+    # ── header aparece imediatamente, antes de qualquer conexão MCP ─────────────
     mcp_manager = MCPManager()
-    mcp_results = mcp_manager.connect_all()
-    if mcp_results:
-        ok_count   = sum(1 for v in mcp_results.values() if v)
-        fail_count = len(mcp_results) - ok_count
-        if ok_count:
-            _apply_mcp_tools(tools, mcp_manager, agent_info)
-        if fail_count:
-            failed_names = [k for k, v in mcp_results.items() if not v]
-            console.print(f"  [warn]MCP: {fail_count} servidor(es) não conectaram: {failed_names}[/warn]")
-
-    # injeta referência ao manager nas tools administrativas MCP
-    # cada tool usa _manager = None + _get_manager() como fallback;
-    # aqui sobrescrevemos _manager no escopo global da função para que
-    # todas usem o mesmo manager instanciado acima (com o tools dict ativo)
-    _mcp_admin_tools = ("mcp_add_server", "mcp_list_servers", "mcp_remove_server")
-    for tool_name in _mcp_admin_tools:
-        if tool_name in tools:
-            tools[tool_name]["fn"].__globals__["_manager"] = mcp_manager
-
     schema  = tools_schema(tools)
     history: list[dict] = []
 
@@ -1001,6 +1033,19 @@ def main():
     context_injection: str | None  = None   # resumo de sessão anterior (branch)
 
     header(args.model, agent_info["name"], tools, safe=args.safe)
+
+    # ── MCP: conecta só os servidores do agente ativo, pós-banner ───────────
+    _connect_agent_mcp(mcp_manager, agent_info, tools, show_spinner=True)
+    schema = tools_schema(tools)  # recalcula após possível injeção de tools MCP
+
+    # injeta referência ao manager nas tools administrativas MCP
+    # cada tool usa _manager = None + _get_manager() como fallback;
+    # aqui sobrescrevemos _manager no escopo global da função para que
+    # todas usem o mesmo manager instanciado acima (com o tools dict ativo)
+    _mcp_admin_tools = ("mcp_add_server", "mcp_list_servers", "mcp_remove_server")
+    for tool_name in _mcp_admin_tools:
+        if tool_name in tools:
+            tools[tool_name]["fn"].__globals__["_manager"] = mcp_manager
 
     # ── prompt_toolkit: autocomplete ──────────────────────────────────────────
     CMDS = [
@@ -1205,7 +1250,9 @@ def main():
             agent_info = novo_agent_info
             args.agent = novo_nome
             tools, schema = _reload_tools(agent_info, args.safe)
-            _apply_mcp_tools(tools, mcp_manager, agent_info)
+            # desconecta servidores do agente anterior e conecta os do novo
+            mcp_manager.disconnect_all()
+            _connect_agent_mcp(mcp_manager, agent_info, tools, show_spinner=True)
             schema = tools_schema(tools)
             history.clear()
             current_session_id = None

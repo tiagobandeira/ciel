@@ -199,6 +199,31 @@ class MCPManager:
             results[name] = self._connect_entry(entry)
         return results
 
+    def connect_servers(self, names: list[str]) -> dict[str, bool]:
+        """
+        Conecta apenas os servidores cujo nome está em `names`.
+        Servidores não listados são ignorados (não desconectados).
+        Servidores inexistentes no config são registrados como False.
+        Retorna dict {nome: sucesso}.
+        """
+        results = {}
+        for name in names:
+            entry = self._servers.get(name)
+            if entry is None:
+                logger.warning("Servidor '%s' não encontrado no config — ignorado", name)
+                results[name] = False
+                continue
+            if not entry.enabled:
+                logger.info("Servidor '%s' desabilitado — pulando", name)
+                results[name] = False
+                continue
+            if entry.is_connected:
+                logger.info("Servidor '%s' já conectado — reutilizando", name)
+                results[name] = True
+                continue
+            results[name] = self._connect_entry(entry)
+        return results
+
     def disconnect_all(self) -> None:
         """Desconecta todos os servidores. Chamado no shutdown do Ciel."""
         for entry in self._servers.values():
