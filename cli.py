@@ -40,6 +40,7 @@ from agent_loader import load_agent, filter_tools, filter_mcp_tools, list_agents
 from history_store import HistoryStore, DB_PATH
 from history_ui import SessionPicker, build_context_injection
 from mcp.manager import MCPManager
+from image_input import parse_image_input, parse_image_command, format_image_hint, IMAGE_EXTENSIONS
 
 # ── config ────────────────────────────────────────────────────────────────────
 OLLAMA_URL       = "http://localhost:11434/api/chat"
@@ -1647,6 +1648,8 @@ def main():
                 "  [tool]/source [white]--remover <id>[/white][/tool]     remove uma fonte pelo ID\n"
                 "  [tool]/source [white]--limpar-orfas[/white][/tool]    remove fontes de sessões deletadas\n"
                 "  [tool]/source [white]--global <arquivo>[/white][/tool] indexa como fonte compartilhada\n"
+                "  [tool]/img [white]<arquivo> [texto][/white][/tool]    envia imagem ao modelo (alias: /imagem)\n"
+                "  [tool]/imagem [white]<arquivo> [texto][/white][/tool]  envia imagem ao modelo\n"
                 "  [tool]/skill[/tool]                   lista skills disponíveis\n"
                 "  [tool]/skill [white]<nome>[/white][/tool]            exibe conteúdo da skill\n"
                 "  [tool]/skill [white]<nome> <prompt>[/white][/tool]   executa prompt usando a skill\n"
@@ -1862,6 +1865,65 @@ def main():
 
             continue
 
+        # ── /img e /imagem — envio explícito de imagem ───────────────────────
+        if user_input.lower().startswith("/img ") or user_input.lower().startswith("/imagem "):
+            cmd_result = parse_image_command(user_input)
+
+            if cmd_result is None:
+                console.print(
+                    "  [tool]uso: /img <arquivo.png|jpg|webp…> [texto opcional][/tool]\n"
+                    "  [muted]exemplo: /img screenshot.png o que está errado aqui?[/muted]\n"
+                )
+                continue
+
+            img_texto, img_b64 = cmd_result
+            if img_b64 is None:
+                console.print(
+                    f"  [err]arquivo não encontrado ou não pôde ser lido.[/err]\n"
+                    f"  [muted]extensões suportadas: {', '.join(sorted(IMAGE_EXTENSIONS))}[/muted]\n"
+                )
+                continue
+
+            prompt_final  = img_texto or "Analise esta imagem e descreva o conteúdo relevante."
+            history_label = format_image_hint(user_input.split()[1], img_texto)
+
+            ts = datetime.now().strftime("%a %H:%M")
+            history.append({"role": "user", "content": history_label, "ts": ts})
+            print_history_entry("user", history_label, ts)
+
+            if current_session_id is not None:
+                store.append_turn(current_session_id, "user", history_label, ts)
+
+            result, t_in, t_out = run_agent(
+                prompt_final, tools, schema, args.model, agent_info,
+                history=history[:-1],
+                image_b64=img_b64,
+                context_injection=context_injection,
+                session_id=str(current_session_id) if current_session_id else None,
+                mcp_manager=mcp_manager,
+            )
+            session_tokens_in  += t_in
+            session_tokens_out += t_out
+
+            if isinstance(result, dict) and result.get("status") == "needs_tool":
+                result, tools, schema = _handle_auto_tool(
+                    result, prompt_final, tools, schema,
+                    args.model, agent_info, history, safe=args.safe,
+                )
+                header(args.model, agent_info["name"], tools, safe=args.safe)
+                completer = make_completer(tools)
+
+            ts = datetime.now().strftime("%a %H:%M")
+            history.append({"role": "agent", "content": result, "ts": ts})
+            print_history_entry("agent", result, ts, t_in, t_out)
+            print_turn_separator()
+
+            if current_session_id is not None:
+                store.append_turn(current_session_id, "agent", result, ts)
+
+            context_injection = None
+            continue
+
         if user_input == "/copiar":
             agent_entries = [e for e in history if e["role"] == "agent"]
             if not agent_entries:
@@ -1878,23 +1940,41 @@ def main():
                     )
             continue
 
+        # ── detecta imagem inline no input normal ────────────────────────────
+        inline_texto, inline_img_b64 = parse_image_input(user_input)
+
+        if inline_img_b64 is not None:
+            img_path_token = next(
+                (t.strip('"') for t in user_input.split()
+                 if Path(t.strip('"')).suffix.lower() in IMAGE_EXTENSIONS),
+                user_input.split()[0],
+            )
+            history_content = format_image_hint(img_path_token, inline_texto)
+            run_input       = inline_texto or "Analise esta imagem e descreva o conteúdo relevante."
+            run_img_b64     = inline_img_b64
+        else:
+            history_content = user_input
+            run_input       = user_input
+            run_img_b64     = None
+
         ts = datetime.now().strftime("%a %H:%M")
-        history.append({"role": "user", "content": user_input, "ts": ts})
-        print_history_entry("user", user_input, ts)
+        history.append({"role": "user", "content": history_content, "ts": ts})
+        print_history_entry("user", history_content, ts)
 
         # salva turno do user em tempo real (se sessão já existir)
         if current_session_id is not None:
-            store.append_turn(current_session_id, "user", user_input, ts)
+            store.append_turn(current_session_id, "user", history_content, ts)
             # título automático: primeiras 8 palavras do primeiro user_input
             sess = store.get_session(current_session_id)
             if sess and not sess["title"]:
-                auto_title = " ".join(user_input.split()[:8])
+                auto_title = " ".join(history_content.split()[:8])
                 store.update_title(current_session_id, auto_title)
 
         # history[:-1] exclui o turno atual (já passado via user_input)
         result, t_in, t_out = run_agent(
-            user_input, tools, schema, args.model, agent_info,
+            run_input, tools, schema, args.model, agent_info,
             history=history[:-1],
+            image_b64=run_img_b64,
             context_injection=context_injection,
             session_id=str(current_session_id) if current_session_id else None,
             mcp_manager=mcp_manager,
