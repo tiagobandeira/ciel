@@ -91,6 +91,7 @@ from tools_registry import load_tools, tools_schema
 from agent_loader import load_agent, filter_tools, filter_mcp_tools, list_agents
 from history_store import HistoryStore, DB_PATH
 from mcp.manager import MCPManager
+from image_input import parse_image_input, parse_image_command, format_image_hint, IMAGE_EXTENSIONS
 
 
 # ─── helpers de task (espelhados de cli.py) ───────────────────────────────────
@@ -322,6 +323,9 @@ COMMANDS: list[tuple[str, str]] = [
     ("/promover <nome>",   "promove tool temp a permanente"),
     ("/mcp",               "lista servidores MCP e status"),
     ("/mcp -v",            "lista MCP com tools de cada servidor"),
+    ("/img <arquivo>",     "envia imagem ao modelo"),
+    ("/img <arquivo> <texto>", "envia imagem com prompt"),
+    ("/imagem <arquivo>", "alias de /img"),
     ("/ajuda",             "lista todos os comandos"),
     ("/sair",              "encerra"),
 ]
@@ -2180,14 +2184,30 @@ class CielTUI(App):
         if text.startswith("/"):
             self._cmd(text, log)
         else:
+            # detecta imagem inline no input normal
+            inline_texto, inline_img_b64 = parse_image_input(text)
+            if inline_img_b64 is not None:
+                img_path_token = next(
+                    (t.strip('"') for t in text.split()
+                     if __import__('pathlib').Path(t.strip('"')).suffix.lower() in IMAGE_EXTENSIONS),
+                    text.split()[0],
+                )
+                display_text = format_image_hint(img_path_token, inline_texto)
+                run_input    = inline_texto or "Analise esta imagem e descreva o conteúdo relevante."
+                run_img_b64  = inline_img_b64
+            else:
+                display_text = text
+                run_input    = text
+                run_img_b64  = None
+
             if pill_content is not None:
                 self._log_write(msg_user_pill(pill_content, prompt))
             else:
-                self._log_write(msg_user(text))
+                self._log_write(msg_user(display_text))
 
             # salva turno do usuário no histórico
             ts_str = datetime.now().strftime("%a %H:%M")
-            self._history.append({"role": "user", "content": text, "ts": ts_str})
+            self._history.append({"role": "user", "content": display_text, "ts": ts_str})
 
             # cria sessão no store na primeira mensagem real
             if self._session_id is None and self._store is not None:
@@ -2209,7 +2229,7 @@ class CielTUI(App):
             if self._session_id is not None:
                 self._store.append_turn(self._session_id, "user", text, ts_str)
 
-            self._agent_turn(text, log)
+            self._agent_turn(run_input, log, image_b64=run_img_b64)
 
     # ── modal helpers ─────────────────────────────────────────────────────────
 
@@ -2370,6 +2390,8 @@ class CielTUI(App):
                 ("/promover <nome>",      "promove tool temp a permanente"),
                 ("/mcp",                  "lista servidores MCP e status"),
                 ("/mcp -v",               "lista MCP com tools de cada servidor"),
+                ("/img <arquivo> [texto]", "envia imagem ao modelo"),
+                ("/imagem <arquivo> [texto]", "alias de /img"),
                 ("/sair",                 "encerra"),
             ]
             t = Text()
@@ -2747,6 +2769,23 @@ class CielTUI(App):
                 self._mcp_manager.disconnect_all()
             self.set_timer(0.4, self.exit)
 
+        elif verb in ("/img", "/imagem"):
+            cmd_result = parse_image_command(raw)
+            if cmd_result is None or cmd_result[1] is None:
+                self._log_write(msg_system(
+                    f"uso: /img <arquivo.png|jpg|webp…> [texto]  "
+                    f"· extensões: {', '.join(sorted(IMAGE_EXTENSIONS))}", "warn"))
+            else:
+                img_texto, img_b64 = cmd_result
+                prompt = img_texto or "Analise esta imagem e descreva o conteúdo relevante."
+                label  = format_image_hint(raw.split(None, 2)[1], img_texto)
+                self._log_write(msg_user(label))
+                ts_str = datetime.now().strftime("%a %H:%M")
+                self._history.append({"role": "user", "content": label, "ts": ts_str})
+                if self._session_id is not None:
+                    self._store.append_turn(self._session_id, "user", label, ts_str)
+                self._agent_turn(prompt, log, image_b64=img_b64)
+
         else:
             self._log_write(msg_system(
                 f"comando desconhecido: '{verb}'.  /ajuda lista os comandos.", "warn"))
@@ -2894,7 +2933,7 @@ class CielTUI(App):
             )
 
     @work(thread=True)
-    def _agent_turn(self, user_text: str, log: RichLog, max_steps: int = 6) -> None:
+    def _agent_turn(self, user_text: str, log: RichLog, max_steps: int = 6, image_b64: str | None = None) -> None:
         """Worker real: chama run_agent com callbacks thread-safe."""
         self.call_from_thread(self._set_thinking, True)
 
@@ -2979,6 +3018,7 @@ class CielTUI(App):
             self.current_model,
             self._agent_info,
             history=context,
+            image_b64=image_b64,
             session_id=str(self._session_id) if self._session_id else None,
             mcp_manager=self._mcp_manager,
             on_step=on_step,
