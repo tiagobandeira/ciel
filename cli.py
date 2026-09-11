@@ -1056,6 +1056,7 @@ def main():
         "/history", "/history salvar", "/history exportar",
         "/mcp", "/mcp -v",
         "/analisar",
+        "/img", "/imagem",
     ]
     pt_style = PtStyle.from_dict({"prompt": "ansibrightcyan bold"})
 
