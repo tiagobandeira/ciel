@@ -1,6 +1,7 @@
 """Adiciona um comentário a um documento .docx, ancorado num trecho de texto."""
 
 REQUIREMENTS = ['defusedxml']
+EXTRA = True
 
 import shutil
 import zipfile

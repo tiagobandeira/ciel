@@ -1,5 +1,7 @@
 """Extrai o texto de um documento .docx como markdown estruturado."""
 
+EXTRA = True
+
 import zipfile
 from xml.etree import ElementTree as ET
 

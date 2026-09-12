@@ -2,6 +2,8 @@
 Compila arquivos .tex para PDF, garantindo que todos os arquivos de saída fiquem na mesma pasta do arquivo original.
 """
 
+EXTRA = True
+
 import subprocess
 from pathlib import Path
 

@@ -1,6 +1,7 @@
 """Cria um documento Word (.docx) a partir de texto com marcação simples."""
 
 REQUIREMENTS = ['python-docx']
+EXTRA = True
 
 import re
 

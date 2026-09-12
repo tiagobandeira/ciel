@@ -1,6 +1,7 @@
 """Lê o conteúdo de texto de um arquivo PDF usando a biblioteca PyPDF2 com limite opcional de caracteres."""
 
 REQUIREMENTS = ["PyPDF2"]
+EXTRA = True
 
 from PyPDF2 import PdfReader
 
