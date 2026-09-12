@@ -7,6 +7,8 @@ pymupdf>=1.23
 pyperclip>=1.8
 prompt_toolkit>=3.0
 ddgs>=9.14.4
+beautifulsoup4>=4.15.0
+lxml>=6.1.1
 
 # ── opcional: interface TUI ───────────────────────────────────────────────────
 # Necessário apenas para: python ciel.py --tui
