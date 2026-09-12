@@ -41,6 +41,7 @@ from history_store import HistoryStore, DB_PATH
 from history_ui import SessionPicker, build_context_injection
 from mcp.manager import MCPManager
 from image_input import parse_image_input, parse_image_command, format_image_hint, IMAGE_EXTENSIONS
+from environment import check_environment
 
 # ── config ────────────────────────────────────────────────────────────────────
 OLLAMA_URL       = "http://localhost:11434/api/chat"
@@ -484,10 +485,13 @@ def run_agent(
             raw, t_in, t_out = call_model_with_spinner(messages, model)
             total_in  += t_in
             total_out += t_out
-        except requests.RequestException as e:
-            console.print(f"  [{CLR_ERR}]erro de conexão: {e}[/{CLR_ERR}]")
-            # erro de conexão
-            return f"Erro de conexão com Ollama: {e}", total_in, total_out
+        except requests.RequestException:
+            console.print(
+                f"\n  [{CLR_ERR}]✗ Ollama não está respondendo[/{CLR_ERR}]\n"
+                f"  [muted]O serviço pode ter sido encerrado durante a execução.\n"
+                f"  Reinicie o Ollama e tente novamente.[/muted]\n"
+            )
+            return "Ollama não está respondendo. Reinicie o serviço e tente novamente.", total_in, total_out
 
         parsed = parse_response(raw)
 
@@ -988,6 +992,14 @@ def main():
     session_tokens_in  = 0
     session_tokens_out = 0
 
+    # ── verificação de ambiente ───────────────────────────────────────────
+    # Roda antes de tudo. Checks bloqueantes (Ollama) encerram com sys.exit.
+    # Avisos informativos (modelo secundário) são guardados e exibidos após o header.
+    # Pulado em --list-agents (não precisa do Ollama) e --task headless (tem seu próprio tratamento).
+    _env_warnings: list[str] = []
+    if not args.list_agents and not args.task:
+        _env_warnings = check_environment(model=args.model)
+
     if args.list_agents:
         print_agents_list()
         sys.exit(0)
@@ -1034,6 +1046,12 @@ def main():
     context_injection: str | None  = None   # resumo de sessão anterior (branch)
 
     header(args.model, agent_info["name"], tools, safe=args.safe)
+
+    # ── avisos de ambiente (modelo secundário não configurado, etc.) ──────────
+    for warning in _env_warnings:
+        console.print(f"  {warning}")
+    if _env_warnings:
+        console.print()
 
     # ── MCP: conecta só os servidores do agente ativo, pós-banner ───────────
     _connect_agent_mcp(mcp_manager, agent_info, tools, show_spinner=True)
