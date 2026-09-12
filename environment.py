@@ -81,37 +81,32 @@ def _check_secondary_config() -> list[str]:
     """
     Verifica configuração do modelo secundário.
     Retorna lista de avisos (vazia = tudo ok ou não configurado intencionalmente).
+    Cada aviso é uma string de linha única no formato do tema do Ciel.
     """
-    warnings = []
-
     # env var tem prioridade — se definida, tudo certo
     if os.environ.get(ENV_KEY_NAME, "").strip():
         return []
 
     if not CONFIG_PATH.exists():
         hint = f"cp {CONFIG_EXAMPLE} {CONFIG_PATH}" if CONFIG_EXAMPLE.exists() else f"cp ciel_config.example.json {CONFIG_PATH}"
-        warnings.append(
-            f"[warn]~[/warn] modelo secundário não configurado [muted](opcional)[/muted]\n"
-            f"  [muted]para ativar: {hint}[/muted]"
-        )
-        return warnings
+        return [
+            f"[warn]~[/warn]  [muted]sem modelo secundário  ·  /model[/muted]"
+        ]
 
     # arquivo existe — verifica se a chave foi preenchida
     try:
-        config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        config  = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         api_key = config.get("api_key", "").strip()
         if not api_key or api_key == PLACEHOLDER_KEY:
-            warnings.append(
-                f"[warn]~[/warn] [muted]{CONFIG_PATH}[/muted] encontrado mas api_key não configurada [muted](opcional)[/muted]\n"
-                f"  [muted]edite o arquivo ou defina {ENV_KEY_NAME} no ambiente[/muted]"
-            )
+            return [
+                f"[warn]~[/warn]  [muted]{CONFIG_PATH} sem api_key  ·  /model[/muted]"
+            ]
     except (json.JSONDecodeError, OSError):
-        warnings.append(
-            f"[warn]~[/warn] [muted]{CONFIG_PATH}[/muted] não pôde ser lido\n"
-            f"  [muted]verifique se o arquivo é um JSON válido[/muted]"
-        )
+        return [
+            f"[warn]~[/warn]  [muted]{CONFIG_PATH} inválido  ·  verifique se o arquivo é um JSON válido[/muted]"
+        ]
 
-    return warnings
+    return []
 
 
 # ── função principal ──────────────────────────────────────────────────────────
@@ -127,6 +122,7 @@ def check_environment(model: str = "gemma4:cloud") -> list[str]:
 
     Retorna lista de strings de aviso (modelo secundário) para
     o chamador exibir após o header principal. Lista vazia = sem avisos.
+    Cada string é uma linha única — sem quebras internas.
     """
 
     # ── 1. Ollama acessível? ──────────────────────────────────────────────────
@@ -170,7 +166,7 @@ def check_environment(model: str = "gemma4:cloud") -> list[str]:
             f"  Disponíveis: [muted]{models_fmt}[/muted]\n"
             "\n"
             f"  Baixe com:  [muted]ollama pull {model}[/muted]\n"
-            f"  Ou use:     [muted]python cli.py --model {available_models[0]}[/muted]",
+            f"  Ou use:     [muted]python ciel.py --model {available_models[0]}[/muted]",
             border_style="err",
             padding=(0, 2),
         ))

@@ -1,0 +1,11 @@
+# Tools opcionais — instale se for usar manipulação de documentos e PDF
+#
+# Para instalar tudo de uma vez:
+#   pip install -r requirements-extras.txt
+#
+# Ou instale só o que precisar:
+
+python-docx     # docx_criar, docx_substituir_texto
+defusedxml      # docx_aceitar_mudancas, docx_comentar
+PyPDF2          # read_pdf (leitura direta de PDF sem indexação)
+psutil          # get_hardware_info (monitoramento de CPU/RAM)

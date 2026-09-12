@@ -11,6 +11,7 @@ Uso:
 """
 
 import sys
+import os
 import json
 import base64
 import re
@@ -35,7 +36,7 @@ from prompt_toolkit import prompt as pt_prompt
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.styles import Style as PtStyle
 
-from tools_registry import load_tools, tools_schema
+from tools_registry import load_tools, tools_schema, get_missing_optional_tools, get_broken_tools
 from agent_loader import load_agent, filter_tools, filter_mcp_tools, list_agents
 from history_store import HistoryStore, DB_PATH
 from history_ui import SessionPicker, build_context_injection
@@ -53,6 +54,7 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 
 # Tools que executam código arbitrário — bloqueadas com --safe
 UNSAFE_TOOLS = {"run_script"}
+
 
 # ── paleta ────────────────────────────────────────────────────────────────────
 # Inspirada nos personagens Ciel e Rimuru (Tensura)
@@ -1035,6 +1037,25 @@ def main():
     if args.safe:
         tools = {k: v for k, v in tools.items() if k not in UNSAFE_TOOLS}
 
+    # ── aviso de tools opcionais sem dependência (EXTRA = True) ──────────────
+    _missing = get_missing_optional_tools()
+    if _missing:
+        _count = len(_missing)
+        _env_warnings.append(
+            f"[warn]~[/warn]  [muted]tools opcionais: {_count} não instalada{'s' if _count > 1 else ''}"
+            f"  ·  /tools-extras[/muted]"
+        )
+
+    # ── erro real: tools core com ImportError inesperado ─────────────────────
+    _broken = get_broken_tools()
+    if _broken:
+        _bnames = "  ·  ".join(f"{t} ({m})" for t, m in _broken[:3])
+        _bextra = f"  (e {len(_broken) - 3} mais)" if len(_broken) > 3 else ""
+        _env_warnings.append(
+            f"[err]✗[/err]  [muted]deps ausentes em tools core: {_bnames}{_bextra}"
+            f"  ·  verifique requirements.txt[/muted]"
+        )
+
     # ── header aparece imediatamente, antes de qualquer conexão MCP ─────────────
     mcp_manager = MCPManager()
     schema  = tools_schema(tools)
@@ -1075,6 +1096,7 @@ def main():
         "/mcp", "/mcp -v",
         "/analisar",
         "/img", "/imagem",
+        "/model", "/tools-extras",
     ]
     pt_style = PtStyle.from_dict({"prompt": "ansibrightcyan bold"})
 
@@ -1150,6 +1172,88 @@ def main():
                 tbl.add_row(f"⚙ {name}", cat_label, desc)
             console.print(Panel(tbl, title="[tool]tools[/tool]", border_style=CLR_BORDER, padding=(0,1)))
             console.print()
+            continue
+
+        if user_input == "/model":
+            # ── status do modelo secundário ───────────────────────────────────
+            _cfg_path = Path("ciel_config.json")
+            _sec_status = "[muted]não configurado[/muted]"
+            _show_setup = True
+            if os.environ.get("SECONDARY_MODEL_API_KEY", "").strip():
+                _sec_status = "[ok]configurado via variável de ambiente[/ok]"
+                _show_setup = False
+            elif _cfg_path.exists():
+                try:
+                    _cfg_data = json.loads(_cfg_path.read_text(encoding="utf-8"))
+                    _sec_key  = _cfg_data.get("api_key", "").strip()
+                    _sec_mod  = _cfg_data.get("model", "")
+                    _sec_url  = _cfg_data.get("base_url", "")
+                    if _sec_key and _sec_key != "SUA_CHAVE_AQUI":
+                        _sec_status = f"[ok]{_sec_mod}[/ok]  [muted]{_sec_url}[/muted]"
+                        _show_setup = False
+                    else:
+                        _sec_status = f"[warn]api_key não preenchida[/warn]  [muted](edite ciel_config.json)[/muted]"
+                except Exception:
+                    _sec_status = "[warn]ciel_config.json inválido[/warn]"
+
+            _setup_block = (
+                "\n"
+                "  [muted]para configurar o modelo secundário:[/muted]\n"
+                "  [muted]1.[/muted]  cp ciel_config.example.json ciel_config.json\n"
+                "  [muted]2.[/muted]  edite com seu provider e api_key\n"
+                "  [muted]   providers gratuitos: NVIDIA Build · OpenRouter[/muted]\n"
+                "  [muted]   → docs/secondary-model.md[/muted]"
+            ) if _show_setup else ""
+
+            console.print(Panel(
+                f"  [muted]local      [/muted]  [tool]{args.model}[/tool]\n"
+                f"  [muted]secundário [/muted]  {_sec_status}"
+                f"{_setup_block}\n"
+                "\n"
+                "  [muted]seleção interativa de modelos  →  em breve[/muted]",
+                title="[tool]modelo[/tool]",
+                border_style=CLR_BORDER,
+                padding=(0, 1),
+                expand=False,
+            ))
+            console.print()
+            continue
+
+        if user_input == "/tools-extras":
+            # tools extras carregadas com sucesso (EXTRA = True no módulo)
+            _loaded_extras = {
+                name: meta for name, meta in tools.items()
+                if meta.get("extra", False)
+            }
+            # tools extras que falharam por dep ausente
+            _missing_extras = {name: mod for name, mod in get_missing_optional_tools()}
+
+            tbl = Table(box=None, show_header=False, padding=(0, 1))
+            tbl.add_column(no_wrap=True)
+            tbl.add_column(style="tool", no_wrap=True)
+            tbl.add_column(style="muted")
+
+            # exibe carregadas primeiro, depois as ausentes
+            for _tname, _tmeta in sorted(_loaded_extras.items()):
+                _desc = _tmeta["description"].split("\n")[0][:52]
+                _reqs = "  ·  ".join(_tmeta.get("requirements", []))
+                _reqs_str = f"  [muted]({_reqs})[/muted]" if _reqs else ""
+                tbl.add_row("[ok]✓[/ok]", _tname, f"{_desc}{_reqs_str}")
+
+            for _tname, _tmod in sorted(_missing_extras.items()):
+                tbl.add_row("[muted]○[/muted]", _tname, f"falta: {_tmod}")
+
+            console.print(Panel(
+                tbl,
+                title="[tool]tools opcionais[/tool]",
+                border_style=CLR_BORDER,
+                padding=(0, 1),
+                expand=False,
+            ))
+            console.print(
+                f"  [muted]para instalar:[/muted]  pip install -r requirements-extras.txt\n"
+                f"  [muted]ativar / desativar tools  →  em breve[/muted]\n"
+            )
             continue
 
         if user_input in ("/mcp", "/mcp -v"):
@@ -1681,6 +1785,8 @@ def main():
                 "  [tool]/history [white]<agente>[/white][/tool]      filtra sessões por agente\n"
                 "  [tool]/history salvar[/tool]          salva/atualiza sessão atual\n"
                 "  [tool]/history exportar[/tool]        exporta sessão atual como .md\n"
+                "  [tool]/model[/tool]                   exibe e configura modelos local e secundário\n"
+                "  [tool]/tools-extras[/tool]            tools opcionais e exemplos disponíveis\n"
                 "  [tool]/ajuda[/tool]                   este menu",
                 title="[white]comandos[/white]",
                 border_style=CLR_BORDER,
