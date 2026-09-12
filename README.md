@@ -63,6 +63,7 @@ ollama list
 
 - **Ollama não acessível** ou **modelo não encontrado** → erro bloqueante com instruções para resolver
 - **Modelo secundário não configurado** → aviso informativo abaixo do banner (não bloqueia o uso)
+- **Tools opcionais sem dependência instalada** → aviso com contagem e link para `/tools-extras`
 
 ---
 
@@ -140,6 +141,8 @@ python server.py                           # versão server local
 | `/img <arquivo> [texto]` | envia imagem ao modelo (alias: `/imagem`) |
 | `/tokens` | mostra tokens gastos na sessão atual |
 | `/copiar` | copia última resposta do agente |
+| `/model` | exibe e configura modelos local e secundário |
+| `/tools-extras` | tools opcionais disponíveis e status de instalação |
 | `/mcp` | lista servidores MCP conectados e status |
 | `/mcp -v` | lista com todas as tools de cada servidor |
 | `/promover <tool>` | promove tool temporária para permanente |
