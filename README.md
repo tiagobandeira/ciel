@@ -76,13 +76,21 @@ venv\Scripts\Activate.ps1        # PowerShell
 source venv/bin/activate
 
 # 2. Instale as dependências
-pip install requests rich pymupdf
+pip install -r requirements.txt
 
 # 3. Ollama rodando em localhost:11434
 ```
 
-> Usar `venv` é especialmente importante neste projeto: o agente pode criar tools dinamicamente
-> e instalar pacotes via pip. Sem isolamento, isso afeta seu Python global.
+> O ambiente virtual isola as dependências do Ciel do seu Python global.  
+> É especialmente importante aqui porque o agente pode instalar pacotes. 
+> Dependências instaladas: `requests` `rich` `pymupdf` `pyperclip` `prompt_toolkit`
+>
+> **TUI (opcional):** se quiser usar a interface gráfica no terminal, instale também o `textual`:
+> ```bash
+> pip install textual
+> ```
+> Ou descomente a última linha do `requirements.txt` e rode `pip install -r requirements.txt` novamente.
+
 
 ## Uso
 

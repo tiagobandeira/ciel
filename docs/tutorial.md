@@ -204,11 +204,18 @@ source venv/bin/activate
 Com o venv ativo, instale as dependências:
 
 ```bash
-pip install requests rich pymupdf
+pip install -r requirements.txt
 ```
 
 > O ambiente virtual isola as dependências do Ciel do seu Python global.  
-> É especialmente importante aqui porque o agente pode instalar pacotes adicionais ao criar novas ferramentas.
+> É especialmente importante aqui porque o agente pode instalar pacotes. 
+> Dependências instaladas: `requests` `rich` `pymupdf` `pyperclip` `prompt_toolkit`
+>
+> **TUI (opcional):** se quiser usar a interface gráfica no terminal, instale também o `textual`:
+> ```bash
+> pip install textual
+> ```
+> Ou descomente a última linha do `requirements.txt` e rode `pip install -r requirements.txt` novamente.
 
 ---
 
