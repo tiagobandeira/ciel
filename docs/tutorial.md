@@ -121,7 +121,7 @@ ollama list
 
 Para usar esse modelo no Ciel:
 ```bash
-python cli.py --model gemma4:e2b-it-qat
+python ciel.py --model gemma4:e2b-it-qat
 ```
 
 > Modelos locais não precisam de internet após o download e não têm limite de uso.  
@@ -148,7 +148,7 @@ O limite de requisições gratuitas se renova periodicamente e é generoso para 
 
 Para usar no Ciel (já é o padrão):
 ```bash
-python cli.py
+python ciel.py
 ```
 
 </details>
@@ -224,7 +224,7 @@ pip install -r requirements.txt
 Com o Ollama rodando e o venv ativo, inicie o Ciel:
 
 ```bash
-python cli.py
+python ciel.py
 ```
 
 Você verá o banner do Ciel e o prompt de entrada. Digite qualquer mensagem e pressione Enter.
@@ -233,16 +233,16 @@ Você verá o banner do Ciel e o prompt de entrada. Digite qualquer mensagem e p
 
 ```bash
 # Usar um modelo local específico
-python cli.py --model gemma4:e2b-it-qat
+python ciel.py --model gemma4:e2b-it-qat
 
 # Modo seguro (sem execução de scripts)
-python cli.py --safe
+python ciel.py --safe
 
 # Usar uma persona específica
-python cli.py --agent dev_helper
+python ciel.py --agent dev_helper
 
 # Ver todos os agentes disponíveis
-python cli.py --list-agents
+python ciel.py --list-agents
 ```
 
 ---
