@@ -4,6 +4,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+EXTRA = True
+
 
 def run(caminho: str, diretorio_saida: str = '') -> str:
     """

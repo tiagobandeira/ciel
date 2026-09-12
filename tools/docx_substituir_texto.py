@@ -1,6 +1,7 @@
 """Substitui texto dentro de um .docx existente, mesmo com trecho fragmentado entre runs."""
 
 REQUIREMENTS = ['defusedxml']
+EXTRA = True
 
 import shutil
 import zipfile

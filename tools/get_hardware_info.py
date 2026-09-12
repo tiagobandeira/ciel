@@ -1,8 +1,13 @@
 """
 Tool para coletar informações básicas de hardware e sistema operacional.
 """
+
+REQUIREMENTS = ['psutil']
+EXTRA = True
+
 import platform
 import psutil
+
 
 def run():
     try:

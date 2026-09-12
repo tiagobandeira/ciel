@@ -2,6 +2,11 @@
 Autodiscover de tools: varre /tools e /tools/temp, importa cada módulo,
 lê o docstring como descrição e run() como função.
 Tools em /tools/temp são marcadas com categoria 'temp'.
+
+Variáveis de módulo reconhecidas em cada tool:
+  REQUIREMENTS = ["pkg"]   deps pip necessárias (usadas pelo orquestrador)
+  EXTRA = True             tool opcional — ImportError é esperado e vira
+                           sugestão de instalação, não erro
 """
 
 import re
@@ -11,6 +16,12 @@ from pathlib import Path
 
 TOOLS_DIR      = Path(__file__).parent / "tools"
 TOOLS_TEMP_DIR = TOOLS_DIR / "temp"
+
+# tools que falharam por ImportError — populado por load_tools()
+# cada entrada: (nome_da_tool, módulo_ausente, is_extra)
+# is_extra=True  → EXTRA = True no módulo — ausência esperada, vira sugestão
+# is_extra=False → tool core sem a flag — erro real, exibido separado
+_missing_optional: list[tuple[str, str, bool]] = []
 
 
 def _extract_params(fn) -> list[dict]:
@@ -70,6 +81,22 @@ def _extract_params(fn) -> list[dict]:
     return params
 
 
+def _read_extra_from_source(path: Path) -> bool:
+    """
+    Lê EXTRA = True do source sem importar o módulo.
+    Usado quando o import falha antes de EXTRA ser definida.
+    Heurística simples: procura 'EXTRA = True' nas primeiras 30 linhas.
+    """
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines()[:30]:
+            stripped = line.strip()
+            if stripped.startswith("EXTRA") and "True" in stripped:
+                return True
+    except OSError:
+        pass
+    return False
+
+
 def _load_from_dir(directory: Path, categoria: str) -> dict:
     """Carrega todas as tools de um diretório."""
     tools = {}
@@ -81,21 +108,36 @@ def _load_from_dir(directory: Path, categoria: str) -> dict:
             continue
         spec = importlib.util.spec_from_file_location(path.stem, path)
         mod  = importlib.util.module_from_spec(spec)
+        # lê variáveis de módulo antes de executar — precisamos de EXTRA
+        # mesmo quando o import falha, então usamos uma leitura parcial via ast
+        # para não duplicar lógica, lemos EXTRA do módulo já carregado abaixo
         try:
             spec.loader.exec_module(mod)
+        except ImportError as e:
+            missing_mod = str(e).removeprefix("No module named '").rstrip("'")
+            # EXTRA pode não estar acessível se o import falhou antes de defini-la;
+            # tentamos ler do source com uma heurística simples antes de desistir
+            is_extra = _read_extra_from_source(path)
+            _missing_optional.append((path.stem, missing_mod, is_extra))
+            if not is_extra:
+                # tool core com ImportError inesperado — avisa imediatamente
+                print(f"[registry] erro de dependência em {path.name}: {missing_mod}")
+            continue
         except Exception as e:
-            # tool com erro de importação não quebra o registry
+            # erro real (sintaxe, atributo, etc.) — sempre visível
             print(f"[registry] erro ao carregar {path.name}: {e}")
             continue
 
         if hasattr(mod, "run"):
             params = _extract_params(mod.run)
             tools[path.stem] = {
-                "fn":          mod.run,
-                "description": (mod.__doc__ or "sem descrição").strip(),
-                "parameters":  params,
-                "categoria":   categoria,
-                "path":        path,
+                "fn":           mod.run,
+                "description":  (mod.__doc__ or "sem descrição").strip(),
+                "parameters":   params,
+                "categoria":    categoria,
+                "path":         path,
+                "extra":        bool(getattr(mod, "EXTRA", False)),
+                "requirements": list(getattr(mod, "REQUIREMENTS", [])),
             }
 
     return tools
@@ -103,10 +145,31 @@ def _load_from_dir(directory: Path, categoria: str) -> dict:
 
 def load_tools() -> dict:
     """Carrega tools permanentes e temporárias."""
+    global _missing_optional
+    _missing_optional = []  # reseta a cada carregamento
+
     tools = {}
     tools.update(_load_from_dir(TOOLS_DIR,      categoria="permanente"))
     tools.update(_load_from_dir(TOOLS_TEMP_DIR, categoria="temp"))
     return tools
+
+
+def get_missing_optional_tools() -> list[tuple[str, str]]:
+    """
+    Retorna tools opcionais (EXTRA = True) que não carregaram por falta de
+    dependência. Cada entrada é uma tupla (nome_da_tool, módulo_ausente).
+    Usado pelo /tools-extras para exibir sugestões de instalação.
+    """
+    return [(name, mod) for name, mod, is_extra in _missing_optional if is_extra]
+
+
+def get_broken_tools() -> list[tuple[str, str]]:
+    """
+    Retorna tools core (sem EXTRA = True) que falharam por ImportError.
+    Cada entrada é uma tupla (nome_da_tool, módulo_ausente).
+    Indica problema real — dep ausente que deveria estar no requirements.txt.
+    """
+    return [(name, mod) for name, mod, is_extra in _missing_optional if not is_extra]
 
 
 def tools_schema(tools: dict) -> list[dict]:

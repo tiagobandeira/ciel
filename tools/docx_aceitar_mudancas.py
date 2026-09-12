@@ -1,6 +1,7 @@
 """Aceita todas as alterações rastreadas (tracked changes) de um .docx, gerando versão limpa."""
 
 REQUIREMENTS = ['defusedxml']
+EXTRA = True
 
 import shutil
 import zipfile
