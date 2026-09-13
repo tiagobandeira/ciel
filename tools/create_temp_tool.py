@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-TOOLS_TEMP_DIR = Path(__file__).parent / "tools" / "temp"
+TOOLS_TEMP_DIR = Path(__file__).parent / "temp"
 TEMP_LOG       = TOOLS_TEMP_DIR / "temp-log.md"
 
 
@@ -62,6 +62,41 @@ def _sanitize_code(code: str) -> str:
     return code
 
 
+def _validate(code: str) -> tuple[bool, str]:
+    """
+    Valida estrutura do código via AST, sem executar.
+    Espelha a validação do create_tool para erros com número de linha,
+    dando ao modelo contexto suficiente pra corrigir na próxima tentativa.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        return False, f"Erro de sintaxe na linha {e.lineno}: {e.msg}"
+
+    if not tree.body:
+        return False, "Arquivo vazio."
+
+    first = tree.body[0]
+    has_module_docstring = (
+        isinstance(first, ast.Expr)
+        and isinstance(first.value, ast.Constant)
+        and isinstance(first.value.value, str)
+    )
+    if not has_module_docstring:
+        return False, (
+            "A tool deve começar com um módulo-docstring. "
+            'Exemplo: """Descreve o que a tool faz."""'
+        )
+
+    top_level_funcs = {
+        node.name for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    if "run" not in top_level_funcs:
+        return False, "A tool deve definir uma função run() no nível do módulo."
+
+    return True, ""
+
+
 def _try_import_and_fix(path: Path) -> str | None:
     """
     Tenta importar o módulo. Se falhar com ModuleNotFoundError,
@@ -83,7 +118,7 @@ def _try_import_and_fix(path: Path) -> str | None:
             if result.returncode != 0:
                 return f"Não foi possível instalar '{pkg}': {result.stderr[:150]}"
         except SyntaxError as e:
-            return f"Erro de sintaxe: {e}"
+            return f"Erro de sintaxe na linha {e.lineno}: {e.msg}"
         except Exception as e:
             return f"Erro ao importar: {e}"
     return "Muitas dependências faltando — verifique o código gerado."
@@ -100,8 +135,14 @@ def run(tool_name: str, tool_code: str) -> str:
     TOOLS_TEMP_DIR.mkdir(parents=True, exist_ok=True)
     tool_path = TOOLS_TEMP_DIR / f"{tool_name}.py"
 
-    # sanitiza código antes de salvar — corrige escaping residual do modelo
+    # sanitiza código antes de qualquer validação
     tool_code = _sanitize_code(tool_code)
+
+    # valida estrutura via AST antes de salvar — igual ao create_tool,
+    # devolve número de linha pro modelo corrigir na próxima tentativa
+    ok, error_msg = _validate(tool_code)
+    if not ok:
+        return f"Erro de validação — tool não criada.\n{error_msg}"
 
     try:
         tool_path.write_text(tool_code, encoding="utf-8")
