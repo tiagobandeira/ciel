@@ -105,11 +105,12 @@ python ciel.py --tui                       # força TUI (requer Textual)
 python ciel.py --agent dev_helper          # agente específico
 python ciel.py --model gemma4:e2b-it-qat   # modelo local
 python ciel.py --safe                      # sem tools de execução arbitrária
+python ciel.py --auto                      # pula confirmação de create_tool (confia na sessão inteira)
 python ciel.py --list-agents               # lista personas disponíveis
 python server.py                           # versão server local
 ```
 
-> Todas as flags (`--agent`, `--model`, `--safe`, `--list-agents`) funcionam tanto no modo CLI quanto TUI.  
+> Todas as flags (`--agent`, `--model`, `--safe`, `--auto`, `--list-agents`) funcionam tanto no modo CLI quanto TUI.  
 > `--task` (modo headless) é exclusivo do modo CLI — use `python ciel.py --cli --task tasks/minha_task.md`.
 
 ---
@@ -395,12 +396,26 @@ python ciel.py --safe
 
 Recomendado ao usar modelos menos confiáveis, modelos pequenos propensos a alucinações, ou ao expor a CLI a inputs externos.
 
-**`create_tool`** — o agente pode criar novas tools dinamicamente e, dependendo do modelo, pode tentar instalar pacotes via pip. Por isso o uso de `venv` é essencial: qualquer instalação fica isolada do seu Python global e pode ser descartada junto com o ambiente. Tools criadas dinamicamente ficam em `tools/temp/` e não são versionadas pelo git.
+**`create_tool` / `create_temp_tool`** — o agente pode criar novas tools dinamicamente e, dependendo do modelo, pode tentar instalar pacotes via pip. Por isso o uso de `venv` é essencial: qualquer instalação fica isolada do seu Python global e pode ser descartada junto com o ambiente. Tools criadas dinamicamente ficam em `tools/temp/` e não são versionadas pelo git.
+
+Antes de executar qualquer criação de tool, a CLI exibe o código gerado com syntax highlight e pede confirmação explícita:
+
+```
+[s] sim   [n] nao   [a] auto (confia pro resto da sessão)
+```
+
+Escolher `a` (auto) dispensa confirmações para o resto da sessão. A flag `--auto` faz o mesmo ao iniciar:
+
+```bash
+python ciel.py --auto   # pula confirmação de create_tool na sessão inteira
+```
+
+Em modo headless (`--task`), criação de tools é recusada automaticamente a menos que `--auto` seja passado explicitamente.
 
 **Limitações:**
 
 - Modelos locais pequenos (< 8B) podem falhar em raciocínio complexo — considere configurar um modelo secundário.
-- `--safe` remove `run_script`, mas não `create_tool`. Para máxima restrição, edite `UNSAFE_TOOLS` em `cli.py`.
+- `--safe` remove `run_script`, `create_tool` e `create_temp_tool` do schema — o modelo nunca vê essas tools. As definições de tools bloqueadas estão centralizadas em `tool_dispatch.py`.
 - A janela de contexto é otimizada por design: sessões típicas ficam em torno de 20k–30k tokens totais.
 
 ---
@@ -425,6 +440,7 @@ Ciel/
 ├── ciel.py                               ← entry point unificado (TUI/CLI)
 ├── cli.py                                ← CLI interativa
 ├── ciel_tui.py                           ← TUI (requer Textual)
+├── tool_dispatch.py                      ← fonte única de UNSAFE_TOOLS e lógica de confirmação
 ├── agent_loop.py
 ├── server.py
 ├── agent_loader.py
