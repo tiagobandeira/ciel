@@ -43,6 +43,7 @@ from history_ui import SessionPicker, build_context_injection
 from mcp.manager import MCPManager
 from image_input import parse_image_input, parse_image_command, format_image_hint, IMAGE_EXTENSIONS
 from environment import check_environment
+from tool_dispatch import filter_unsafe, needs_confirmation
 
 # ── config ────────────────────────────────────────────────────────────────────
 OLLAMA_URL       = "http://localhost:11434/api/chat"
@@ -52,8 +53,6 @@ MAX_STEPS        = 6
 MAX_STEPS_TASK   = 9   # +3 para tasks 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 
-# Tools que executam código arbitrário — bloqueadas com --safe
-UNSAFE_TOOLS = {"run_script"}
 
 
 # ── paleta ────────────────────────────────────────────────────────────────────
@@ -446,6 +445,8 @@ def run_agent(
     session_id: str | None = None,
     max_steps: int = MAX_STEPS,
     mcp_manager=None,
+    session_flags: dict | None = None,
+    interactive: bool = True,
 ) -> str | dict:
     """
     Executa o loop agêntico.
@@ -457,6 +458,16 @@ def run_agent(
 
     context_injection: bloco de texto (resumo de sessão anterior) adicionado
                        ao final do system prompt para dar contexto de branch.
+
+    session_flags: dict mutável compartilhado entre chamadas de run_agent na
+                   mesma sessão. Hoje só usa a chave "trust_tool_creation":
+                   quando True, create_tool/create_temp_tool rodam sem pedir
+                   confirmação. Passe o MESMO dict em todas as chamadas da
+                   sessão pra "auto" valer até o fim dela; passe None (ou um
+                   dict novo) pra sempre pedir confirmação.
+    interactive: quando False (ex: modo --task headless), nunca abre prompt —
+                 create_tool/create_temp_tool são recusadas automaticamente
+                 se não estiverem confiadas via session_flags/--auto.
     """
     # ── contadores de tokens ───────────────────────────────────────────────
     total_in  = 0
@@ -478,6 +489,111 @@ def run_agent(
     ]
 
     print_rule("executando")
+
+    def _invoke_tool(tool_name: str, args: dict, step: int) -> str:
+        """Chama a tool e cuida do reload automático do registry quando necessário."""
+        if tool_name in ("list_sources", "search_knowledge"):
+            args.setdefault("agent_id", agent_info.get("id", "general"))
+            args.setdefault("session_id", str(session_id) if session_id else "")
+        if tool_name == "secondary_model":
+            args.setdefault("session_id", str(session_id) if session_id else "_nosession")
+
+        result = tools[tool_name]["fn"](**args)
+        print_step(step, "resultado", str(result)[:100], CLR_OK)
+
+        if tool_name in ("create_tool", "create_temp_tool") and "Erro" not in str(result):
+            all_updated = load_tools()
+            tools.clear()
+            tools.update(filter_tools(all_updated, agent_info.get("allowed_tools")))
+            _apply_mcp_tools(tools, mcp_manager, agent_info)
+            schema.clear()
+            schema.extend(tools_schema(tools))
+            messages[0]["content"] = build_system_prompt(agent_info, schema)
+            print_step(step, "registry", f"{len(tools)} tools carregadas", CLR_OK)
+
+        if tool_name == "mcp_add_server" and "conectado" in str(result):
+            _apply_mcp_tools(tools, mcp_manager, agent_info)
+            schema.clear()
+            schema.extend(tools_schema(tools))
+            messages[0]["content"] = build_system_prompt(agent_info, schema)
+            print_step(step, "registry", f"{len(tools)} tools carregadas", CLR_OK)
+
+        if tool_name == "mcp_remove_server" and "removido" in str(result):
+            removed_name = result.split("'")[1] if "'" in str(result) else ""
+            if mcp_manager and removed_name:
+                mcp_manager.remove_server_tools(removed_name, tools)
+            schema.clear()
+            schema.extend(tools_schema(tools))
+            messages[0]["content"] = build_system_prompt(agent_info, schema)
+            print_step(step, "registry", f"{len(tools)} tools carregadas", CLR_OK)
+
+        return result
+
+    def _confirm_tool_creation(tool_name: str, args: dict, step: int) -> str | None:
+        """
+        Mostra o código proposto com syntax highlight e pede confirmação.
+        Aceita forma completa (sim/nao/auto) ou abreviada (s/n/a).
+        Retorna None se aprovado (chamador segue com _invoke_tool), ou a
+        string de feedback já pronta se recusado/bloqueado.
+        """
+        from rich.syntax import Syntax
+
+        if not interactive:
+            return (
+                f"Tool '{tool_name}' bloqueada: cria/roda código novo e exige "
+                f"confirmação, mas a sessão não é interativa. Rode com "
+                f"--auto para permitir sem confirmação."
+            )
+
+        tool_display = escape(str(args.get("tool_name", "?")))
+        code_preview = str(args.get("tool_code", ""))
+        truncated    = len(code_preview) > 600
+        code_shown   = code_preview[:600] if truncated else code_preview
+
+        syntax = Syntax(
+            code_shown,
+            "python",
+            theme="monokai",
+            line_numbers=False,
+            word_wrap=True,
+        )
+        console.print(Panel(
+            syntax,
+            title=f"[warn]{tool_name}[/warn] · {tool_display}",
+            border_style=CLR_WARN,
+            padding=(0, 1),
+            subtitle="[muted]… truncado …[/muted]" if truncated else None,
+        ))
+
+        console.print()
+        console.print(
+            f"  [{CLR_OK}]\[s][/{CLR_OK}] sim   "
+            f"  [{CLR_ERR}]\[n][/{CLR_ERR}] nao   "
+            f"  [{CLR_WARN}]\[a][/{CLR_WARN}] auto [muted](confia pro resto da sessão)[/muted]\n"
+        )
+        raw = Prompt.ask(
+            f"  [{CLR_WARN}]permitir criação/execução desse código?[/{CLR_WARN}]",
+            choices=["s", "n", "a"],
+            default="n",
+        ).strip().lower()
+
+        # aceita forma completa ou abreviada
+        if raw in ("sim", "s"):
+            escolha = "sim"
+        elif raw in ("auto", "a"):
+            escolha = "auto"
+        else:
+            escolha = "nao"
+
+        if escolha == "auto" and session_flags is not None:
+            session_flags["trust_tool_creation"] = True
+
+        if escolha == "nao":
+            feedback = f"Criação da tool '{args.get('tool_name', '?')}' recusada pelo usuário."
+            print_step(step, "recusado", feedback, CLR_WARN)
+            return feedback
+
+        return None
 
     for step in range(1, max_steps + 1):
         print_step(step, "modelo", "aguardando…", CLR_STEP)
@@ -522,46 +638,13 @@ def run_agent(
             feedback = f"Tool '{tool_name}' não existe. Disponíveis: {list(tools.keys())}"
             print_step(step, "erro", feedback, CLR_ERR)
         else:
+            trusted = bool((session_flags or {}).get("trust_tool_creation", False))
             try:
-                #feedback = tools[tool_name]["fn"](**args)
-                if tool_name in ("list_sources", "search_knowledge"):
-                    args.setdefault("agent_id", agent_info.get("id", "general"))
-                    args.setdefault("session_id", str(session_id) if session_id else "")
-                # ── injeta session_id no modelo secundário ────────────────────
-                if tool_name == "secondary_model":
-                    args.setdefault("session_id", str(session_id) if session_id else "_nosession")
-                feedback = tools[tool_name]["fn"](**args)
-                print_step(step, "resultado", str(feedback)[:100], CLR_OK)
-
-                # reload automático após criação de tool ──────────────────────
-
-                if tool_name in ("create_tool", "create_temp_tool") and "Erro" not in str(feedback):
-                    all_updated = load_tools()
-                    tools.clear()
-                    tools.update(filter_tools(all_updated, agent_info.get("allowed_tools")))
-                    _apply_mcp_tools(tools, mcp_manager, agent_info)
-                    schema.clear()
-                    schema.extend(tools_schema(tools))
-                    messages[0]["content"] = build_system_prompt(agent_info, schema)
-                    print_step(step, "registry", f"{len(tools)} tools carregadas", CLR_OK)
-
-                # reload automático após adicionar/remover servidor MCP ────────
-                if tool_name == "mcp_add_server" and "conectado" in str(feedback):
-                    _apply_mcp_tools(tools, mcp_manager, agent_info)
-                    schema.clear()
-                    schema.extend(tools_schema(tools))
-                    messages[0]["content"] = build_system_prompt(agent_info, schema)
-                    print_step(step, "registry", f"{len(tools)} tools carregadas", CLR_OK)
-
-                if tool_name == "mcp_remove_server" and "removido" in str(feedback):
-                    removed_name = feedback.split("'")[1] if "'" in feedback else ""
-                    if mcp_manager and removed_name:
-                        mcp_manager.remove_server_tools(removed_name, tools)
-                    schema.clear()
-                    schema.extend(tools_schema(tools))
-                    messages[0]["content"] = build_system_prompt(agent_info, schema)
-                    print_step(step, "registry", f"{len(tools)} tools carregadas", CLR_OK)
-
+                if needs_confirmation(tool_name, trusted):
+                    denial = _confirm_tool_creation(tool_name, args, step)
+                    feedback = denial if denial is not None else _invoke_tool(tool_name, args, step)
+                else:
+                    feedback = _invoke_tool(tool_name, args, step)
             except TypeError as e:
                 # mostra assinatura real pro modelo corrigir os args ──────────
                 sig      = inspect.signature(tools[tool_name]["fn"])
@@ -611,8 +694,7 @@ def _reload_tools(agent_info: dict, safe: bool) -> tuple[dict, list]:
     """
     all_tools = load_tools()
     tools     = filter_tools(all_tools, agent_info["allowed_tools"])
-    if safe:
-        tools = {k: v for k, v in tools.items() if k not in UNSAFE_TOOLS}
+    tools     = filter_unsafe(tools, safe)
     return tools, tools_schema(tools)
 
 
@@ -699,6 +781,8 @@ def _handle_auto_tool(
     agent_info: dict,
     history: list[dict],
     safe: bool,
+    session_flags: dict | None = None,
+    interactive: bool = True,
 ) -> tuple[str, dict, list]:
     """
     Lida com o retorno needs_tool do run_agent.
@@ -720,9 +804,9 @@ def _handle_auto_tool(
 
     console.print(
         f"  [bold]{tool_name}[/bold]\n"
-        f"  [{CLR_OK}][s][/{CLR_OK}] salvar permanente   "
-        f"  [{CLR_WARN}][t][/{CLR_WARN}] tool temporária   "
-        f"  [{CLR_ERR}][n][/{CLR_ERR}] não criar\n"
+        f"  [{CLR_OK}]\[s][/{CLR_OK}] salvar permanente   "
+        f"  [{CLR_WARN}]\[t][/{CLR_WARN}] tool temporária   "
+        f"  [{CLR_ERR}]\[n][/{CLR_ERR}] não criar\n"
     )
     confirm = Prompt.ask(
         f"[{CLR_WARN}]O que fazer?[/{CLR_WARN}]",
@@ -757,6 +841,10 @@ def _handle_auto_tool(
         model,
         agent_info,
         history=None,  # contexto isolado — não contamina histórico da tarefa
+        # o usuário já aprovou explicitamente via [s/t/n] acima — não
+        # repete o prompt genérico de confirmação aqui.
+        session_flags={"trust_tool_creation": True},
+        interactive=interactive,
     )
 
     create_msg = create_result if isinstance(create_result, str) else "?"
@@ -801,7 +889,9 @@ def _handle_auto_tool(
         new_schema,
         model,
         agent_info,
-        history=history[:-1]
+        history=history[:-1],
+        session_flags=session_flags,
+        interactive=interactive,
     )
 
     # registra uso no temp-log se for temporária e executou com sucesso
@@ -934,8 +1024,7 @@ def run_task_headless(task_path: Path, args) -> int:
     all_tools = load_tools()
     tools     = filter_tools(all_tools, agent_info["allowed_tools"])
 
-    if args.safe:
-        tools = {k: v for k, v in tools.items() if k not in UNSAFE_TOOLS}
+    tools = filter_unsafe(tools, args.safe)
 
     # ── MCP: conecta só os servidores do agente ───────────────────────────
     mcp_manager = MCPManager()
@@ -965,6 +1054,8 @@ def run_task_headless(task_path: Path, args) -> int:
             task_prompt, tools, schema, args.model, agent_info,
             max_steps=MAX_STEPS_TASK,
             mcp_manager=mcp_manager,
+            session_flags={"trust_tool_creation": args.auto},
+            interactive=False,  # headless: nunca abre prompt (sem TTY)
         )
     except Exception as e:
         log.error("run_agent falhou: %s", e)
@@ -986,6 +1077,7 @@ def main():
     parser.add_argument("--model",       default=DEFAULT_MODEL,  help="modelo Ollama")
     parser.add_argument("--agent",       default=DEFAULT_AGENT,  help="persona do agente (nome do .md em /agents)")
     parser.add_argument("--safe",        action="store_true",    help="desabilita tools de execução arbitrária")
+    parser.add_argument("--auto",         action="store_true",    help="não pede confirmação antes de create_tool/create_temp_tool rodarem (mesmo que escolher auto no prompt)")
     parser.add_argument("--list-agents", action="store_true",    help="lista agentes disponíveis e sai")
     parser.add_argument("--task",        metavar="TASK",         help="executa task headless e sai (nome ou caminho .md)")
     args = parser.parse_args()
@@ -993,6 +1085,11 @@ def main():
     # ── contadores de sessão ───────────────────────────────────────────────
     session_tokens_in  = 0
     session_tokens_out = 0
+
+    # dict mutável — o mesmo objeto é passado em toda chamada de run_agent
+    # nesta sessão, então escolher "auto" no prompt de confirmação (ou
+    # passar --auto) vale até o fim da sessão, não só do turno atual.
+    session_flags = {"trust_tool_creation": args.auto}
 
     # ── verificação de ambiente ───────────────────────────────────────────
     # Roda antes de tudo. Checks bloqueantes (Ollama) encerram com sys.exit.
@@ -1034,8 +1131,7 @@ def main():
     all_tools = load_tools()
     tools = filter_tools(all_tools, agent_info["allowed_tools"])
 
-    if args.safe:
-        tools = {k: v for k, v in tools.items() if k not in UNSAFE_TOOLS}
+    tools = filter_unsafe(tools, args.safe)
 
     # ── aviso de tools opcionais sem dependência (EXTRA = True) ──────────────
     _missing = get_missing_optional_tools()
@@ -1734,6 +1830,7 @@ def main():
                 injected, tools, schema, args.model, agent_info,
                 history=history[:-1],
                 session_id=str(current_session_id) if current_session_id else None,
+                session_flags=session_flags,
             )
             session_tokens_in  += t_in
             session_tokens_out += t_out
@@ -1742,6 +1839,7 @@ def main():
                 result, tools, schema = _handle_auto_tool(
                     result, injected, tools, schema,
                     args.model, agent_info, history, safe=args.safe,
+                    session_flags=session_flags,
                 )
                 header(args.model, agent_info["name"], tools, safe=args.safe)
                 completer = make_completer(tools)
@@ -1968,6 +2066,7 @@ def main():
                 session_id=str(current_session_id) if current_session_id else None,
                 max_steps=MAX_STEPS_TASK,          # <-- usa o limite expandido
                 mcp_manager=mcp_manager,
+                session_flags=session_flags,
             )
             session_tokens_in  += t_in
             session_tokens_out += t_out
@@ -1976,6 +2075,7 @@ def main():
                 result, tools, schema = _handle_auto_tool(
                     result, task_prompt, tools, schema,
                     args.model, agent_info, history, safe=args.safe,
+                    session_flags=session_flags,
                 )
                 header(args.model, agent_info["name"], tools, safe=args.safe)
                 completer = make_completer(tools)
@@ -2026,6 +2126,7 @@ def main():
                 context_injection=context_injection,
                 session_id=str(current_session_id) if current_session_id else None,
                 mcp_manager=mcp_manager,
+                session_flags=session_flags,
             )
             session_tokens_in  += t_in
             session_tokens_out += t_out
@@ -2034,6 +2135,7 @@ def main():
                 result, tools, schema = _handle_auto_tool(
                     result, prompt_final, tools, schema,
                     args.model, agent_info, history, safe=args.safe,
+                    session_flags=session_flags,
                 )
                 header(args.model, agent_info["name"], tools, safe=args.safe)
                 completer = make_completer(tools)
@@ -2103,6 +2205,7 @@ def main():
             context_injection=context_injection,
             session_id=str(current_session_id) if current_session_id else None,
             mcp_manager=mcp_manager,
+            session_flags=session_flags,
         )
         session_tokens_in  += t_in
         session_tokens_out += t_out
@@ -2118,6 +2221,7 @@ def main():
                 agent_info,
                 history,
                 safe=args.safe,
+                session_flags=session_flags,
             )
             # atualiza header e completer com as novas tools
             header(args.model, agent_info["name"], tools, safe=args.safe)

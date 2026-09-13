@@ -89,6 +89,7 @@ from textual.widgets.option_list import Option
 from agent_loop import run_agent, AgentResult
 from tools_registry import load_tools, tools_schema
 from agent_loader import load_agent, filter_tools, filter_mcp_tools, list_agents
+from tool_dispatch import UNSAFE_TOOLS, filter_unsafe
 from history_store import HistoryStore, DB_PATH
 from mcp.manager import MCPManager
 from image_input import parse_image_input, parse_image_command, format_image_hint, IMAGE_EXTENSIONS
@@ -1710,8 +1711,6 @@ class CielTUI(App):
 
     # ── carregamento de agente e tools ───────────────────────────────────────
 
-    UNSAFE_TOOLS = {"run_script"}
-
     def _load_agent(self, agent_name: str) -> None:
         """Carrega agent_info, tools e schema. Atualiza estado e widgets."""
         try:
@@ -1722,8 +1721,7 @@ class CielTUI(App):
 
         all_tools = load_tools()
         tools = filter_tools(all_tools, self._agent_info.get("allowed_tools"))
-        if self.safe_mode:
-            tools = {k: v for k, v in tools.items() if k not in self.UNSAFE_TOOLS}
+        tools = filter_unsafe(tools, self.safe_mode)
 
         # reinjeta tools MCP se o manager já estiver inicializado
         if self._mcp_manager is not None:
@@ -2870,8 +2868,7 @@ class CielTUI(App):
         """Recarrega tools do disco e atualiza self._tools / self._schema."""
         new_tools = load_tools()
         filtered  = filter_tools(new_tools, self._agent_info.get("allowed_tools"))
-        if self.safe_mode:
-            filtered = {k: v for k, v in filtered.items() if k not in self.UNSAFE_TOOLS}
+        filtered  = filter_unsafe(filtered, self.safe_mode)
         # reinjeta tools MCP para não perdê-las no reload
         if self._mcp_manager is not None:
             filtered.update(filter_mcp_tools(
@@ -3044,8 +3041,7 @@ class CielTUI(App):
         if result.status == "done":
             new_tools = load_tools()
             filtered  = filter_tools(new_tools, self._agent_info.get("allowed_tools"))
-            if self.safe_mode:
-                filtered = {k: v for k, v in filtered.items() if k not in self.UNSAFE_TOOLS}
+            filtered  = filter_unsafe(filtered, self.safe_mode)
             # reinjeta tools MCP para não perdê-las no reload automático
             if self._mcp_manager is not None:
                 filtered.update(filter_mcp_tools(
