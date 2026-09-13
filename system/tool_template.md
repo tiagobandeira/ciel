@@ -13,9 +13,10 @@ o validador de `create_tool` rejeita qualquer desvio:
 ```
 1. módulo-docstring        ← obrigatório, primeira linha
 2. REQUIREMENTS = [...]    ← opcional, declara dependências pip
-3. imports
-4. funções auxiliares
-5. def run(...)            ← obrigatório, ponto de entrada do agente
+3. PERMISSIONS = {...}     ← opcional, declara parâmetros que são caminho de arquivo
+4. imports
+5. funções auxiliares
+6. def run(...)            ← obrigatório, ponto de entrada do agente
 ```
 
 ### 1. Módulo-docstring
@@ -38,7 +39,26 @@ REQUIREMENTS = ["requests", "beautifulsoup4>=4.12", "pandas==2.2.0"]
 - Prefira a stdlib quando possível (`urllib`, `csv`, `json`, `pathlib`…)
 - Só declare o que a tool realmente importa — não inclua pacotes já disponíveis
 
-### 3. Função `run()`
+### 3. PERMISSIONS (opcional)
+
+Declare quando **algum parâmetro de `run()` recebe um caminho de arquivo ou
+pasta**. O orquestrador usa isso pra checar o caminho contra o workspace
+atual do usuário antes de rodar a tool — o mesmo mecanismo que já protege
+`read_file`/`write_file`. Sem declarar, o parâmetro roda sem checagem nenhuma.
+
+```python
+PERMISSIONS = {"path": "read"}                        # um parâmetro, só leitura
+PERMISSIONS = {"caminho": "write", "saida": "write"}   # mais de um, com níveis diferentes
+```
+
+- Chave = nome exato do parâmetro em `run()`
+- Valor = `"read"` (só lê aquele caminho) ou `"write"` (escreve ou sobrescreve nele)
+- Um parâmetro de saída opcional que, vazio, sobrescreve o de entrada — declare
+  o de entrada como `"write"` também, não só `"read"`
+- Não declare pra tools cujo path já vem de um comando explícito do usuário
+  (esse não é o caso de uma tool criada via `create_tool` chamada pelo modelo)
+
+### 4. Função `run()`
 
 Ponto de entrada chamado pelo agente. Regras obrigatórias:
 
@@ -89,7 +109,10 @@ def run(path: str, encoding: str = "utf-8") -> str:
 # Remova REQUIREMENTS se não precisar de libs externas
 REQUIREMENTS = ["<pacote1>", "<pacote2>=<versão>"]
 
-from pathlib import Path  # imports depois do REQUIREMENTS
+# Remova PERMISSIONS se nenhum parâmetro abaixo é caminho de arquivo/pasta
+PERMISSIONS = {"<param_que_e_path>": "read"}  # ou "write"
+
+from pathlib import Path  # imports depois do REQUIREMENTS/PERMISSIONS
 
 
 def run(<param1>: str, <param2>: str = "<padrão>") -> str:
@@ -112,6 +135,7 @@ def run(<param1>: str, <param2>: str = "<padrão>") -> str:
 |---|---|
 | Módulo-docstring como **primeira** linha | Colocar imports ou REQUIREMENTS antes do docstring |
 | `REQUIREMENTS` para libs externas | Importar lib externa sem declará-la em REQUIREMENTS |
+| `PERMISSIONS` quando um parâmetro é caminho de arquivo/pasta | Deixar parâmetro de path sem PERMISSIONS |
 | Anotar tipos em `run()` | Parâmetros sem anotação de tipo |
 | Docstring de parâmetros em `run()` no padrão `param: descrição` | Documentar parâmetros só no módulo-docstring |
 | `run()` retorna `str` sempre | `run()` retornar `None` ou lançar exceção |

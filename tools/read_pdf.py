@@ -2,6 +2,7 @@
 
 REQUIREMENTS = ["PyPDF2"]
 EXTRA = True
+PERMISSIONS = {"path": "read"}
 
 from PyPDF2 import PdfReader
 

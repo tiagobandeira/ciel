@@ -1,5 +1,7 @@
 """Escreve conteúdo em um arquivo de texto local (cria ou sobrescreve)."""
 
+PERMISSIONS = {"path": "write"}
+
 from pathlib import Path
 
 

@@ -3,6 +3,7 @@ Compila arquivos .tex para PDF, garantindo que todos os arquivos de saída fique
 """
 
 EXTRA = True
+PERMISSIONS = {"tex_path": "read"}
 
 import subprocess
 from pathlib import Path

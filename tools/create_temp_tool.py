@@ -94,7 +94,82 @@ def _validate(code: str) -> tuple[bool, str]:
     if "run" not in top_level_funcs:
         return False, "A tool deve definir uma função run() no nível do módulo."
 
+    for node in tree.body:
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "PERMISSIONS"
+        ):
+            valid_dict = (
+                isinstance(node.value, ast.Dict)
+                and all(isinstance(k, ast.Constant) and isinstance(k.value, str) for k in node.value.keys)
+                and all(
+                    isinstance(v, ast.Constant) and v.value in ("read", "write")
+                    for v in node.value.values
+                )
+            )
+            if not valid_dict:
+                return False, (
+                    'PERMISSIONS deve ser um dict {"nome_do_parametro": "read"|"write"}. '
+                    'Exemplo: PERMISSIONS = {"path": "read"}'
+                )
+
     return True, ""
+
+
+# ── aviso (não bloqueante) de path sem PERMISSIONS declarado ─────────────────
+
+_PATH_LIKE_HINTS = (
+    "path", "caminho", "diretorio", "directory", "arquivo", "file",
+    "pasta", "folder", "script", "saida", "output", "tex_path",
+)
+
+
+def _check_permission_coverage(code: str) -> str | None:
+    """
+    Heurística leve, não bloqueante: se run() tem parâmetro com nome que
+    sugere caminho de arquivo mas PERMISSIONS não declara esse nome, avisa
+    o usuário — não impede a criação, só chama atenção pra revisar.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None
+
+    run_func = next(
+        (n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run"),
+        None,
+    )
+    if run_func is None:
+        return None
+
+    declared: dict = {}
+    for node in tree.body:
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "PERMISSIONS"
+            and isinstance(node.value, ast.Dict)
+        ):
+            for k, v in zip(node.value.keys, node.value.values):
+                if isinstance(k, ast.Constant):
+                    declared[k.value] = v.value if isinstance(v, ast.Constant) else None
+
+    param_names = [a.arg for a in run_func.args.args]
+    suspects = [
+        p for p in param_names
+        if p not in declared and any(hint in p.lower() for hint in _PATH_LIKE_HINTS)
+    ]
+    if not suspects:
+        return None
+    return (
+        f"parâmetro(s) {suspects} parece(m) receber caminho de arquivo, mas não "
+        f"está(ão) em PERMISSIONS — a tool vai rodar sem checagem de workspace "
+        f"pra ele(s). Se for path de verdade, considere adicionar, ex: "
+        f'PERMISSIONS = {{"{suspects[0]}": "read"}}'
+    )
 
 
 def _try_import_and_fix(path: Path) -> str | None:
@@ -156,4 +231,6 @@ def run(tool_name: str, tool_code: str) -> str:
         return f"Erro ao validar tool '{tool_name}': {err}"
 
     _log_creation(tool_name)
-    return f"Tool temporária '{tool_name}' criada em tools/temp/{tool_name}.py"
+    warning = _check_permission_coverage(tool_code)
+    warning_msg = f"\n⚠ {warning}" if warning else ""
+    return f"Tool temporária '{tool_name}' criada em tools/temp/{tool_name}.py{warning_msg}"

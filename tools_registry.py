@@ -7,6 +7,13 @@ Variáveis de módulo reconhecidas em cada tool:
   REQUIREMENTS = ["pkg"]   deps pip necessárias (usadas pelo orquestrador)
   EXTRA = True             tool opcional — ImportError é esperado e vira
                            sugestão de instalação, não erro
+  PERMISSIONS = {"path": "read"}
+                           declara quais argumentos são paths no disco e se
+                           precisam de leitura ou escrita. Usada pelo guard
+                           de workspace (workspace.py / tool_dispatch.py)
+                           pra saber o que checar antes de rodar a tool —
+                           sem isso, o argumento não é validado contra o
+                           workspace atual.
 """
 
 import re
@@ -138,6 +145,7 @@ def _load_from_dir(directory: Path, categoria: str) -> dict:
                 "path":         path,
                 "extra":        bool(getattr(mod, "EXTRA", False)),
                 "requirements": list(getattr(mod, "REQUIREMENTS", [])),
+                "permissions":  dict(getattr(mod, "PERMISSIONS", {})),
             }
 
     return tools

@@ -12,6 +12,9 @@ __pycache__/
 # Dados pessoais do usuário
 data/
 
+# Estado local do workspace (paths específicos da máquina — não versionar)
+.ciel_workspace.json
+
 # Cache de conhecimento (regenerável)
 knowledge/cache/
 
