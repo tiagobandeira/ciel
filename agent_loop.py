@@ -234,6 +234,11 @@ def run_agent(
     on_done: OnDone | None = None,
     on_limit: OnLimit | None = None,
     on_error: OnError | None = None,
+    # callbacks de segurança — implementados pela CLI via Prompt.ask e pela
+    # TUI via modal bloqueante (threading.Event). Se None, a chamada prossegue
+    # sem confirmação (comportamento legado / headless).
+    on_confirm_tool: Callable[[str, str], bool] | None = None,
+    on_confirm_path: Callable[[str, bool], bool] | None = None,
 ) -> AgentResult:
     """
     Executa o loop agêntico e retorna um AgentResult.
@@ -319,6 +324,47 @@ def run_agent(
             _call(on_step, step, "erro", feedback, "error")
         else:
             try:
+                # ── workspace guard ───────────────────────────────────────────
+                # Verifica paths declarados em PERMISSIONS antes de invocar.
+                # on_confirm_path é injetado pela CLI/TUI; None = sem checagem
+                # (headless ou chamador que cuida disso por conta própria).
+                if on_confirm_path is not None:
+                    from tool_dispatch import get_path_checks
+                    from workspace import get_workspace
+                    _blocked = False
+                    for arg_name, need_write in get_path_checks(tool_name, tools):
+                        raw_path = args.get(arg_name)
+                        if not raw_path:
+                            continue
+                        _resolved, _err = get_workspace().check(raw_path, need_write)
+                        if _err:
+                            allowed = on_confirm_path(raw_path, need_write)
+                            if not allowed:
+                                feedback = f"Acesso a '{raw_path}' negado pelo usuário."
+                                _call(on_step, step, "bloqueado", feedback, "error")
+                                _blocked = True
+                                break
+                    if _blocked:
+                        messages.append({"role": "assistant", "content": raw})
+                        messages.append({"role": "user", "content": f"Resultado da tool: {feedback}"})
+                        continue
+
+                # ── confirmação de criação de tool ────────────────────────────
+                # on_confirm_tool é injetado pela CLI/TUI; None = sem confirmação.
+                if on_confirm_tool is not None and tool_name in ("create_tool", "create_temp_tool"):
+                    tool_code = args.get("tool_code", "")
+                    allowed = on_confirm_tool(tool_name, tool_code)
+                    if not allowed:
+                        feedback = f"Criação de tool '{args.get('tool_name', '?')}' recusada pelo usuário."
+                        _call(on_step, step, "recusado", feedback, "error")
+                        messages.append({"role": "assistant", "content": raw})
+                        messages.append({"role": "user", "content": f"Resultado da tool: {feedback}"})
+                        continue
+
+                if tool_name == "run_script":
+                    from workspace import get_workspace as _gws
+                    args.setdefault("cwd", str(_gws().default_root))
+
                 if tool_name in ("list_sources", "search_knowledge"):
                     args.setdefault("agent_id", agent_info.get("id", "general"))
                     args.setdefault("session_id", str(session_id) if session_id else "")

@@ -89,7 +89,8 @@ from textual.widgets.option_list import Option
 from agent_loop import run_agent, AgentResult
 from tools_registry import load_tools, tools_schema
 from agent_loader import load_agent, filter_tools, filter_mcp_tools, list_agents
-from tool_dispatch import UNSAFE_TOOLS, filter_unsafe
+from tool_dispatch import UNSAFE_TOOLS, filter_unsafe, get_path_checks
+from workspace import get_workspace, init_workspace
 from history_store import HistoryStore, DB_PATH
 from mcp.manager import MCPManager
 from image_input import parse_image_input, parse_image_command, format_image_hint, IMAGE_EXTENSIONS
@@ -320,6 +321,8 @@ COMMANDS: list[tuple[str, str]] = [
     ("/tokens",            "uso de tokens desta sessão"),
     ("/copiar",            "copia última resposta"),
     ("/safe",              "toggle modo seguro"),
+    ("/workspace",         "mostra workspace ativo e grants"),
+    ("/workspace <path>",  "libera pasta/arquivo fora do workspace"),
     ("/limpar-temp",       "remove tools temporárias"),
     ("/promover <nome>",   "promove tool temp a permanente"),
     ("/mcp",               "lista servidores MCP e status"),
@@ -720,6 +723,355 @@ class CopyModal(ModalScreen):
         log = self.query_one("#copy-modal-log", RichLog)
         for line in self._lines:
             log.write(line)
+
+
+class ToolConfirmModal(ModalScreen):
+    """
+    Modal de confirmação de criação de tool (create_tool / create_temp_tool).
+    Equivalente ao prompt [s/n/a] da CLI, adaptado para a TUI.
+    Retorna: "sim" | "auto" | "nao"
+    """
+
+    BINDINGS = [
+        Binding("escape", "deny", show=False),
+        Binding("s", "allow_once", show=False),
+        Binding("a", "allow_auto", show=False),
+        Binding("n", "deny",       show=False),
+    ]
+
+    CSS = f"""
+    ToolConfirmModal {{
+        align: center middle;
+    }}
+    #tool-confirm-box {{
+        width: 72;
+        height: auto;
+        max-height: 36;
+        background: {P['panel']};
+        border: solid {P['orange']};
+        padding: 1 2;
+    }}
+    #tool-confirm-title {{
+        height: 2;
+        color: {P['orange']};
+        text-style: bold;
+        content-align: left middle;
+        border-bottom: solid {P['border']};
+        margin-bottom: 1;
+    }}
+    #tool-confirm-code {{
+        height: auto;
+        max-height: 16;
+        background: {P['surface']};
+        border: solid {P['border']};
+        color: {P['silver']};
+        padding: 1 2;
+        margin-bottom: 1;
+    }}
+    #tool-confirm-hint {{
+        height: 1;
+        color: {P['muted']};
+        content-align: left middle;
+        margin-top: 1;
+    }}
+    #tool-confirm-btns {{
+        height: 3;
+        layout: horizontal;
+        align: right middle;
+        margin-top: 1;
+        border-top: solid {P['border']};
+        padding-top: 1;
+    }}
+    #tool-btn-sim {{
+        background: {P['accent']};
+        color: {P['bg']};
+        border: none;
+        margin: 0 1;
+        min-width: 14;
+    }}
+    #tool-btn-auto {{
+        background: {P['orange']};
+        color: {P['bg']};
+        border: none;
+        margin: 0 1;
+        min-width: 22;
+    }}
+    #tool-btn-nao {{
+        background: {P['surface']};
+        color: {P['crimson']};
+        border: none;
+        margin: 0 1;
+        min-width: 10;
+    }}
+    """
+
+    def __init__(self, tool_name: str, tool_code: str, **kw) -> None:
+        super().__init__(**kw)
+        self._tool_name = tool_name
+        self._tool_code = tool_code
+
+    def compose(self) -> ComposeResult:
+        preview = self._tool_code[:800] + ("…" if len(self._tool_code) > 800 else "")
+        with Vertical(id="tool-confirm-box"):
+            yield Static(
+                f"  ⚡ criar tool: {self._tool_name}",
+                id="tool-confirm-title",
+            )
+            yield Static(preview, id="tool-confirm-code")
+            yield Label(
+                r"\[s] sim, só agora   \[a] auto (sessão inteira)   \[n] não   · Esc cancela",
+                id="tool-confirm-hint",
+            )
+            with Horizontal(id="tool-confirm-btns"):
+                yield Button(r"\[s] sim",             id="tool-btn-sim",  variant="primary")
+                yield Button(r"\[a] auto (sessão)",   id="tool-btn-auto")
+                yield Button(r"\[n] não",             id="tool-btn-nao")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        mapping = {
+            "tool-btn-sim":  "sim",
+            "tool-btn-auto": "auto",
+            "tool-btn-nao":  "nao",
+        }
+        self.dismiss(mapping.get(event.button.id, "nao"))
+
+    def action_allow_once(self) -> None: self.dismiss("sim")
+    def action_allow_auto(self) -> None: self.dismiss("auto")
+    def action_deny(self)       -> None: self.dismiss("nao")
+
+
+class WorkspaceModal(ModalScreen):
+    """
+    Modal de confirmação de acesso a path fora do workspace.
+    Equivalente ao prompt [s/a/n] da CLI para path guard.
+    Retorna: "sim" | "sempre" | "nao"
+    """
+
+    BINDINGS = [
+        Binding("escape", "deny",        show=False),
+        Binding("s",      "allow_once",  show=False),
+        Binding("a",      "allow_always", show=False),
+        Binding("n",      "deny",        show=False),
+    ]
+
+    CSS = f"""
+    WorkspaceModal {{
+        align: center middle;
+    }}
+    #ws-modal-box {{
+        width: 68;
+        height: auto;
+        background: {P['panel']};
+        border: solid {P['orange']};
+        padding: 1 2;
+    }}
+    #ws-modal-title {{
+        height: 2;
+        color: {P['orange']};
+        text-style: bold;
+        content-align: left middle;
+        border-bottom: solid {P['border']};
+        margin-bottom: 1;
+    }}
+    #ws-modal-path {{
+        height: auto;
+        background: {P['surface']};
+        border: solid {P['border']};
+        color: {P['text']};
+        padding: 1 2;
+        margin-bottom: 1;
+    }}
+    #ws-modal-hint {{
+        height: 1;
+        color: {P['muted']};
+        content-align: left middle;
+        margin-top: 1;
+    }}
+    #ws-modal-btns {{
+        height: 3;
+        layout: horizontal;
+        align: right middle;
+        margin-top: 1;
+        border-top: solid {P['border']};
+        padding-top: 1;
+    }}
+    #ws-btn-sim {{
+        background: {P['accent']};
+        color: {P['bg']};
+        border: none;
+        margin: 0 1;
+        min-width: 18;
+    }}
+    #ws-btn-sempre {{
+        background: {P['orange']};
+        color: {P['bg']};
+        border: none;
+        margin: 0 1;
+        min-width: 24;
+    }}
+    #ws-btn-nao {{
+        background: {P['surface']};
+        color: {P['crimson']};
+        border: none;
+        margin: 0 1;
+        min-width: 10;
+    }}
+    """
+
+    def __init__(self, raw_path: str, need_write: bool, **kw) -> None:
+        super().__init__(**kw)
+        self._raw_path  = raw_path
+        self._need_write = need_write
+
+    def compose(self) -> ComposeResult:
+        from pathlib import Path as _Path
+        target   = _Path(self._raw_path).expanduser()
+        resolved = str(target.resolve() if target.exists() else target)
+        tipo     = "arquivo" if target.is_file() else ("pasta" if target.is_dir() else "caminho")
+        acao     = "escrever em" if self._need_write else "ler"
+
+        with Vertical(id="ws-modal-box"):
+            yield Static(
+                f"  permissão de acesso · fora do workspace",
+                id="ws-modal-title",
+            )
+            yield Static(
+                f"quer {acao} {tipo}:\n{resolved}",
+                id="ws-modal-path",
+            )
+            yield Label(
+                r"\[s] sim, só agora   \[a] sim, e lembrar   \[n] não   · Esc cancela",
+                id="ws-modal-hint",
+            )
+            with Horizontal(id="ws-modal-btns"):
+                yield Button(r"\[s] sim, só essa vez",    id="ws-btn-sim",    variant="primary")
+                yield Button(r"\[a] sim, e lembrar",      id="ws-btn-sempre")
+                yield Button(r"\[n] não",                 id="ws-btn-nao")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        mapping = {
+            "ws-btn-sim":    "sim",
+            "ws-btn-sempre": "sempre",
+            "ws-btn-nao":    "nao",
+        }
+        self.dismiss(mapping.get(event.button.id, "nao"))
+
+    def action_allow_once(self)   -> None: self.dismiss("sim")
+    def action_allow_always(self) -> None: self.dismiss("sempre")
+    def action_deny(self)         -> None: self.dismiss("nao")
+
+
+class WorkspaceGrantModal(ModalScreen):
+    """
+    Modal para /workspace <caminho> — permite o usuário liberar um
+    path manualmente antes de iniciar uma tarefa, escolhendo entre
+    leitura, leitura+escrita ou cancelar.
+    Retorna: "leitura" | "escrita" | "nao"
+    """
+
+    BINDINGS = [
+        Binding("escape", "deny",    show=False),
+        Binding("l",      "read",    show=False),
+        Binding("e",      "write",   show=False),
+        Binding("n",      "deny",    show=False),
+    ]
+
+    CSS = f"""
+    WorkspaceGrantModal {{
+        align: center middle;
+    }}
+    #wsgrant-box {{
+        width: 60;
+        height: auto;
+        background: {P['panel']};
+        border: solid {P['accent']};
+        padding: 1 2;
+    }}
+    #wsgrant-title {{
+        height: 2;
+        color: {P['accent']};
+        text-style: bold;
+        content-align: left middle;
+        border-bottom: solid {P['border']};
+        margin-bottom: 1;
+    }}
+    #wsgrant-path {{
+        height: auto;
+        background: {P['surface']};
+        color: {P['text']};
+        padding: 1 2;
+        margin-bottom: 1;
+    }}
+    #wsgrant-hint {{
+        height: 1;
+        color: {P['muted']};
+        content-align: left middle;
+        margin-top: 1;
+    }}
+    #wsgrant-btns {{
+        height: 3;
+        layout: horizontal;
+        align: right middle;
+        margin-top: 1;
+        border-top: solid {P['border']};
+        padding-top: 1;
+    }}
+    #wsgrant-btn-leitura {{
+        background: {P['accent']};
+        color: {P['bg']};
+        border: none;
+        margin: 0 1;
+        min-width: 14;
+    }}
+    #wsgrant-btn-escrita {{
+        background: {P['orange']};
+        color: {P['bg']};
+        border: none;
+        margin: 0 1;
+        min-width: 22;
+    }}
+    #wsgrant-btn-nao {{
+        background: {P['surface']};
+        color: {P['crimson']};
+        border: none;
+        margin: 0 1;
+        min-width: 12;
+    }}
+    """
+
+    def __init__(self, raw_path: str, **kw) -> None:
+        super().__init__(**kw)
+        self._raw_path = raw_path
+
+    def compose(self) -> ComposeResult:
+        from pathlib import Path as _Path
+        target   = _Path(self._raw_path).expanduser()
+        resolved = str(target.resolve() if target.exists() else target)
+        tipo     = "arquivo" if target.is_file() else "pasta"
+
+        with Vertical(id="wsgrant-box"):
+            yield Static(f"  liberar {tipo}", id="wsgrant-title")
+            yield Static(resolved, id="wsgrant-path")
+            yield Label(
+                r"\[l] leitura   \[e] leitura+escrita   \[n] cancelar   · Esc cancela",
+                id="wsgrant-hint",
+            )
+            with Horizontal(id="wsgrant-btns"):
+                yield Button(r"\[l] leitura",           id="wsgrant-btn-leitura", variant="primary")
+                yield Button(r"\[e] leitura+escrita",   id="wsgrant-btn-escrita")
+                yield Button(r"\[n] cancelar",          id="wsgrant-btn-nao")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        mapping = {
+            "wsgrant-btn-leitura": "leitura",
+            "wsgrant-btn-escrita": "escrita",
+            "wsgrant-btn-nao":     "nao",
+        }
+        self.dismiss(mapping.get(event.button.id, "nao"))
+
+    def action_read(self)  -> None: self.dismiss("leitura")
+    def action_write(self) -> None: self.dismiss("escrita")
+    def action_deny(self)  -> None: self.dismiss("nao")
 
 
 class SelectionModal(ModalScreen):
@@ -1651,9 +2003,10 @@ class CielTUI(App):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        self.current_agent = initial_agent
-        self.current_model = initial_model
-        self.safe_mode     = safe_mode
+        self.current_agent        = initial_agent
+        self.current_model        = initial_model
+        self.safe_mode            = safe_mode
+        self._trust_tool_creation = False  # True após o usuário escolher "auto"
 
     # ── compose ───────────────────────────────────────────────────────────────
 
@@ -1941,6 +2294,10 @@ class CielTUI(App):
             )
 
     def on_mount(self) -> None:
+        # workspace padrão = cwd de onde o ciel foi chamado; recarrega grants
+        # salvos em sessões anteriores (.ciel_workspace.json)
+        init_workspace()
+
         self.query_one("#input-box", CielInput).focus()
         self._store = HistoryStore(DB_PATH)
 
@@ -2384,6 +2741,8 @@ class CielTUI(App):
                 ("/tokens",               "uso de tokens desta sessão"),
                 ("/copiar",               "copia última resposta"),
                 ("/safe",                 "toggle modo seguro"),
+                ("/workspace",            "mostra workspace ativo e grants"),
+                ("/workspace <caminho>",  "libera pasta/arquivo fora do workspace"),
                 ("/limpar-temp",          "remove tools temporárias"),
                 ("/promover <nome>",      "promove tool temp a permanente"),
                 ("/mcp",                  "lista servidores MCP e status"),
@@ -2767,6 +3126,39 @@ class CielTUI(App):
                 self._mcp_manager.disconnect_all()
             self.set_timer(0.4, self.exit)
 
+        elif verb == "/workspace":
+            if len(parts) < 2:
+                # /workspace — exibe status
+                lines = get_workspace().status_lines()
+                t = Text()
+                t.append("\n  workspace\n", style=f"bold {P['accent']}")
+                for line in lines:
+                    t.append(f"  {line}\n", style=P["text"])
+                self._log_write(t)
+            else:
+                # /workspace <caminho> — abre WorkspaceGrantModal inline
+                from pathlib import Path as _Path
+                raw_path = " ".join(parts[1:])
+                target   = _Path(raw_path).expanduser()
+                if not target.exists():
+                    self._log_write(msg_system(
+                        f"'{raw_path}' não existe.", "err"
+                    ))
+                else:
+                    def _grant_result(choice: str | None) -> None:
+                        if not choice or choice == "nao":
+                            self._log_write(msg_system("cancelado.", "warn"))
+                            return
+                        write = (choice == "escrita")
+                        grant = get_workspace().add_grant(target, write=write)
+                        perms = "leitura+escrita" if grant.write else "somente leitura"
+                        tipo  = "arquivo" if target.is_file() else "pasta"
+                        self._log_write(msg_system(
+                            f"{tipo} liberado ({perms}): {grant.root}", "ok"
+                        ))
+
+                    self.push_screen(WorkspaceGrantModal(raw_path), _grant_result)
+
         elif verb in ("/img", "/imagem"):
             cmd_result = parse_image_command(raw)
             if cmd_result is None or cmd_result[1] is None:
@@ -2929,6 +3321,62 @@ class CielTUI(App):
                 ),
             )
 
+    def _modal_confirm_tool(self, tool_name: str, tool_code: str) -> bool:
+        """
+        Abre ToolConfirmModal na thread principal e bloqueia o worker até
+        o usuário escolher. Retorna True se aprovado (sim ou auto).
+        auto também registra trust_tool_creation para o resto da sessão.
+        """
+        import threading
+        event  = threading.Event()
+        result = [False]
+
+        def on_result(choice: str | None) -> None:
+            if choice == "auto":
+                self._trust_tool_creation = True
+            result[0] = choice in ("sim", "auto")
+            event.set()
+
+        self.call_from_thread(
+            lambda: self.push_screen(
+                ToolConfirmModal(tool_name, tool_code), on_result
+            )
+        )
+        event.wait()
+        return result[0]
+
+    def _modal_confirm_path(self, raw_path: str, need_write: bool) -> bool:
+        """
+        Abre WorkspaceModal na thread principal e bloqueia o worker até
+        o usuário escolher. Retorna True se aprovado (sim ou sempre).
+        sempre persiste o grant via workspace.add_grant.
+        """
+        import threading
+        event  = threading.Event()
+        result = [False]
+
+        def on_result(choice: str | None) -> None:
+            if choice == "sempre":
+                from pathlib import Path as _Path
+                from workspace import get_workspace as _gws
+                target = _Path(raw_path).expanduser()
+                resolved = target.resolve() if target.exists() else target
+                _gws().add_grant(resolved, write=need_write)
+                result[0] = True
+            elif choice == "sim":
+                result[0] = True
+            else:
+                result[0] = False
+            event.set()
+
+        self.call_from_thread(
+            lambda: self.push_screen(
+                WorkspaceModal(raw_path, need_write), on_result
+            )
+        )
+        event.wait()
+        return result[0]
+
     @work(thread=True)
     def _agent_turn(self, user_text: str, log: RichLog, max_steps: int = 6, image_b64: str | None = None) -> None:
         """Worker real: chama run_agent com callbacks thread-safe."""
@@ -2940,6 +3388,15 @@ class CielTUI(App):
             token_tracker.reset()
         except Exception:
             pass
+
+        # ── callbacks de segurança ────────────────────────────────────────────
+        # Se trust_tool_creation já foi aprovado nesta sessão (via "auto"),
+        # on_confirm_tool passa None para não abrir modal novamente.
+        _confirm_tool = (
+            None if getattr(self, "_trust_tool_creation", False)
+            else self._modal_confirm_tool
+        )
+        _confirm_path = self._modal_confirm_path
 
         # ── callbacks injetados no run_agent ──────────────────────────────────
 
@@ -3023,6 +3480,8 @@ class CielTUI(App):
             on_limit=on_limit,
             on_error=on_error,
             max_steps=max_steps,
+            on_confirm_tool=_confirm_tool,
+            on_confirm_path=_confirm_path,
         )
 
         # le tokens acumulados do modelo secundario neste turno
