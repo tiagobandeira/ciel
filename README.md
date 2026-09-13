@@ -146,6 +146,8 @@ python server.py                           # versão server local
 | `/tools-extras` | tools opcionais disponíveis e status de instalação |
 | `/mcp` | lista servidores MCP conectados e status |
 | `/mcp -v` | lista com todas as tools de cada servidor |
+| `/workspace` | mostra workspace ativo e paths liberados |
+| `/workspace <caminho>` | libera pasta/arquivo fora do workspace (leitura ou leitura+escrita) |
 | `/promover <tool>` | promove tool temporária para permanente |
 | `/limpar-temp` | remove tools temporárias da sessão |
 | `/analisar <caminho>` | absorve skill externa como primitivas Ciel |
@@ -412,6 +414,20 @@ python ciel.py --auto   # pula confirmação de create_tool na sessão inteira
 
 Em modo headless (`--task`), criação de tools é recusada automaticamente a menos que `--auto` seja passado explicitamente.
 
+**Workspace guard** — todas as tools que recebem caminhos de arquivo são validadas contra o diretório de onde o Ciel foi iniciado (cwd). Se o modelo tentar ler ou escrever fora desse workspace, a CLI pede confirmação explícita antes de prosseguir:
+
+```
+[s] sim, só essa vez   [a] sim, e lembrar   [n] não
+```
+
+Escolher `a` persiste o grant em `.ciel_workspace.json` (gitignored) e o path aparece no `/workspace` nas próximas sessões. Para liberar um caminho manualmente antes de iniciar uma tarefa:
+
+```bash
+/workspace ~/projetos/outro-repo   # [l] leitura  [e] leitura+escrita  [n] cancelar
+```
+
+Em sessões headless (`--task`), qualquer acesso fora do workspace é recusado automaticamente sem prompt.
+
 **Limitações:**
 
 - Modelos locais pequenos (< 8B) podem falhar em raciocínio complexo — considere configurar um modelo secundário.
@@ -441,6 +457,7 @@ Ciel/
 ├── cli.py                                ← CLI interativa
 ├── ciel_tui.py                           ← TUI (requer Textual)
 ├── tool_dispatch.py                      ← fonte única de UNSAFE_TOOLS e lógica de confirmação
+├── workspace.py                          ← workspace guard: valida paths antes de invocar tools
 ├── agent_loop.py
 ├── server.py
 ├── agent_loader.py
