@@ -1,5 +1,7 @@
 """Lista arquivos de um diretório com tipo (arquivo/pasta) e filtro por extensão."""
 
+PERMISSIONS = {"directory": "read"}
+
 import os
 from pathlib import Path
 

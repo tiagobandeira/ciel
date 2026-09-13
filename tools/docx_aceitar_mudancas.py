@@ -2,6 +2,7 @@
 
 REQUIREMENTS = ['defusedxml']
 EXTRA = True
+PERMISSIONS = {"caminho": "write", "saida": "write"}
 
 import shutil
 import zipfile

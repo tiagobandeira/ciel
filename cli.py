@@ -43,7 +43,8 @@ from history_ui import SessionPicker, build_context_injection
 from mcp.manager import MCPManager
 from image_input import parse_image_input, parse_image_command, format_image_hint, IMAGE_EXTENSIONS
 from environment import check_environment
-from tool_dispatch import filter_unsafe, needs_confirmation
+from tool_dispatch import filter_unsafe, needs_confirmation, get_path_checks
+from workspace import get_workspace, init_workspace
 
 # ── config ────────────────────────────────────────────────────────────────────
 OLLAMA_URL       = "http://localhost:11434/api/chat"
@@ -105,6 +106,16 @@ def header(model: str, agent_name: str, tools: dict, safe: bool = False):
 
     safe_badge = "  [tool]⚠ modo seguro[/tool]\n" if safe else ""
 
+    ws = get_workspace()
+    ws_display = str(ws.default_root)
+    home = str(Path.home())
+    if ws_display.startswith(home):
+        ws_display = "~" + ws_display[len(home):]
+    ws_extra = (
+        f"  [muted](+{len(ws.grants)} liberado{'s' if len(ws.grants) != 1 else ''} · /workspace)[/muted]"
+        if ws.grants else "  [muted](/workspace pra liberar outra pasta)[/muted]"
+    )
+
     ascii_art = """
              ██████╗██╗███████╗██╗     
             ██╔════╝██║██╔════╝██║     
@@ -121,6 +132,7 @@ def header(model: str, agent_name: str, tools: dict, safe: bool = False):
         f"  [muted]agent:[/muted] [user]{agent_name}[/user]   "
         f"[muted]model:[/muted] [white]{model}[/white]\n"
         f"  [muted]tools:[/muted] [tool]{tools_line}[/tool]\n"
+        f"  [muted]workspace:[/muted] [white]{ws_display}[/white]{ws_extra}\n"
         f"{ascii_art}"
         f"\n"
         f"  [muted]/  comandos  ·  tab  completar  ·  /ajuda  ajuda[/muted] \n"
@@ -492,6 +504,18 @@ def run_agent(
 
     def _invoke_tool(tool_name: str, args: dict, step: int) -> str:
         """Chama a tool e cuida do reload automático do registry quando necessário."""
+        for arg_name, need_write in get_path_checks(tool_name, tools):
+            raw_path = args.get(arg_name)
+            if not raw_path:
+                continue
+            resolved, err = get_workspace().check(raw_path, need_write)
+            if err:
+                allowed, denial = _confirm_path_access(raw_path, need_write, step)
+                if not allowed:
+                    return denial
+        if tool_name == "run_script":
+            args.setdefault("cwd", str(get_workspace().default_root))
+
         if tool_name in ("list_sources", "search_knowledge"):
             args.setdefault("agent_id", agent_info.get("id", "general"))
             args.setdefault("session_id", str(session_id) if session_id else "")
@@ -528,6 +552,55 @@ def run_agent(
             print_step(step, "registry", f"{len(tools)} tools carregadas", CLR_OK)
 
         return result
+
+    def _confirm_path_access(raw_path: str, need_write: bool, step: int) -> tuple[bool, str | None]:
+        """
+        Promove um bloqueio de workspace pra um pedido de permissão real,
+        no mesmo estilo do prompt de criação de tool. Aprovando com "sempre",
+        o caminho é liberado via workspace.add_grant (persiste em
+        .ciel_workspace.json, aparece no /workspace dali em diante).
+        Retorna (True, None) se aprovado, ou (False, mensagem_de_negação).
+        """
+        target = Path(raw_path).expanduser()
+        resolved = target.resolve() if target.exists() else target
+
+        if not interactive:
+            feedback = (
+                f"Acesso negado: '{raw_path}' está fora do workspace e a sessão "
+                f"não é interativa. Rode /workspace antes ou use --auto."
+            )
+            print_step(step, "bloqueado", feedback, CLR_WARN)
+            return False, feedback
+
+        tipo = "arquivo" if resolved.is_file() else ("pasta" if resolved.is_dir() else "caminho")
+        acao = "escrever em" if need_write else "ler"
+        console.print(Panel(
+            f"quer {acao} {tipo}:\n[white]{escape(str(resolved))}[/white]",
+            title="[warn]permissão de acesso · fora do workspace[/warn]",
+            border_style=CLR_WARN,
+            padding=(0, 1),
+        ))
+        console.print()
+        console.print(
+            f"  [{CLR_OK}]\\[s][/{CLR_OK}] sim, só essa vez   "
+            f"  [{CLR_WARN}]\\[a][/{CLR_WARN}] sim, e lembrar [muted](/workspace)[/muted]   "
+            f"  [{CLR_ERR}]\\[n][/{CLR_ERR}] nao\n"
+        )
+        raw = Prompt.ask(
+            f"  [{CLR_WARN}]permitir?[/{CLR_WARN}]",
+            choices=["s", "a", "n"],
+            default="n",
+        ).strip().lower()
+
+        if raw in ("a", "auto", "sempre"):
+            get_workspace().add_grant(resolved, write=need_write)
+            return True, None
+        if raw in ("s", "sim"):
+            return True, None
+
+        feedback = f"Acesso a '{raw_path}' negado pelo usuário."
+        print_step(step, "recusado", feedback, CLR_WARN)
+        return False, feedback
 
     def _confirm_tool_creation(tool_name: str, args: dict, step: int) -> str | None:
         """
@@ -1005,6 +1078,7 @@ def run_task_headless(task_path: Path, args) -> int:
         stream=sys.stdout,
     )
     log = logging.getLogger("ciel.task")
+    init_workspace()
 
     # ── carrega task ───────────────────────────────────────────────────────
     task = load_task(task_path)
@@ -1090,6 +1164,11 @@ def main():
     # nesta sessão, então escolher "auto" no prompt de confirmação (ou
     # passar --auto) vale até o fim da sessão, não só do turno atual.
     session_flags = {"trust_tool_creation": args.auto}
+
+    # workspace padrão = pasta de onde o ciel foi chamado (cwd) — não a
+    # pasta de instalação. Extra grants salvos em sessões anteriores (via
+    # /workspace) são recarregados aqui e aparecem no banner logo abaixo.
+    init_workspace()
 
     # ── verificação de ambiente ───────────────────────────────────────────
     # Roda antes de tudo. Checks bloqueantes (Ollama) encerram com sys.exit.
@@ -1267,6 +1346,52 @@ def main():
                 desc = meta["description"].split("\n")[0][:55]
                 tbl.add_row(f"⚙ {name}", cat_label, desc)
             console.print(Panel(tbl, title="[tool]tools[/tool]", border_style=CLR_BORDER, padding=(0,1)))
+            console.print()
+            continue
+
+        if user_input == "/workspace":
+            console.print(Panel(
+                "\n".join(f"• {l}" for l in get_workspace().status_lines()),
+                title="[tool]workspace[/tool]",
+                border_style=CLR_BORDER,
+                padding=(0, 1),
+            ))
+            console.print()
+            continue
+
+        if user_input.startswith("/workspace "):
+            raw_input_path = user_input[len("/workspace "):].strip()
+            target = Path(raw_input_path).expanduser()
+            if not target.exists():
+                console.print(f"  [{CLR_ERR}]'{raw_input_path}' não existe.[/{CLR_ERR}]")
+                console.print()
+                continue
+            tipo = "arquivo" if target.is_file() else "pasta"
+            console.print(Panel(
+                f"liberar {tipo}:\n[white]{escape(str(target.resolve()))}[/white]",
+                title="[tool]workspace[/tool]",
+                border_style=CLR_WARN,
+                padding=(0, 1),
+            ))
+            console.print()
+            console.print(
+                f"  [{CLR_OK}]\\[l][/{CLR_OK}] leitura   "
+                f"  [{CLR_WARN}]\\[e][/{CLR_WARN}] leitura+escrita   "
+                f"  [{CLR_ERR}]\\[n][/{CLR_ERR}] cancelar\n"
+            )
+            raw = Prompt.ask(
+                f"  [{CLR_WARN}]permissão[/{CLR_WARN}]",
+                choices=["l", "e", "n"],
+                default="l",
+            ).strip().lower()
+            if raw in ("n", "nao", "não", "cancelar"):
+                console.print("  [muted]cancelado.[/muted]")
+                console.print()
+                continue
+            write = raw in ("e", "escrita")
+            grant = get_workspace().add_grant(target, write=write)
+            perms = "leitura+escrita" if grant.write else "somente leitura"
+            console.print(f"  [{CLR_OK}]✓[/{CLR_OK}] {tipo} liberado ({perms}): {grant.root}")
             console.print()
             continue
 

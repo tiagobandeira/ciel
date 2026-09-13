@@ -115,6 +115,25 @@ Schema gerado:
 
 ---
 
+## Permissões de arquivo (workspace)
+
+Se a tool recebe um parâmetro que é caminho de arquivo/pasta, declare
+`PERMISSIONS` no topo do arquivo — mesmo padrão de `REQUIREMENTS`/`EXTRA`,
+lido automaticamente pelo `tools_registry.py`. Sem isso, o dispatcher não
+sabe que aquele parâmetro precisa ser checado contra o workspace atual do
+usuário, e a tool roda sem nenhuma validação de path.
+
+```python
+PERMISSIONS = {"path": "read"}                        # um parâmetro
+PERMISSIONS = {"caminho": "write", "saida": "write"}   # mais de um, com níveis diferentes
+```
+
+Valores aceitos: `"read"` ou `"write"`. Use `"write"` também quando um
+parâmetro de saída opcional, se vazio, sobrescreve o de entrada.
+
+Não precisa declarar quando o path vem de um comando explícito do usuário
+(ex: `/img`, `/source`) — só quando é o modelo que escolhe o caminho sozinho.
+
 ## Como criar uma nova tool
 
 Siga o padrão do `tool_template.md`:
@@ -124,6 +143,9 @@ Siga o padrão do `tool_template.md`:
 
 # opcional — libs externas necessárias
 REQUIREMENTS = ["requests"]
+
+# opcional — só se algum parâmetro abaixo é caminho de arquivo/pasta
+PERMISSIONS = {"path": "read"}
 
 def run(param: str) -> str:
     """

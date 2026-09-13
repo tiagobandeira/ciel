@@ -1,15 +1,19 @@
 """Executa um script Python local e retorna stdout/stderr. ATENÇÃO: tool de execução arbitrária — desabilitada com --safe."""
 
+PERMISSIONS = {"script_path": "read"}
+
 import subprocess
 import sys
 from pathlib import Path
 
 
-def run(script_path: str, args: list[str] = None, timeout: int = 120) -> str:
+def run(script_path: str, args: list[str] = None, timeout: int = 120, cwd: str = None) -> str:
     """
     script_path: caminho para o .py a executar
     args:        lista de argumentos passados ao script (opcional)
     timeout:     segundos antes de encerrar o processo (padrão: 120)
+    cwd:         diretório de trabalho do processo (injetado pelo dispatcher
+                 como o workspace atual — não precisa ser passado manualmente)
     """
     path = Path(script_path)
     if not path.exists():
@@ -24,6 +28,7 @@ def run(script_path: str, args: list[str] = None, timeout: int = 120) -> str:
             capture_output=True,
             text=True,
             timeout=timeout,
+            cwd=cwd,
         )
         output = result.stdout.strip()
         error  = result.stderr.strip()

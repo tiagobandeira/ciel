@@ -1,6 +1,9 @@
 """
 Tool para gerar a árvore de diretórios do projeto, ignorando pastas irrelevantes, e salvar em um arquivo Markdown.
 """
+
+PERMISSIONS = {"output_file": "write"}
+
 import os
 
 def run(output_file="project_structure.md"):

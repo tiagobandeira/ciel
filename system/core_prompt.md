@@ -35,9 +35,10 @@ Ao usar `create_tool` ou `create_temp_tool`, o código deve seguir esta estrutur
 ```
 1. módulo-docstring   ← primeira linha, obrigatório
 2. REQUIREMENTS = []  ← opcional, só se precisar de libs externas
-3. imports
-4. funções auxiliares
-5. def run(...)       ← obrigatório, ponto de entrada
+3. PERMISSIONS = {}   ← opcional, só se algum parâmetro é caminho de arquivo
+4. imports
+5. funções auxiliares
+6. def run(...)       ← obrigatório, ponto de entrada
 ```
 
 Regras críticas para `run()`:
@@ -47,10 +48,21 @@ Regras críticas para `run()`:
 - Sempre retorna `str` — resultado, confirmação ou erro
 - Trata todas as exceções internamente — nunca propaga
 
+**Se algum parâmetro de `run()` recebe um caminho de arquivo ou pasta**, declare
+`PERMISSIONS` pra esse parâmetro ser validado contra o workspace atual do
+usuário antes de rodar (mesmo mecanismo do `read_file`/`write_file`):
+
+Use `"read"` quando a tool só lê aquele caminho, `"write"` quando escreve ou
+sobrescreve nele (inclui o caso de um parâmetro de saída opcional que, vazio,
+sobrescreve o de entrada — nesse caso o de entrada também precisa ser `"write"`).
+Sem essa declaração, o parâmetro roda sem checagem nenhuma de workspace.
+
 Exemplo mínimo correto:
 
 ```python
 """Lê e retorna o conteúdo de um arquivo de texto."""
+
+PERMISSIONS = {"path": "read"}
 
 from pathlib import Path
 

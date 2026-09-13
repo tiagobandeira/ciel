@@ -2,6 +2,7 @@
 
 REQUIREMENTS = ['python-docx']
 EXTRA = True
+PERMISSIONS = {"caminho": "write"}
 
 import re
 

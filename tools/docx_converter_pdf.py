@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 EXTRA = True
+PERMISSIONS = {"caminho": "write", "diretorio_saida": "write"}
 
 
 def run(caminho: str, diretorio_saida: str = '') -> str:

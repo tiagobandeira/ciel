@@ -1,5 +1,7 @@
 """Lê o conteúdo de um arquivo de texto local."""
 
+PERMISSIONS = {"path": "read"}
+
 from pathlib import Path
 
 MAX_CHARS = 8_000  # limite pra não explodir o contexto do modelo

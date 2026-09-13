@@ -1,6 +1,9 @@
 """
 Tool para listar arquivos em um diretório específico ou buscar arquivos por padrão.
 """
+
+PERMISSIONS = {"directory": "read"}
+
 import os
 import fnmatch
 
