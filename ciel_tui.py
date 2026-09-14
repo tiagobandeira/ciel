@@ -785,6 +785,7 @@ class ToolConfirmModal(ModalScreen):
     #tool-btn-sim {{
         background: {P['accent']};
         color: {P['bg']};
+        text-style: none;
         border: none;
         margin: 0 1;
         min-width: 14;
@@ -792,6 +793,7 @@ class ToolConfirmModal(ModalScreen):
     #tool-btn-auto {{
         background: {P['orange']};
         color: {P['bg']};
+        text-style: none;
         border: none;
         margin: 0 1;
         min-width: 22;
@@ -799,6 +801,7 @@ class ToolConfirmModal(ModalScreen):
     #tool-btn-nao {{
         background: {P['surface']};
         color: {P['crimson']};
+        text-style: none;
         border: none;
         margin: 0 1;
         min-width: 10;
@@ -823,9 +826,9 @@ class ToolConfirmModal(ModalScreen):
                 id="tool-confirm-hint",
             )
             with Horizontal(id="tool-confirm-btns"):
-                yield Button(r"\[s] sim",             id="tool-btn-sim",  variant="primary")
-                yield Button(r"\[a] auto (sessão)",   id="tool-btn-auto")
-                yield Button(r"\[n] não",             id="tool-btn-nao")
+                yield Button("Sim",             id="tool-btn-sim",  variant="primary")
+                yield Button("Auto (sessão)",   id="tool-btn-auto")
+                yield Button("Não",             id="tool-btn-nao")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         mapping = {
@@ -898,6 +901,7 @@ class WorkspaceModal(ModalScreen):
     #ws-btn-sim {{
         background: {P['accent']};
         color: {P['bg']};
+        text-style: none;
         border: none;
         margin: 0 1;
         min-width: 18;
@@ -905,6 +909,7 @@ class WorkspaceModal(ModalScreen):
     #ws-btn-sempre {{
         background: {P['orange']};
         color: {P['bg']};
+        text-style: none;
         border: none;
         margin: 0 1;
         min-width: 24;
@@ -912,6 +917,7 @@ class WorkspaceModal(ModalScreen):
     #ws-btn-nao {{
         background: {P['surface']};
         color: {P['crimson']};
+        text-style: none;
         border: none;
         margin: 0 1;
         min-width: 10;
@@ -944,9 +950,9 @@ class WorkspaceModal(ModalScreen):
                 id="ws-modal-hint",
             )
             with Horizontal(id="ws-modal-btns"):
-                yield Button(r"\[s] sim, só essa vez",    id="ws-btn-sim",    variant="primary")
-                yield Button(r"\[a] sim, e lembrar",      id="ws-btn-sempre")
-                yield Button(r"\[n] não",                 id="ws-btn-nao")
+                yield Button("Sim, só essa vez",    id="ws-btn-sim",    variant="primary")
+                yield Button("Sim, e lembrar",      id="ws-btn-sempre")
+                yield Button("Não",                 id="ws-btn-nao")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         mapping = {
@@ -1019,6 +1025,7 @@ class WorkspaceGrantModal(ModalScreen):
     #wsgrant-btn-leitura {{
         background: {P['accent']};
         color: {P['bg']};
+        text-style: none;
         border: none;
         margin: 0 1;
         min-width: 14;
@@ -1026,6 +1033,7 @@ class WorkspaceGrantModal(ModalScreen):
     #wsgrant-btn-escrita {{
         background: {P['orange']};
         color: {P['bg']};
+        text-style: none;
         border: none;
         margin: 0 1;
         min-width: 22;
@@ -1033,6 +1041,7 @@ class WorkspaceGrantModal(ModalScreen):
     #wsgrant-btn-nao {{
         background: {P['surface']};
         color: {P['crimson']};
+        text-style: none;
         border: none;
         margin: 0 1;
         min-width: 12;
@@ -1057,9 +1066,9 @@ class WorkspaceGrantModal(ModalScreen):
                 id="wsgrant-hint",
             )
             with Horizontal(id="wsgrant-btns"):
-                yield Button(r"\[l] leitura",           id="wsgrant-btn-leitura", variant="primary")
-                yield Button(r"\[e] leitura+escrita",   id="wsgrant-btn-escrita")
-                yield Button(r"\[n] cancelar",          id="wsgrant-btn-nao")
+                yield Button("Leitura",             id="wsgrant-btn-leitura", variant="primary")
+                yield Button("Leitura + escrita",   id="wsgrant-btn-escrita")
+                yield Button("Cancelar",            id="wsgrant-btn-nao")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         mapping = {
@@ -3326,7 +3335,14 @@ class CielTUI(App):
         Abre ToolConfirmModal na thread principal e bloqueia o worker até
         o usuário escolher. Retorna True se aprovado (sim ou auto).
         auto também registra trust_tool_creation para o resto da sessão.
+
+        Rechecado a cada chamada (não decidido uma vez só no início do
+        turno) — se o usuário escolher "auto" no meio de uma tarefa que
+        cria mais de uma tool, a segunda chamada já não pergunta de novo.
         """
+        if getattr(self, "_trust_tool_creation", False):
+            return True
+
         import threading
         event  = threading.Event()
         result = [False]
@@ -3390,12 +3406,10 @@ class CielTUI(App):
             pass
 
         # ── callbacks de segurança ────────────────────────────────────────────
-        # Se trust_tool_creation já foi aprovado nesta sessão (via "auto"),
-        # on_confirm_tool passa None para não abrir modal novamente.
-        _confirm_tool = (
-            None if getattr(self, "_trust_tool_creation", False)
-            else self._modal_confirm_tool
-        )
+        # _modal_confirm_tool já checa self._trust_tool_creation internamente
+        # a cada chamada — não decide aqui pra não perder um "auto" escolhido
+        # no meio da mesma tarefa (duas criações de tool no mesmo turno).
+        _confirm_tool = self._modal_confirm_tool
         _confirm_path = self._modal_confirm_path
 
         # ── callbacks injetados no run_agent ──────────────────────────────────
