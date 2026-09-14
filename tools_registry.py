@@ -14,6 +14,14 @@ Variáveis de módulo reconhecidas em cada tool:
                            pra saber o que checar antes de rodar a tool —
                            sem isso, o argumento não é validado contra o
                            workspace atual.
+  INTERACTIVE = True      tool que precisa perguntar algo ao usuário durante
+                           a execução (não só receber args e devolver
+                           resultado). O harness injeta um argumento
+                           `perguntar(pergunta, opcoes=None) -> str` na
+                           chamada — a tool NUNCA deve usar input()/print()
+                           diretamente, pois isso quebra na TUI (o Textual
+                           já controla o terminal). Ver tools/entrevista_*.py
+                           como referência.
 """
 
 import re
@@ -29,6 +37,13 @@ TOOLS_TEMP_DIR = TOOLS_DIR / "temp"
 # is_extra=True  → EXTRA = True no módulo — ausência esperada, vira sugestão
 # is_extra=False → tool core sem a flag — erro real, exibido separado
 _missing_optional: list[tuple[str, str, bool]] = []
+
+# nomes que existem em tools/temp/ E em tools/ ao mesmo tempo — populado
+# por load_tools(). tools/ tem prioridade (ver load_tools); a de temp/
+# fica inerte. Exposto via get_shadowed_tools() em vez de print() direto
+# porque um print aqui não aparece de forma confiável na TUI (o Textual
+# já controla a tela — cada harness decide como mostrar isso de verdade).
+_shadowed_tools: list[str] = []
 
 
 def _extract_params(fn) -> list[dict]:
@@ -146,20 +161,38 @@ def _load_from_dir(directory: Path, categoria: str) -> dict:
                 "extra":        bool(getattr(mod, "EXTRA", False)),
                 "requirements": list(getattr(mod, "REQUIREMENTS", [])),
                 "permissions":  dict(getattr(mod, "PERMISSIONS", {})),
+                "interactive":  bool(getattr(mod, "INTERACTIVE", False)),
             }
 
     return tools
 
 
 def load_tools() -> dict:
-    """Carrega tools permanentes e temporárias."""
-    global _missing_optional
+    """Carrega tools permanentes e temporárias. tools/ tem prioridade sobre
+    tools/temp/ quando o mesmo nome existe nos dois — permanente é uma
+    escolha deliberada, temp é descartável por natureza."""
+    global _missing_optional, _shadowed_tools
     _missing_optional = []  # reseta a cada carregamento
+    _shadowed_tools = []
+
+    permanent = _load_from_dir(TOOLS_DIR,      categoria="permanente")
+    temp      = _load_from_dir(TOOLS_TEMP_DIR, categoria="temp")
+
+    _shadowed_tools = [name for name in temp if name in permanent]
 
     tools = {}
-    tools.update(_load_from_dir(TOOLS_DIR,      categoria="permanente"))
-    tools.update(_load_from_dir(TOOLS_TEMP_DIR, categoria="temp"))
+    tools.update(temp)       # primeiro, pra permanent poder sobrescrever
+    tools.update(permanent)  # tools/ sempre vence em caso de nome igual
     return tools
+
+
+def get_shadowed_tools() -> list[str]:
+    """
+    Nomes de tools que existem em tools/ E em tools/temp/ ao mesmo tempo.
+    A versão de tools/ é a que roda (ver load_tools) — a de temp/ é
+    provavelmente um arquivo esquecido de um teste anterior.
+    """
+    return list(_shadowed_tools)
 
 
 def get_missing_optional_tools() -> list[tuple[str, str]]:

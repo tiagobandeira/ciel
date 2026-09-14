@@ -232,7 +232,8 @@ CORE_TOOLS = {
     "calculator", "get_local_datetime",
     "create_tool", "run_script", "install_tool", "http_request",
     "web_search_extended", "temp_log",
-    "secondary_model","list_skills"
+    "secondary_model","list_skills",
+    "entrevista_interativa",
 }
 
 

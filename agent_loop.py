@@ -239,6 +239,11 @@ def run_agent(
     # sem confirmação (comportamento legado / headless).
     on_confirm_tool: Callable[[str, str], bool] | None = None,
     on_confirm_path: Callable[[str, bool], bool] | None = None,
+    # callback pra tools INTERACTIVE (ex: entrevista_interativa) perguntarem
+    # algo ao usuário em vez de usar input()/print() direto — quebraria a
+    # TUI, que já controla o terminal. None = tool roda sem essa injeção
+    # (ela mesma decide o que fazer, ex: erro dizendo que precisa do harness).
+    on_ask_user: Callable[[str, list[str] | None], str] | None = None,
 ) -> AgentResult:
     """
     Executa o loop agêntico e retorna um AgentResult.
@@ -370,6 +375,8 @@ def run_agent(
                     args.setdefault("session_id", str(session_id) if session_id else "")
                 if tool_name == "secondary_model":
                     args.setdefault("session_id", str(session_id) if session_id else "_nosession")
+                if tools.get(tool_name, {}).get("interactive") and on_ask_user is not None:
+                    args.setdefault("perguntar", on_ask_user)
 
                 feedback = tools[tool_name]["fn"](**args)
                 _call(on_step, step, "resultado", str(feedback)[:100], "done")

@@ -36,7 +36,7 @@ from prompt_toolkit import prompt as pt_prompt
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.styles import Style as PtStyle
 
-from tools_registry import load_tools, tools_schema, get_missing_optional_tools, get_broken_tools
+from tools_registry import load_tools, tools_schema, get_missing_optional_tools, get_broken_tools, get_shadowed_tools
 from agent_loader import load_agent, filter_tools, filter_mcp_tools, list_agents
 from history_store import HistoryStore, DB_PATH
 from history_ui import SessionPicker, build_context_injection
@@ -502,6 +502,29 @@ def run_agent(
 
     print_rule("executando")
 
+    def _ask_user_cli(pergunta: str, opcoes: list[str] | None = None) -> str:
+        """
+        Callback injetado em tools INTERACTIVE (ex: entrevista_interativa).
+        A tool não usa input()/print() diretamente — chama isso, que decide
+        como perguntar de acordo com o harness (aqui: lista numerada no
+        terminal; na TUI vira um modal com botões).
+        """
+        console.print()
+        console.print(f"  [tool]?[/tool] {escape(pergunta)}")
+        if opcoes:
+            for i, opt in enumerate(opcoes, 1):
+                console.print(f"    [muted]{i})[/muted] {escape(str(opt))}")
+            while True:
+                escolha = Prompt.ask("  Escolha (número)").strip()
+                try:
+                    idx = int(escolha) - 1
+                    if 0 <= idx < len(opcoes):
+                        return opcoes[idx]
+                except ValueError:
+                    pass
+                console.print(f"  [{CLR_ERR}]Opção inválida, tente de novo.[/{CLR_ERR}]")
+        return Prompt.ask("  Resposta")
+
     def _invoke_tool(tool_name: str, args: dict, step: int) -> str:
         """Chama a tool e cuida do reload automático do registry quando necessário."""
         for arg_name, need_write in get_path_checks(tool_name, tools):
@@ -521,6 +544,8 @@ def run_agent(
             args.setdefault("session_id", str(session_id) if session_id else "")
         if tool_name == "secondary_model":
             args.setdefault("session_id", str(session_id) if session_id else "_nosession")
+        if tools.get(tool_name, {}).get("interactive"):
+            args.setdefault("perguntar", _ask_user_cli)
 
         result = tools[tool_name]["fn"](**args)
         print_step(step, "resultado", str(result)[:100], CLR_OK)
@@ -1229,6 +1254,16 @@ def main():
         _env_warnings.append(
             f"[err]✗[/err]  [muted]deps ausentes em tools core: {_bnames}{_bextra}"
             f"  ·  verifique requirements.txt[/muted]"
+        )
+
+    # ── aviso: mesmo nome em tools/ e tools/temp/ (tools/ sempre vence) ───────
+    _shadowed = get_shadowed_tools()
+    if _shadowed:
+        _snames = "  ·  ".join(_shadowed[:3])
+        _sextra = f"  (e {len(_shadowed) - 3} mais)" if len(_shadowed) > 3 else ""
+        _env_warnings.append(
+            f"[warn]~[/warn]  [muted]duplicada em tools/temp/: {_snames}{_sextra}"
+            f"  ·  tools/ tem prioridade, a de temp/ está inerte[/muted]"
         )
 
     # ── header aparece imediatamente, antes de qualquer conexão MCP ─────────────

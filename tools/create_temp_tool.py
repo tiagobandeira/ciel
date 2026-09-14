@@ -207,6 +207,15 @@ def run(tool_name: str, tool_code: str) -> str:
     if not tool_name.replace("_", "").isalnum():
         return f"Erro: nome inválido '{tool_name}'. Use apenas letras, números e underscore."
 
+    permanent_path = Path(__file__).parent / f"{tool_name}.py"
+    if permanent_path.exists():
+        return (
+            f"Erro: já existe uma tool permanente chamada '{tool_name}' em "
+            f"tools/{tool_name}.py. Uma tool temporária com o mesmo nome ficaria "
+            f"inerte (tools/ tem prioridade) — escolha outro nome, ou use "
+            f"create_tool se a intenção é substituir a permanente de propósito."
+        )
+
     TOOLS_TEMP_DIR.mkdir(parents=True, exist_ok=True)
     tool_path = TOOLS_TEMP_DIR / f"{tool_name}.py"
 

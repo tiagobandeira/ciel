@@ -843,6 +843,102 @@ class ToolConfirmModal(ModalScreen):
     def action_deny(self)       -> None: self.dismiss("nao")
 
 
+class AskUserModal(ModalScreen):
+    """
+    Modal genérico usado por tools INTERACTIVE (ex: entrevista_interativa)
+    pra perguntar algo ao usuário em vez de input()/print() direto.
+    Com opções -> botões (um por opção, também selecionável por número).
+    Sem opções -> campo de texto livre.
+    Retorna a resposta escolhida/digitada como string ("" se cancelado).
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", show=False),
+    ]
+
+    CSS = f"""
+    AskUserModal {{
+        align: center middle;
+    }}
+    #ask-box {{
+        width: 70;
+        height: auto;
+        max-height: 30;
+        background: {P['panel']};
+        border: solid {P['accent']};
+        padding: 1 2;
+    }}
+    #ask-title {{
+        height: auto;
+        color: {P['accent']};
+        text-style: bold;
+        content-align: left middle;
+        border-bottom: solid {P['border']};
+        margin-bottom: 1;
+        padding-bottom: 1;
+    }}
+    #ask-opts {{
+        height: auto;
+        margin-bottom: 1;
+    }}
+    .ask-opt-btn {{
+        width: 100%;
+        background: {P['surface']};
+        color: {P['silver']};
+        text-style: none;
+        border: none;
+        margin-bottom: 1;
+    }}
+    #ask-input {{
+        margin-bottom: 1;
+    }}
+    #ask-hint {{
+        height: 1;
+        color: {P['muted']};
+        content-align: left middle;
+    }}
+    """
+
+    def __init__(self, pergunta: str, opcoes: list[str] | None = None, **kw) -> None:
+        super().__init__(**kw)
+        self._pergunta = pergunta
+        self._opcoes = list(opcoes) if opcoes else []
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="ask-box"):
+            yield Static(f"  ? {self._pergunta}", id="ask-title")
+            if self._opcoes:
+                with Vertical(id="ask-opts"):
+                    for i, opt in enumerate(self._opcoes):
+                        yield Button(f"{i + 1}) {opt}", id=f"ask-opt-{i}", classes="ask-opt-btn")
+                yield Label("Clique numa opção ou digite o número   · Esc cancela", id="ask-hint")
+            else:
+                yield Input(placeholder="Digite sua resposta…", id="ask-input")
+                yield Label("Enter confirma   · Esc cancela", id="ask-hint")
+
+    def on_mount(self) -> None:
+        if not self._opcoes:
+            self.query_one("#ask-input", Input).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id or ""
+        if bid.startswith("ask-opt-"):
+            idx = int(bid.rsplit("-", 1)[-1])
+            self.dismiss(self._opcoes[idx])
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.dismiss(event.value)
+
+    def on_key(self, event) -> None:
+        if self._opcoes and event.key.isdigit():
+            idx = int(event.key) - 1
+            if 0 <= idx < len(self._opcoes):
+                self.dismiss(self._opcoes[idx])
+
+    def action_cancel(self) -> None:
+        self.dismiss("")
+
+
 class WorkspaceModal(ModalScreen):
     """
     Modal de confirmação de acesso a path fora do workspace.
@@ -3393,6 +3489,28 @@ class CielTUI(App):
         event.wait()
         return result[0]
 
+    def _modal_ask_user(self, pergunta: str, opcoes: list[str] | None = None) -> str:
+        """
+        Abre AskUserModal na thread principal e bloqueia o worker até o
+        usuário responder. Usado por tools INTERACTIVE (ex:
+        entrevista_interativa) via on_ask_user injetado no run_agent.
+        """
+        import threading
+        event  = threading.Event()
+        result = [""]
+
+        def on_result(resposta: str | None) -> None:
+            result[0] = resposta or ""
+            event.set()
+
+        self.call_from_thread(
+            lambda: self.push_screen(
+                AskUserModal(pergunta, opcoes), on_result
+            )
+        )
+        event.wait()
+        return result[0]
+
     @work(thread=True)
     def _agent_turn(self, user_text: str, log: RichLog, max_steps: int = 6, image_b64: str | None = None) -> None:
         """Worker real: chama run_agent com callbacks thread-safe."""
@@ -3496,6 +3614,7 @@ class CielTUI(App):
             max_steps=max_steps,
             on_confirm_tool=_confirm_tool,
             on_confirm_path=_confirm_path,
+            on_ask_user=self._modal_ask_user,
         )
 
         # le tokens acumulados do modelo secundario neste turno
