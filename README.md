@@ -64,6 +64,7 @@ ollama list
 - **Ollama não acessível** ou **modelo não encontrado** → erro bloqueante com instruções para resolver
 - **Modelo secundário não configurado** → aviso informativo abaixo do banner (não bloqueia o uso)
 - **Tools opcionais sem dependência instalada** → aviso com contagem e link para `/tools-extras`
+- **Tool em `tools/temp/` com mesmo nome de uma permanente** → aviso informativo; a versão de `tools/temp/` é ignorada (`tools/` sempre tem prioridade)
 
 ---
 
@@ -485,6 +486,7 @@ Ciel/
 │   ├── calculator.py
 │   ├── create_tool.py
 │   ├── create_temp_tool.py
+│   ├── entrevista_interativa.py
 │   ├── get_hardware_info.py
 │   ├── get_local_datetime.py
 │   ├── get_network_info.py
