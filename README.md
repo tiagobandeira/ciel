@@ -315,7 +315,7 @@ list_sources
 - Regra 2
 ```
 
-Rode com `python ciel.py --agent meu_agente`.
+Rode com `python ciel.py --agent meu_agente`. Consulte a → **[Documentação completa: docs/agents.md](docs/agents.md)**
 
 ### Campos do .md
 
