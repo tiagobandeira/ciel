@@ -1299,7 +1299,7 @@ def main():
 
     # ── prompt_toolkit: autocomplete ──────────────────────────────────────────
     CMDS = [
-        "/sair", "/limpar", "/novo", "/task", "/tools", "/agente",
+        "/sair", "/limpar", "/novo", "/criar", "/criar agente","/task", "/tools", "/agente",
         "/source", "/source --listar","/source --remover","/source --global","/source --limpar-orfas","/skill", "/limpar-temp",
         "/promover ", "/copiar", "/tokens", "/ajuda",
         "/history", "/history salvar", "/history exportar",
@@ -2018,6 +2018,7 @@ def main():
                 "  [tool]/sair[/tool]                    encerra (pergunta se salva)\n"
                 "  [tool]/limpar[/tool]                  limpa a tela\n"
                 "  [tool]/novo[/tool]                    nova sessão (pergunta se salva)\n"
+                "  [tool]/criar [white]<agente>[/white][/tool]          cria agente novo via entrevista guiada\n"
                 "  [tool]/task[/tool]                    lista tasks disponíveis\n"
                 "  [tool]/task [white]<nome ou prompt>[/white][/tool]  executa task pelo nome ou busca\n"
                 "  [tool]/task [white]<arquivo.md>[/white][/tool]      executa task por caminho direto\n"
@@ -2140,6 +2141,72 @@ def main():
             if n_temp:
                 tools_line += f"  ({n_perm} permanentes · {n_temp} temp)"
             console.print(f"  [muted]registry atualizado · {tools_line}[/muted]\n")
+            continue
+
+        # ── /criar — atalho para tasks internas do sistema (.ciel/) ────────────
+        if user_input.startswith("/criar"):
+            partes = user_input.split(None, 1)
+            arg    = partes[1].strip().lower() if len(partes) > 1 else ""
+
+            _CRIAR_OPCOES = {"agente": "criar_agente"}  # expansível: "task": "criar_task", etc.
+
+            if not arg or arg not in _CRIAR_OPCOES:
+                opcoes_str = "  ·  ".join(f"[tool]{k}[/tool]" for k in _CRIAR_OPCOES)
+                console.print(f"\n  [tool]uso:[/tool] /criar [white]<tipo>[/white]")
+                console.print(f"  [muted]tipos disponíveis:[/muted] {opcoes_str}\n")
+                continue
+
+            task_name = _CRIAR_OPCOES[arg]
+            task_path = Path("tasks/.ciel") / f"{task_name}.md"
+
+            if not task_path.exists():
+                console.print(
+                    f"  [err]task interna '{task_name}' não encontrada em tasks/.ciel/[/err]\n"
+                    f"  [muted]verifique se o arquivo existe: {task_path}[/muted]\n"
+                )
+                continue
+
+            task = load_task(task_path)
+            if not task:
+                console.print(f"  [err]'{task_path.name}' não segue o formato de task.[/err]\n")
+                continue
+
+            console.print(
+                f"\n  [user]criar:[/user] {arg}  "
+                f"[muted]{len(task['acoes'])} ações · até {MAX_STEPS_TASK} steps[/muted]\n"
+            )
+
+            task_prompt = build_task_prompt(task)
+            ts = datetime.now().strftime("%a %H:%M")
+            history.append({"role": "user", "content": f"/criar {arg}", "ts": ts})
+
+            result, t_in, t_out = run_agent(
+                task_prompt, tools, schema, args.model, agent_info,
+                history=history[:-1],
+                session_id=str(current_session_id) if current_session_id else None,
+                max_steps=MAX_STEPS_TASK,
+                mcp_manager=mcp_manager,
+                session_flags=session_flags,
+            )
+            session_tokens_in  += t_in
+            session_tokens_out += t_out
+
+            if isinstance(result, dict) and result.get("status") == "needs_tool":
+                result, tools, schema = _handle_auto_tool(
+                    result, task_prompt, tools, schema,
+                    args.model, agent_info, history, safe=args.safe,
+                    session_flags=session_flags,
+                )
+                header(args.model, agent_info["name"], tools, safe=args.safe)
+                completer = make_completer(tools)
+
+            ts = datetime.now().strftime("%a %H:%M")
+            history.append({"role": "agent", "content": result, "ts": ts})
+            print_history_entry("agent", result, ts, t_in, t_out)
+            print_turn_separator()
+
+            if current_session_id is not None:
+                store.append_turn(current_session_id, "agent", result, ts)
             continue
 
         # Tasks
