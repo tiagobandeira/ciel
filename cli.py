@@ -1299,7 +1299,7 @@ def main():
 
     # ── prompt_toolkit: autocomplete ──────────────────────────────────────────
     CMDS = [
-        "/sair", "/limpar", "/novo", "/criar", "/criar agente","/task", "/tools", "/agente",
+        "/sair", "/limpar", "/novo", "/criar", "/criar agente", "/criar task", "/task", "/tools", "/agente",
         "/source", "/source --listar","/source --remover","/source --global","/source --limpar-orfas","/skill", "/limpar-temp",
         "/promover ", "/copiar", "/tokens", "/ajuda",
         "/history", "/history salvar", "/history exportar",
@@ -2148,7 +2148,7 @@ def main():
             partes = user_input.split(None, 1)
             arg    = partes[1].strip().lower() if len(partes) > 1 else ""
 
-            _CRIAR_OPCOES = {"agente": "criar_agente"}  # expansível: "task": "criar_task", etc.
+            _CRIAR_OPCOES = {"agente": "criar_agente", "task": "criar_task"}
 
             if not arg or arg not in _CRIAR_OPCOES:
                 opcoes_str = "  ·  ".join(f"[tool]{k}[/tool]" for k in _CRIAR_OPCOES)

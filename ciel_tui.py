@@ -300,9 +300,10 @@ FAKE_SKILLS = [
 
 COMMANDS: list[tuple[str, str]] = [
     ("/tool",              "lista/inspeciona ferramentas  [F1]"),
+    ("/criar agente",      "cria agente via entrevista guiada"),
+    ("/criar task",        "cria task via entrevista guiada"),
     ("/task",              "escolhe e executa task        [F2]"),
     ("/task <nome>",       "executa task diretamente"),
-    ("/criar agente",      "cria agente via entrevista guiada"), 
     ("/skill",             "ativa skill disponível        [F3]"),
     ("/agente",            "troca persona interativo      [F4]"),
     ("/agente <nome>",     "troca persona diretamente"),
@@ -2829,6 +2830,7 @@ class CielTUI(App):
             cmds = [
                 ("/tool",                 "lista/inspeciona ferramentas  [F1]"),
                 ("/criar agente",         "cria agente via entrevista guiada"),
+                ("/criar task",           "cria task via entrevista guiada"),
                 ("/task",                 "escolhe e executa task        [F2]"),
                 ("/task <nome>",          "executa task diretamente"),
                 ("/skill",                "ativa skill disponível        [F3]"),
@@ -2882,7 +2884,7 @@ class CielTUI(App):
             self._open_tool_modal()
 
         elif verb == "/criar":
-            _CRIAR_OPCOES = {"agente": "criar_agente"}  # expansível: "task": "criar_task"
+            _CRIAR_OPCOES = {"agente": "criar_agente", "task": "criar_task"}
             arg = parts[1].lower() if len(parts) > 1 else ""
             if not arg or arg not in _CRIAR_OPCOES:
                 opcoes_str = "  ·  ".join(_CRIAR_OPCOES.keys())
