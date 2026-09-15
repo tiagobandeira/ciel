@@ -2207,6 +2207,7 @@ def main():
 
             if current_session_id is not None:
                 store.append_turn(current_session_id, "agent", result, ts)
+            completer = make_completer(tools)  # pega o agente/task recém-criado no Tab
             continue
 
         # Tasks
