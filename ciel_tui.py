@@ -2429,6 +2429,8 @@ class CielTUI(App):
         # carrega agente e tools reais
         self._load_agent(self.current_agent)
         self._refresh_skill_commands()
+        self._refresh_task_commands()
+        self._refresh_agent_commands()
 
         # ── MCP: cria o manager e injeta nas tools admin ──────────────────────
         # IMPORTANTE: connect_all() usa SyncMCPClient que chama
@@ -3385,6 +3387,26 @@ class CielTUI(App):
             for sk in sorted(skills_dir.glob("*.md")):
                 COMMANDS.append((f"/skill {sk.stem}", f"skill: {sk.stem}"))
 
+    def _refresh_task_commands(self) -> None:
+        """Popula COMMANDS com as tasks disponíveis em tasks/ dinamicamente."""
+        from pathlib import Path
+        global COMMANDS
+        COMMANDS[:] = [(c, d) for c, d in COMMANDS if not c.startswith("/task ")]
+        tasks_dir = Path("tasks")
+        if tasks_dir.exists():
+            for tk in sorted(tasks_dir.glob("*.md")):
+                COMMANDS.append((f"/task {tk.stem}", f"task: {tk.stem}"))
+
+    def _refresh_agent_commands(self) -> None:
+        """Popula COMMANDS com os agentes disponíveis dinamicamente."""
+        global COMMANDS
+        COMMANDS[:] = [(c, d) for c, d in COMMANDS if not c.startswith("/agente ")]
+        try:
+            for name in list_agents():
+                COMMANDS.append((f"/agente {name}", f"agente: {name}"))
+        except Exception:
+            pass
+
     def _reload_tools(self, log: RichLog) -> None:
         """Recarrega tools do disco e atualiza self._tools / self._schema."""
         new_tools = load_tools()
@@ -3655,6 +3677,9 @@ class CielTUI(App):
 
         # reload de tools se o agente criou uma nova durante o turno
         if result.status == "done":
+            self._refresh_task_commands()
+            self._refresh_agent_commands()
+            self._refresh_skill_commands()
             new_tools = load_tools()
             filtered  = filter_tools(new_tools, self._agent_info.get("allowed_tools"))
             filtered  = filter_unsafe(filtered, self.safe_mode)
