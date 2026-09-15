@@ -134,6 +134,8 @@ python server.py                           # versão server local
 | `/source --listar` | lista fontes disponíveis com IDs |
 | `/source --remover <id>` | remove uma fonte pelo ID |
 | `/source --limpar-orfas` | remove fontes de sessões deletadas |
+| `/criar agente` | cria novo agente via entrevista guiada |
+| `/criar task` | cria nova task via entrevista guiada |
 | `/task` | lista todas as tasks disponíveis |
 | `/task <nome>` | executa task pelo nome (parcial ou exato) |
 | `/task <arquivo.md>` | executa task pelo caminho direto |
@@ -260,6 +262,18 @@ Se mais de uma task corresponder ao nome buscado, o agente lista as candidatas e
   <img src="docs/assets/screenshot_task.png" width="600">
 </p>
 
+### Criando tasks com entrevista guiada
+
+Use `/criar task` para criar uma task interativamente — o agente sugere as ações com base no objetivo descrito e você complementa se quiser:
+
+```bash
+/criar task     # abre entrevista: nome → objetivo → ações sugeridas → resultado esperado
+```
+
+A task é salva em `tasks/` e pode ser executada imediatamente com `/task <nome>`.
+
+→ **[Template de referência: docs/template_task.md](docs/template_task.md)**
+
 ### Modo headless
 
 Tasks podem ser executadas sem abrir o terminal interativo — útil para automações, cron jobs e pipelines.
@@ -315,7 +329,9 @@ list_sources
 - Regra 2
 ```
 
-Rode com `python ciel.py --agent meu_agente`. Consulte a → **[Documentação completa: docs/agents.md](docs/agents.md)**
+Rode com `python ciel.py --agent meu_agente`. Ou use `/criar agente` para criar via entrevista guiada — o agente faz as perguntas e gera o arquivo automaticamente.
+
+→ **[Documentação completa: docs/agents.md](docs/agents.md)** · **[Template de referência: docs/template_agente.md](docs/template_agente.md)**
 
 ### Campos do .md
 
@@ -324,6 +340,8 @@ Rode com `python ciel.py --agent meu_agente`. Consulte a → **[Documentação c
 | `# Título` | sim | Nome do agente exibido na CLI |
 | `## Persona` | sim | Personalidade e contexto do agente |
 | `## Tools permitidas` | não | `todas` ou lista de nomes. Padrão: todas |
+| `## Servidores MCP` | não | `todos`, `nenhum` ou lista de servidores |
+| `## Skills` | não | Skills vinculadas com nível: `obrigatoria`, `sugerida`, `opcional` |
 | `## Comportamento` | não | Regras adicionais de decisão |
 | `## Formato de resposta` | não | Override do JSON padrão (avançado) |
 
@@ -518,7 +536,10 @@ Ciel/
 │   └── refactor.md
 ├── tasks/
 │   ├── iniciar_rpg.md
-│   └── noticias_do_dia.md
+│   ├── noticias_do_dia.md
+│   └── .ciel/                                ← tasks internas do sistema (não listadas em /task)
+│       ├── criar_agente.md
+│       └── criar_task.md
 ├── system/
 │   ├── core_prompt.md
 │   └── tool_template.md
@@ -533,6 +554,9 @@ Ciel/
 └── docs/
     ├── KNOWLEDGE_ROADMAP.md
     ├── TESTING.md
+    ├── agents.md                            ← documentação completa do sistema de agentes
+    ├── template_agente.md                   ← template comentado para criar agentes
+    ├── template_task.md                     ← template comentado para criar tasks
     ├── mcp.md
     ├── mcp_telegram_tutorial.md
     ├── mcp_notion_tutorial.md
