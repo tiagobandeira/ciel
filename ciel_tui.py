@@ -929,6 +929,7 @@ class AskUserModal(ModalScreen):
             self.dismiss(self._opcoes[idx])
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()  # sem isso, o evento sobe até o App e dispara _dispatch()
         self.dismiss(event.value)
 
     def on_key(self, event) -> None:
