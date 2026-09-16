@@ -2184,20 +2184,18 @@ class CielTUI(App):
         tools = filter_tools(all_tools, self._agent_info.get("allowed_tools"))
         tools = filter_unsafe(tools, self.safe_mode)
 
-        # reinjeta tools MCP se o manager já estiver inicializado
-        if self._mcp_manager is not None:
-            tools.update(filter_mcp_tools(
-                self._mcp_manager.all_tools(),
-                self._agent_info.get("allowed_mcp_servers"),
-            ))
-            # reinjeta referência do manager nas tools administrativas
-            _mcp_admin_tools = ("mcp_add_server", "mcp_list_servers", "mcp_remove_server")
-            for tn in _mcp_admin_tools:
-                if tn in tools:
-                    tools[tn]["fn"].__globals__["_manager"] = self._mcp_manager
-
         self._tools  = tools
         self._schema = tools_schema(tools)
+
+        # reinjeta tools MCP com o que já estiver conectado (mostra algo de
+        # imediato) e, se o manager já existir, dispara em background a
+        # reconexão para o escopo do agente que acabou de ser carregado —
+        # desconecta servidores que não pertencem a ele e conecta só os que
+        # faltam. Se o agente não usa nenhum MCP, nada é conectado e nenhuma
+        # tool MCP entra no schema do orquestrador.
+        if self._mcp_manager is not None:
+            self._refresh_mcp_tools()
+            self._mcp_connect_for_agent(self._agent_info)
 
         # atualiza widgets se já montados
         try:
@@ -2433,12 +2431,13 @@ class CielTUI(App):
         self._refresh_agent_commands()
 
         # ── MCP: cria o manager e injeta nas tools admin ──────────────────────
-        # IMPORTANTE: connect_all() usa SyncMCPClient que chama
-        # loop.run_until_complete() internamente. Isso não pode ser chamado aqui
-        # porque on_mount() roda dentro do loop asyncio do Textual — em Python
-        # 3.10+ isso levanta "RuntimeError: Cannot run the event loop while
-        # another loop is running". A conexão real é feita em _mcp_init_worker()
-        # (thread separada), que não tem nenhum loop ativo.
+        # IMPORTANTE: connect_all()/connect_servers() usam SyncMCPClient, que
+        # chama loop.run_until_complete() internamente. Isso não pode ser
+        # chamado aqui porque on_mount() roda dentro do loop asyncio do
+        # Textual — em Python 3.10+ isso levanta "RuntimeError: Cannot run
+        # the event loop while another loop is running". A conexão real é
+        # feita em _mcp_connect_for_agent() (thread separada via @work),
+        # que não tem nenhum loop ativo.
         self._mcp_manager = MCPManager()
 
         # Injeta o manager nas tools administrativas já agora, antes de conectar,
@@ -2449,8 +2448,11 @@ class CielTUI(App):
             if tn in self._tools:
                 self._tools[tn]["fn"].__globals__["_manager"] = self._mcp_manager
 
-        # Dispara a conexão em background (não bloqueia o loop do Textual)
-        self._mcp_init_worker()
+        # Dispara a conexão em background (não bloqueia o loop do Textual),
+        # conectando só os servidores MCP do escopo do agente inicial — se
+        # ele não usa nenhum, nada é conectado e o contexto do orquestrador
+        # não é preenchido com tools que ele nunca vai chamar.
+        self._mcp_connect_for_agent(self._agent_info)
 
         t = Text()
         t.append("\n  ciel", style=f"bold {P['accent']}")
@@ -3412,31 +3414,80 @@ class CielTUI(App):
         new_tools = load_tools()
         filtered  = filter_tools(new_tools, self._agent_info.get("allowed_tools"))
         filtered  = filter_unsafe(filtered, self.safe_mode)
-        # reinjeta tools MCP para não perdê-las no reload
-        if self._mcp_manager is not None:
-            filtered.update(filter_mcp_tools(
-                self._mcp_manager.all_tools(),
-                self._agent_info.get("allowed_mcp_servers"),
-            ))
-            _mcp_admin_tools = ("mcp_add_server", "mcp_list_servers", "mcp_remove_server")
-            for tn in _mcp_admin_tools:
-                if tn in filtered:
-                    filtered[tn]["fn"].__globals__["_manager"] = self._mcp_manager
         self._tools  = filtered
         self._schema = tools_schema(filtered)
+        # reinjeta tools MCP (do que já estiver conectado) pra não perdê-las no reload
+        if self._mcp_manager is not None:
+            self._refresh_mcp_tools()
+
+    def _refresh_mcp_tools(self) -> None:
+        """
+        Reinjeta em self._tools/self._schema as tools MCP atualmente
+        conectadas, filtradas pelo allowed_mcp_servers do agente ativo.
+        Não conecta nem desconecta nada — só reflete o estado atual do
+        manager. Usada após load_tools()/troca de agente e ao final da
+        (re)conexão em background (_mcp_connect_for_agent).
+        """
+        if self._mcp_manager is None:
+            return
+        self._tools.update(filter_mcp_tools(
+            self._mcp_manager.all_tools(),
+            self._agent_info.get("allowed_mcp_servers"),
+        ))
+        self._schema = tools_schema(self._tools)
+        _mcp_admin_tools = ("mcp_add_server", "mcp_list_servers", "mcp_remove_server")
+        for tn in _mcp_admin_tools:
+            if tn in self._tools:
+                self._tools[tn]["fn"].__globals__["_manager"] = self._mcp_manager
 
     # ── workers ───────────────────────────────────────────────────────────────
 
-    @work(thread=True)
-    def _mcp_init_worker(self) -> None:
+    @work(thread=True, exclusive=True, group="mcp_connect")
+    def _mcp_connect_for_agent(self, agent_info: dict) -> None:
         """
-        Conecta servidores MCP persistidos em background.
+        (Re)conecta em background só os servidores MCP do escopo do agente
+        informado — equivalente ao _connect_agent_mcp() do cli.py.
 
-        Precisa rodar em thread separada (não no loop asyncio do Textual) porque
-        SyncMCPClient usa loop.run_until_complete() internamente — o que falha se
-        já houver um loop rodando na thread corrente (Python 3.10+).
+        allowed_mcp_servers == []    → não conecta nada (agente sem MCP no
+                                        escopo — não enche o contexto do
+                                        orquestrador com tools que ele nunca
+                                        vai chamar)
+        allowed_mcp_servers == None  → conecta todos (retrocompat.)
+        allowed_mcp_servers == [...] → conecta só os listados
+
+        Desconecta tudo antes de reconectar no escopo do novo agente, para
+        que uma troca de agente (via /agente, modal ou branch de sessão)
+        limpe as tools MCP do agente anterior — mesmo comportamento do
+        cli.py. `exclusive=True` cancela uma reconexão anterior ainda em
+        andamento se o usuário trocar de agente de novo rapidamente.
+
+        Roda em thread separada (não no loop asyncio do Textual) porque
+        SyncMCPClient usa loop.run_until_complete() internamente — o que
+        falha se já houver um loop rodando na thread corrente (Python 3.10+).
         """
-        mcp_results = self._mcp_manager.connect_all()
+        if self._mcp_manager is None:
+            return
+
+        allowed = agent_info.get("allowed_mcp_servers")  # [] | None | [...]
+
+        self._mcp_manager.disconnect_all()
+
+        if allowed is not None and len(allowed) == 0:
+            # agente sem MCP no escopo — não conecta nada
+            self._refresh_mcp_tools()
+            self.call_from_thread(
+                self._log_write,
+                msg_system("MCP: nenhum servidor no escopo deste agente", "info"),
+            )
+            return
+
+        mcp_results = (
+            self._mcp_manager.connect_all() if allowed is None
+            else self._mcp_manager.connect_servers(allowed)
+        )
+
+        self._refresh_mcp_tools()
+
         if not mcp_results:
             return
 
@@ -3444,20 +3495,6 @@ class CielTUI(App):
         fail_count = len(mcp_results) - ok_count
 
         if ok_count:
-            # Atualiza tools e schema com o que foi conectado
-            self._tools.update(filter_mcp_tools(
-                self._mcp_manager.all_tools(),
-                self._agent_info.get("allowed_mcp_servers"),
-            ))
-            self._schema = tools_schema(self._tools)
-
-            # Garante injeção do manager nas tools admin (pode não ter ocorrido
-            # em on_mount se a tool ainda não estava no registry)
-            _mcp_admin_tools = ("mcp_add_server", "mcp_list_servers", "mcp_remove_server")
-            for tn in _mcp_admin_tools:
-                if tn in self._tools:
-                    self._tools[tn]["fn"].__globals__["_manager"] = self._mcp_manager
-
             self.call_from_thread(
                 self._log_write,
                 msg_system(f"MCP: {ok_count} servidor(es) conectado(s)", "ok"),
@@ -3683,19 +3720,17 @@ class CielTUI(App):
             new_tools = load_tools()
             filtered  = filter_tools(new_tools, self._agent_info.get("allowed_tools"))
             filtered  = filter_unsafe(filtered, self.safe_mode)
-            # reinjeta tools MCP para não perdê-las no reload automático
+            changed = set(filtered) != {
+                k for k in self._tools
+                if not (k.startswith("mcp_") and "__" in k)
+            }
+            self._tools  = filtered
+            self._schema = tools_schema(filtered)
+            # reinjeta tools MCP (do que já estiver conectado) para não
+            # perdê-las no reload automático — não conecta nada novo aqui
             if self._mcp_manager is not None:
-                filtered.update(filter_mcp_tools(
-                    self._mcp_manager.all_tools(),
-                    self._agent_info.get("allowed_mcp_servers"),
-                ))
-                _mcp_admin_tools = ("mcp_add_server", "mcp_list_servers", "mcp_remove_server")
-                for tn in _mcp_admin_tools:
-                    if tn in filtered:
-                        filtered[tn]["fn"].__globals__["_manager"] = self._mcp_manager
-            if set(filtered) != set(self._tools):
-                self._tools  = filtered
-                self._schema = tools_schema(filtered)
+                self._refresh_mcp_tools()
+            if changed:
                 self.call_from_thread(
                     log.write,
                     msg_system(f"{len(filtered)} tools ativas (recarregadas)", "ok"),
