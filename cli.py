@@ -13,6 +13,7 @@ Uso:
 import sys
 import os
 import json
+import atexit
 import base64
 import re
 import inspect
@@ -1268,6 +1269,19 @@ def main():
 
     # ── header aparece imediatamente, antes de qualquer conexão MCP ─────────────
     mcp_manager = MCPManager()
+
+    # rede de segurança: garante disconnect_all() em QUALQUER saída do
+    # processo — /sair já chama isso explicitamente, mas Ctrl+C no prompt
+    # (pt_prompt) sai via sys.exit(0) direto, sem passar por lá, e uma
+    # exceção não tratada durante o turno também pulava o cleanup. Sem
+    # desconectar, os subprocessos MCP e a _read_loop() ficam pendentes
+    # quando o interpretador fecha o event loop, gerando os warnings de
+    # "Event loop is closed" / "Task was destroyed but it is pending!" no
+    # encerramento. disconnect_all() é seguro chamar mais de uma vez
+    # (_disconnect_entry só age se entry.client não for None), então não
+    # há problema em rodar de novo aqui mesmo se /sair já rodou antes.
+    atexit.register(mcp_manager.disconnect_all)
+
     schema  = tools_schema(tools)
     history: list[dict] = []
 

@@ -3777,6 +3777,21 @@ class CielTUI(App):
         if self._mcp_manager is not None:
             self._mcp_manager.disconnect_all()
         self.exit()
+
+    def on_unmount(self) -> None:
+        """
+        Rede de segurança: roda no desmonte da app (Textual chama isso ao
+        sair, inclusive em caminhos de saída que não passam por
+        action_quit — ex.: um crash não tratado durante a sessão). Sem
+        isso, subprocessos MCP e a _read_loop() ficam pendentes quando o
+        event loop fecha, gerando os warnings de "Event loop is closed" /
+        "Task was destroyed but it is pending!" no encerramento — o mesmo
+        problema corrigido no cli.py via atexit. disconnect_all() é seguro
+        chamar de novo mesmo se action_quit já rodou (_disconnect_entry só
+        age se entry.client não for None).
+        """
+        if self._mcp_manager is not None:
+            self._mcp_manager.disconnect_all()
     def action_clear_chat(self)  -> None: self.query_one("#chat-log", RichLog).clear()
     def action_focus_input(self) -> None: self.query_one("#input-box", CielInput).focus()
 
