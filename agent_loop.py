@@ -235,8 +235,12 @@ def run_agent(
     on_limit: OnLimit | None = None,
     on_error: OnError | None = None,
     # callbacks de segurança — implementados pela CLI via Prompt.ask e pela
-    # TUI via modal bloqueante (threading.Event). Se None, a chamada prossegue
-    # sem confirmação (comportamento legado / headless).
+    # TUI via modal bloqueante (threading.Event). on_confirm_tool=None NÃO
+    # significa "sem confirmação": se needs_confirmation() marcar a tool
+    # como sensível, a chamada é bloqueada por padrão (nega, não assume
+    # permissão). Pra rodar headless permitindo essas tools, passe um
+    # callback que sempre retorna True — a decisão fica explícita no
+    # chamador, não implícita no loop.
     on_confirm_tool: Callable[[str, str], bool] | None = None,
     on_confirm_path: Callable[[str, bool], bool] | None = None,
     # callback pra tools INTERACTIVE (ex: entrevista_interativa) perguntarem
@@ -354,13 +358,38 @@ def run_agent(
                         messages.append({"role": "user", "content": f"Resultado da tool: {feedback}"})
                         continue
 
-                # ── confirmação de criação de tool ────────────────────────────
-                # on_confirm_tool é injetado pela CLI/TUI; None = sem confirmação.
-                if on_confirm_tool is not None and tool_name in ("create_tool", "create_temp_tool"):
+                # ── confirmação de tool sensível ──────────────────────────────
+                # Centralizado: needs_confirmation() decide se a tool é sensível
+                # (mesma função que a cli.py já usa hoje via tool_dispatch —
+                # antes, só create_tool/create_temp_tool eram checadas aqui).
+                #
+                # Chamamos sempre com trusted=False: "confiar pro resto da
+                # sessão" passa a ser responsabilidade do callback
+                # (on_confirm_tool), que pode devolver True sem perguntar de
+                # novo — igual _modal_confirm_tool da TUI já faz hoje via
+                # self._trust_tool_creation. Isso mantém o estado de trust
+                # fora do loop (decisão da Fase 0 do mapa de migração).
+                
+                from tool_dispatch import needs_confirmation
+                if needs_confirmation(tool_name, False):
+                    if on_confirm_tool is None:
+                        # nega por padrão: sem callback não dá pra confirmar
+                        # com o usuário, então não assume permissão (antes,
+                        # on_confirm_tool=None deixava a tool passar direto).
+                        feedback = (
+                            f"Tool '{tool_name}' bloqueada: precisa de "
+                            f"confirmação e nenhum on_confirm_tool foi passado "
+                            f"a run_agent()."
+                        )
+                        _call(on_step, step, "bloqueado", feedback, "error")
+                        messages.append({"role": "assistant", "content": raw})
+                        messages.append({"role": "user", "content": f"Resultado da tool: {feedback}"})
+                        continue
+
                     tool_code = args.get("tool_code", "")
                     allowed = on_confirm_tool(tool_name, tool_code)
                     if not allowed:
-                        feedback = f"Criação de tool '{args.get('tool_name', '?')}' recusada pelo usuário."
+                        feedback = f"Execução de '{tool_name}' recusada pelo usuário."
                         _call(on_step, step, "recusado", feedback, "error")
                         messages.append({"role": "assistant", "content": raw})
                         messages.append({"role": "user", "content": f"Resultado da tool: {feedback}"})
