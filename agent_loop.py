@@ -43,6 +43,8 @@ from typing import Callable
 
 import requests
 
+from trust.input_verifier import InputVerifier
+
 # ── config padrão (pode ser sobrescrita pelo chamador) ────────────────────────
 
 OLLAMA_URL    = "http://localhost:11434/api/chat"
@@ -462,7 +464,8 @@ def run_agent(
                 _call(on_step, step, "erro", feedback, "error")
 
         messages.append({"role": "assistant", "content": raw})
-        messages.append({"role": "user", "content": f"Resultado da tool: {feedback}"})
+        tool_content = InputVerifier.wrap_tool_output(tool_name, str(feedback), tools)
+        messages.append({"role": "user", "content": f"Resultado da tool: {tool_content}"})
 
     # ── steps esgotados ───────────────────────────────────────────────────────
     proposal = _ask_model_for_tool_proposal(messages, model, ollama_url)

@@ -1,6 +1,7 @@
 """Pesquisa na web e extrai conteúdo completo das páginas encontradas."""
 
 REQUIREMENTS = ["ddgs", "requests", "beautifulsoup4", "lxml"]
+OUTPUT = "external"
 
 from ddgs import DDGS
 import requests
