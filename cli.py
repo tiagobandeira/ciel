@@ -44,8 +44,9 @@ from history_ui import SessionPicker, build_context_injection
 from mcp.manager import MCPManager
 from image_input import parse_image_input, parse_image_command, format_image_hint, IMAGE_EXTENSIONS
 from environment import check_environment
-from tool_dispatch import filter_unsafe, needs_confirmation, get_path_checks
+from tool_dispatch import filter_unsafe
 from workspace import get_workspace, init_workspace
+from agent_loop import run_agent, AgentResult
 
 # ── config ────────────────────────────────────────────────────────────────────
 OLLAMA_URL       = "http://localhost:11434/api/chat"
@@ -96,7 +97,9 @@ def _banner() -> str:
 
 # ── helpers de display ────────────────────────────────────────────────────────
 
-def header(model: str, agent_name: str, tools: dict, safe: bool = False):
+def header(model: str, agent_name: str, tools: dict, safe: bool = False, clear: bool = True):
+    if not clear:
+        return
     console.clear()
 
     n_perm = sum(1 for v in tools.values() if v.get("categoria", "permanente") == "permanente")
@@ -232,58 +235,13 @@ def print_auto_tool_proposal(proposal: dict):
 
 
 # ── core do agente ────────────────────────────────────────────────────────────
-
-def build_system_prompt(agent_info: dict, schema: list, web_base_url: str | None = None, session_id: str | None = None) -> str:
-    """Combina o system prompt do agente com o schema de tools disponíveis."""
-    
-    # carrega instruções core
-    core_prompt = ""
-    core_path = Path("system/core_prompt.md")
-    if core_path.exists():
-        core_prompt = core_path.read_text(encoding="utf-8").strip()
-
-    tools_block = json.dumps(schema, ensure_ascii=False, indent=2)
-    parts = [
-        core_prompt,
-        f"\n\n---\n\n{agent_info['system_prompt']}",
-        f"\n\n## Tools disponíveis\n{tools_block}",
-        f"\n\n## Sessão atual"
-        f"\nagent_id: {agent_info.get('id', 'general')}"
-        f"\nsession_id: {session_id or f'_nosession_{id(agent_info)}'}",
-    ]
-
-    if web_base_url:
-        parts.append(
-            f"\n\n## Contexto de execução"
-            f"\nVocê está rodando como servidor web acessível em {web_base_url}."
-            f"\nQuando gerar ou salvar arquivos para o usuário, salve SEMPRE em data/user/ ."
-            f"\nNa sua resposta final (done → message), mencione o arquivo com o caminho relativo"
-            f" exato, por exemplo: \'arquivo salvo em: data/user/relatorio.pdf\'."
-            f"\nO frontend vai converter esse caminho em link de download automaticamente."
-        )
-
-    return "".join(parts)
-
-
-def parse_response(text: str) -> dict:
-    try:
-        return json.loads(text.strip())
-    except json.JSONDecodeError:
-        pass
-    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(1))
-        except json.JSONDecodeError:
-            pass
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(0))
-        except json.JSONDecodeError:
-            pass
-    return {"error": f"resposta não parseável: {text[:200]}"}
-
+#
+# build_system_prompt, parse_response, call_model e _ask_model_for_tool_proposal
+# saíram daqui — agora vivem só em agent_loop.py (fonte única de verdade do
+# loop agêntico). build_first_message fica: cobre um caso que agent_loop.py
+# não trata (usuário colando o CAMINHO de uma imagem como texto puro, sem
+# passar image_b64 explícito), então normalizamos aqui antes de chamar
+# run_agent — ver _resolve_input_and_image mais abaixo.
 
 def build_first_message(user_input: str, image_b64: str | None = None) -> dict:
     # imagem passada diretamente (ex: vinda do servidor web)
@@ -306,74 +264,18 @@ def build_first_message(user_input: str, image_b64: str | None = None) -> dict:
     return {"role": "user", "content": user_input}
 
 
-def call_model(messages: list, model: str) -> tuple[str, int, int]:
-    payload = {"model": model, "messages": messages, "stream": False}
-    resp = requests.post(OLLAMA_URL, json=payload, timeout=120)
-    resp.raise_for_status()
-    data = resp.json()
-    content   = data["message"]["content"]
-    tokens_in  = data.get("prompt_eval_count", 0)  # tokens de entrada
-    tokens_out = data.get("eval_count", 0)          # tokens de saída
-    return content, tokens_in, tokens_out
-
-
-def call_model_with_spinner(messages: list, model: str) -> tuple[str, int, int]:
-    """Chama o modelo exibindo um spinner enquanto aguarda a resposta."""
-    with Live(
-        Spinner("dots", text=" [muted]pensando…[/muted]"),
-        console=console,
-        refresh_per_second=10,
-        transient=True,
-    ):
-        return call_model(messages, model)
-
-
-def _ask_model_for_tool_proposal(messages: list, model: str) -> dict | None:
+def _resolve_input_and_image(user_input: str, image_b64: str | None = None) -> tuple[str, str | None]:
     """
-    Faz uma chamada extra ao modelo perguntando se uma nova tool
-    resolveria a tarefa. Retorna a proposta parseada ou None.
+    Normaliza (texto, imagem_base64) pro run_agent de agent_loop.py.
 
-    Descarta o system prompt do agente e substitui por um minimal —
-    sem schema agêntico, sem instrução de formato JSON agêntico —
-    para que o modelo não tente responder no formato {"tool": ...}
-    em vez de {"criar_tool": true, ...}.
+    Preserva o único bit de lógica que build_first_message tinha e que
+    agent_loop.py não reproduz: se o próprio user_input for o CAMINHO de
+    uma imagem (sem image_b64 já vindo explícito, ex.: de /img), converte
+    automaticamente pra base64 e troca o texto por uma instrução padrão.
     """
-    # descarta o system prompt do agente (que força o formato agêntico)
-    # e mantém só o histórico de mensagens user/assistant
-    history_only = [m for m in messages if m["role"] != "system"]
-
-    probe = [
-        {
-            "role": "system",
-            "content": (
-                "Você é um analista de capacidades de agentes. "
-                "Responda APENAS com JSON puro, sem markdown, sem texto adicional."
-            ),
-        },
-        *history_only,
-        {
-            "role": "user",
-            "content": (
-                "Você não conseguiu completar a tarefa com as tools disponíveis.\n"
-                "Analise o histórico e responda APENAS em JSON puro:\n\n"
-                "Se uma nova tool resolveria o problema:\n"
-                '{"criar_tool": true, "nome": "nome_em_snake_case", '
-                '"descricao": "o que a tool faz em uma linha", '
-                '"parametros": [{"nome": "param", "tipo": "str", "descricao": "o que é"}]}\n\n'
-                "Se a tarefa é impossível ou não depende de tool nova:\n"
-                '{"criar_tool": false}'
-            ),
-        },
-    ]
-    try:
-        raw, _, _ = call_model(probe, model)
-        parsed = parse_response(raw)
-        if parsed.get("criar_tool") is True:
-            if parsed.get("nome") and parsed.get("descricao"):
-                return parsed
-    except Exception:
-        pass
-    return None
+    msg = build_first_message(user_input, image_b64=image_b64)
+    images = msg.get("images")
+    return msg["content"], (images[0] if images else None)
 
 
 def load_task(path: Path) -> dict | None:
@@ -445,70 +347,147 @@ def build_task_prompt(task: dict) -> str:
     )
 
 
-def run_agent(
-    user_input: str,
-    tools: dict,
-    schema: list,
-    model: str,
-    agent_info: dict,
-    history: list[dict] | None = None,
-    image_b64: str | None = None,
-    web_base_url: str | None = None,
-    context_injection: str | None = None,
-    session_id: str | None = None,
-    max_steps: int = MAX_STEPS,
-    mcp_manager=None,
-    session_flags: dict | None = None,
-    interactive: bool = True,
-) -> str | dict:
+def _make_run_callbacks(session_flags: dict, interactive: bool = True) -> dict:
     """
-    Executa o loop agêntico.
+    Monta os 6 callbacks visuais/de seguranca que agent_loop.run_agent()
+    injeta durante o loop. Substitui o antigo run_agent local desta CLI —
+    a logica do loop em si (chamada ao modelo, dispatch de tool, reload de
+    registry apos create_tool/mcp_add_server/mcp_remove_server) agora mora
+    inteira em agent_loop.py; aqui so decidimos COMO mostrar cada evento
+    com Rich, exatamente como antes.
 
-    Retorna:
-      str  → mensagem final (sucesso ou falha simples)
-      dict → {"status": "needs_tool", "proposal": {...}}
-               quando o modelo propõe criar uma nova tool
-
-    context_injection: bloco de texto (resumo de sessão anterior) adicionado
-                       ao final do system prompt para dar contexto de branch.
-
-    session_flags: dict mutável compartilhado entre chamadas de run_agent na
-                   mesma sessão. Hoje só usa a chave "trust_tool_creation":
-                   quando True, create_tool/create_temp_tool rodam sem pedir
-                   confirmação. Passe o MESMO dict em todas as chamadas da
-                   sessão pra "auto" valer até o fim dela; passe None (ou um
-                   dict novo) pra sempre pedir confirmação.
-    interactive: quando False (ex: modo --task headless), nunca abre prompt —
-                 create_tool/create_temp_tool são recusadas automaticamente
-                 se não estiverem confiadas via session_flags/--auto.
+    session_flags: mesmo dict mutavel de sempre (chave "trust_tool_creation").
+                   Passe o MESMO objeto em toda chamada da sessao pra "auto"
+                   valer ate o fim dela (padrao identico ao que a TUI faz
+                   via self._trust_tool_creation) — e um dict *novo* (ex:
+                   {"trust_tool_creation": True}) quando quiser forcar
+                   confianca so pra aquela chamada, sem afetar a sessao.
+    interactive: quando False (--task headless), nunca abre prompt — tools
+                 que exigem confirmacao e paths fora do workspace sao
+                 recusados automaticamente (a nao ser que ja estejam
+                 confiados via session_flags/--auto).
     """
-    # ── contadores de tokens ───────────────────────────────────────────────
-    total_in  = 0
-    total_out = 0
-    system_prompt = build_system_prompt(agent_info, schema, web_base_url=web_base_url, session_id=session_id)
-    if context_injection:
-        system_prompt = f"{system_prompt}\n\n{context_injection}"
+    _live_holder: dict = {}
 
-    # Reconstrói contexto dos turnos anteriores para o modelo
-    context: list[dict] = []
-    for entry in (history or []):
-        role = "user" if entry["role"] == "user" else "assistant"
-        context.append({"role": role, "content": entry["content"]})
+    def on_model_start(step: int) -> None:
+        live = Live(
+            Spinner("dots", text=" [muted]pensando…[/muted]"),
+            console=console,
+            refresh_per_second=10,
+            transient=True,
+        )
+        live.start()
+        _live_holder["live"] = live
 
-    messages = [
-        {"role": "system", "content": system_prompt},
-        *context,
-        build_first_message(user_input, image_b64=image_b64),
-    ]
+    def on_model_end(step: int) -> None:
+        live = _live_holder.pop("live", None)
+        if live is not None:
+            live.stop()
 
-    print_rule("executando")
+    def on_step(step: int, label: str, content: str, status: str) -> None:
+        # "bloqueado"/"recusado" chegam com status="error" (agent_loop trata
+        # negacao do usuario como uma falha de execucao da tool), mas aqui
+        # sempre foram amarelo (aviso), nao vermelho (erro) — mantem a cor
+        # pelo label pra nao perder essa distincao visual.
+        if label in ("bloqueado", "recusado"):
+            color = CLR_WARN
+        elif status == "tool":
+            color = CLR_TOOL
+        elif status in ("error", "parse_error"):
+            color = CLR_ERR
+        elif status == "done":
+            color = CLR_OK
+        else:  # "model"
+            color = CLR_STEP
+        print_step(step, label, content, color)
 
-    def _ask_user_cli(pergunta: str, opcoes: list[str] | None = None) -> str:
+    def on_steps_exhausted(max_steps: int, t_in: int, t_out: int) -> None:
+        print_rule()
+        console.print(f"  [{CLR_WARN}]steps esgotados — verificando se uma nova tool resolveria...[/{CLR_WARN}]")
+
+    def on_confirm_tool(tool_name: str, tool_code: str) -> bool:
+        """
+        create_tool/create_temp_tool pedem confirmacao antes de rodar.
+        A mensagem de "recusado" (ou "bloqueado" no caso headless) ja sai
+        sozinha via on_step logo depois que este callback retorna False —
+        nao duplica print aqui, so a UI de confirmacao em si.
+        """
+        if session_flags.get("trust_tool_creation"):
+            return True
+        if not interactive:
+            return False
+
+        from rich.syntax import Syntax
+
+        truncated  = len(tool_code) > 600
+        code_shown = tool_code[:600] if truncated else tool_code
+        syntax = Syntax(code_shown, "python", theme="monokai", line_numbers=False, word_wrap=True)
+        console.print(Panel(
+            syntax,
+            title=f"[warn]{tool_name}[/warn]",
+            border_style=CLR_WARN,
+            padding=(0, 1),
+            subtitle="[muted]… truncado …[/muted]" if truncated else None,
+        ))
+        console.print()
+        console.print(
+            f"  [{CLR_OK}]\[s][/{CLR_OK}] sim   "
+            f"  [{CLR_ERR}]\[n][/{CLR_ERR}] nao   "
+            f"  [{CLR_WARN}]\[a][/{CLR_WARN}] auto [muted](confia pro resto da sessão)[/muted]\n"
+        )
+        raw = Prompt.ask(
+            f"  [{CLR_WARN}]permitir criação/execução desse código?[/{CLR_WARN}]",
+            choices=["s", "n", "a"],
+            default="n",
+        ).strip().lower()
+
+        if raw in ("auto", "a"):
+            session_flags["trust_tool_creation"] = True
+            return True
+        return raw in ("sim", "s")
+
+    def on_confirm_path(raw_path: str, need_write: bool) -> bool:
+        """
+        Path fora do workspace. Mesma logica de sempre — so nao imprime
+        mais a mensagem de negacao aqui: agent_loop chama on_step("bloqueado",
+        ...) automaticamente depois de um retorno False.
+        """
+        if not interactive:
+            return False
+
+        target   = Path(raw_path).expanduser()
+        resolved = target.resolve() if target.exists() else target
+        tipo = "arquivo" if resolved.is_file() else ("pasta" if resolved.is_dir() else "caminho")
+        acao = "escrever em" if need_write else "ler"
+        console.print(Panel(
+            f"quer {acao} {tipo}:\n[white]{escape(str(resolved))}[/white]",
+            title="[warn]permissão de acesso · fora do workspace[/warn]",
+            border_style=CLR_WARN,
+            padding=(0, 1),
+        ))
+        console.print()
+        console.print(
+            f"  [{CLR_OK}]\[s][/{CLR_OK}] sim, só essa vez   "
+            f"  [{CLR_WARN}]\[a][/{CLR_WARN}] sim, e lembrar [muted](/workspace)[/muted]   "
+            f"  [{CLR_ERR}]\[n][/{CLR_ERR}] nao\n"
+        )
+        raw = Prompt.ask(
+            f"  [{CLR_WARN}]permitir?[/{CLR_WARN}]",
+            choices=["s", "a", "n"],
+            default="n",
+        ).strip().lower()
+
+        if raw in ("a", "auto", "sempre"):
+            get_workspace().add_grant(resolved, write=need_write)
+            return True
+        return raw in ("s", "sim")
+
+    def on_ask_user(pergunta: str, opcoes: list[str] | None = None) -> str:
         """
         Callback injetado em tools INTERACTIVE (ex: entrevista_interativa).
-        A tool não usa input()/print() diretamente — chama isso, que decide
+        A tool nao usa input()/print() diretamente — chama isso, que decide
         como perguntar de acordo com o harness (aqui: lista numerada no
-        terminal; na TUI vira um modal com botões).
+        terminal; na TUI vira um modal com botoes).
         """
         console.print()
         console.print(f"  [tool]?[/tool] {escape(pergunta)}")
@@ -526,250 +505,70 @@ def run_agent(
                 console.print(f"  [{CLR_ERR}]Opção inválida, tente de novo.[/{CLR_ERR}]")
         return Prompt.ask("  Resposta")
 
-    def _invoke_tool(tool_name: str, args: dict, step: int) -> str:
-        """Chama a tool e cuida do reload automático do registry quando necessário."""
-        for arg_name, need_write in get_path_checks(tool_name, tools):
-            raw_path = args.get(arg_name)
-            if not raw_path:
-                continue
-            resolved, err = get_workspace().check(raw_path, need_write)
-            if err:
-                allowed, denial = _confirm_path_access(raw_path, need_write, step)
-                if not allowed:
-                    return denial
-        if tool_name == "run_script":
-            args.setdefault("cwd", str(get_workspace().default_root))
+    return {
+        "on_step": on_step,
+        "on_model_start": on_model_start,
+        "on_model_end": on_model_end,
+        "on_limit": on_steps_exhausted,   # agent_loop espera on_limit, não on_steps_exhausted
+        "on_confirm_tool": on_confirm_tool,
+        "on_confirm_path": on_confirm_path,
+        "on_ask_user": on_ask_user,
+    }
 
-        if tool_name in ("list_sources", "search_knowledge"):
-            args.setdefault("agent_id", agent_info.get("id", "general"))
-            args.setdefault("session_id", str(session_id) if session_id else "")
-        if tool_name == "secondary_model":
-            args.setdefault("session_id", str(session_id) if session_id else "_nosession")
-        if tools.get(tool_name, {}).get("interactive"):
-            args.setdefault("perguntar", _ask_user_cli)
 
-        result = tools[tool_name]["fn"](**args)
-        print_step(step, "resultado", str(result)[:100], CLR_OK)
+def _resolve_result_message(result: AgentResult) -> str:
+    """Traduz status="error" (falha de conexao) pra mensagem amigavel de sempre."""
+    if result.status == "error":
+        return "Ollama não está respondendo. Reinicie o serviço e tente novamente."
+    return result.message
 
-        if tool_name in ("create_tool", "create_temp_tool") and "Erro" not in str(result):
-            all_updated = load_tools()
-            tools.clear()
-            tools.update(filter_tools(all_updated, agent_info.get("allowed_tools")))
-            _apply_mcp_tools(tools, mcp_manager, agent_info)
-            schema.clear()
-            schema.extend(tools_schema(tools))
-            messages[0]["content"] = build_system_prompt(agent_info, schema)
-            print_step(step, "registry", f"{len(tools)} tools carregadas", CLR_OK)
 
-        if tool_name == "mcp_add_server" and "conectado" in str(result):
-            _apply_mcp_tools(tools, mcp_manager, agent_info)
-            schema.clear()
-            schema.extend(tools_schema(tools))
-            messages[0]["content"] = build_system_prompt(agent_info, schema)
-            print_step(step, "registry", f"{len(tools)} tools carregadas", CLR_OK)
-
-        if tool_name == "mcp_remove_server" and "removido" in str(result):
-            removed_name = result.split("'")[1] if "'" in str(result) else ""
-            if mcp_manager and removed_name:
-                mcp_manager.remove_server_tools(removed_name, tools)
-            schema.clear()
-            schema.extend(tools_schema(tools))
-            messages[0]["content"] = build_system_prompt(agent_info, schema)
-            print_step(step, "registry", f"{len(tools)} tools carregadas", CLR_OK)
-
-        return result
-
-    def _confirm_path_access(raw_path: str, need_write: bool, step: int) -> tuple[bool, str | None]:
-        """
-        Promove um bloqueio de workspace pra um pedido de permissão real,
-        no mesmo estilo do prompt de criação de tool. Aprovando com "sempre",
-        o caminho é liberado via workspace.add_grant (persiste em
-        .ciel_workspace.json, aparece no /workspace dali em diante).
-        Retorna (True, None) se aprovado, ou (False, mensagem_de_negação).
-        """
-        target = Path(raw_path).expanduser()
-        resolved = target.resolve() if target.exists() else target
-
-        if not interactive:
-            feedback = (
-                f"Acesso negado: '{raw_path}' está fora do workspace e a sessão "
-                f"não é interativa. Rode /workspace antes ou use --auto."
-            )
-            print_step(step, "bloqueado", feedback, CLR_WARN)
-            return False, feedback
-
-        tipo = "arquivo" if resolved.is_file() else ("pasta" if resolved.is_dir() else "caminho")
-        acao = "escrever em" if need_write else "ler"
-        console.print(Panel(
-            f"quer {acao} {tipo}:\n[white]{escape(str(resolved))}[/white]",
-            title="[warn]permissão de acesso · fora do workspace[/warn]",
-            border_style=CLR_WARN,
-            padding=(0, 1),
-        ))
-        console.print()
+def _print_agent_result_feedback(result: AgentResult) -> None:
+    """
+    Feedback visual que, no run_agent antigo, saia de dentro do próprio loop
+    ao terminar (erro de conexão ou "done") — vale pra QUALQUER chamada de
+    run_agent, incluindo as aninhadas de _handle_auto_tool (criar tool e
+    reexecutar a tarefa), não só a do turno "principal".
+    """
+    if result.status == "error":
         console.print(
-            f"  [{CLR_OK}]\\[s][/{CLR_OK}] sim, só essa vez   "
-            f"  [{CLR_WARN}]\\[a][/{CLR_WARN}] sim, e lembrar [muted](/workspace)[/muted]   "
-            f"  [{CLR_ERR}]\\[n][/{CLR_ERR}] nao\n"
+            f"\n  [{CLR_ERR}]✗ Ollama não está respondendo[/{CLR_ERR}]\n"
+            f"  [muted]O serviço pode ter sido encerrado durante a execução.\n"
+            f"  Reinicie o Ollama e tente novamente.[/muted]\n"
         )
-        raw = Prompt.ask(
-            f"  [{CLR_WARN}]permitir?[/{CLR_WARN}]",
-            choices=["s", "a", "n"],
-            default="n",
-        ).strip().lower()
+    elif result.status == "done":
+        print_rule()
+        print_agent_footer(result.steps)
 
-        if raw in ("a", "auto", "sempre"):
-            get_workspace().add_grant(resolved, write=need_write)
-            return True, None
-        if raw in ("s", "sim"):
-            return True, None
 
-        feedback = f"Acesso a '{raw_path}' negado pelo usuário."
-        print_step(step, "recusado", feedback, CLR_WARN)
-        return False, feedback
+def _finish_agent_turn(
+    result: AgentResult,
+    user_input: str,
+    tools: dict,
+    schema: list,
+    model: str,
+    agent_info: dict,
+    history: list[dict],
+    safe: bool,
+    session_flags: dict,
+    interactive: bool = True,
+) -> tuple[str, dict, list]:
+    """
+    Trata o AgentResult de uma chamada a run_agent: erro de conexao,
+    proposta de auto tool (delega a _handle_auto_tool) ou mensagem final.
+    Retorna (mensagem_final, tools_atualizado, schema_atualizado) — tools/
+    schema so mudam de fato quando o status e "needs_tool".
+    """
+    _print_agent_result_feedback(result)
 
-    def _confirm_tool_creation(tool_name: str, args: dict, step: int) -> str | None:
-        """
-        Mostra o código proposto com syntax highlight e pede confirmação.
-        Aceita forma completa (sim/nao/auto) ou abreviada (s/n/a).
-        Retorna None se aprovado (chamador segue com _invoke_tool), ou a
-        string de feedback já pronta se recusado/bloqueado.
-        """
-        from rich.syntax import Syntax
-
-        if not interactive:
-            return (
-                f"Tool '{tool_name}' bloqueada: cria/roda código novo e exige "
-                f"confirmação, mas a sessão não é interativa. Rode com "
-                f"--auto para permitir sem confirmação."
-            )
-
-        tool_display = escape(str(args.get("tool_name", "?")))
-        code_preview = str(args.get("tool_code", ""))
-        truncated    = len(code_preview) > 600
-        code_shown   = code_preview[:600] if truncated else code_preview
-
-        syntax = Syntax(
-            code_shown,
-            "python",
-            theme="monokai",
-            line_numbers=False,
-            word_wrap=True,
+    if result.status == "needs_tool":
+        return _handle_auto_tool(
+            result.proposal, user_input, tools, schema,
+            model, agent_info, history, safe=safe,
+            session_flags=session_flags, interactive=interactive,
         )
-        console.print(Panel(
-            syntax,
-            title=f"[warn]{tool_name}[/warn] · {tool_display}",
-            border_style=CLR_WARN,
-            padding=(0, 1),
-            subtitle="[muted]… truncado …[/muted]" if truncated else None,
-        ))
 
-        console.print()
-        console.print(
-            f"  [{CLR_OK}]\[s][/{CLR_OK}] sim   "
-            f"  [{CLR_ERR}]\[n][/{CLR_ERR}] nao   "
-            f"  [{CLR_WARN}]\[a][/{CLR_WARN}] auto [muted](confia pro resto da sessão)[/muted]\n"
-        )
-        raw = Prompt.ask(
-            f"  [{CLR_WARN}]permitir criação/execução desse código?[/{CLR_WARN}]",
-            choices=["s", "n", "a"],
-            default="n",
-        ).strip().lower()
-
-        # aceita forma completa ou abreviada
-        if raw in ("sim", "s"):
-            escolha = "sim"
-        elif raw in ("auto", "a"):
-            escolha = "auto"
-        else:
-            escolha = "nao"
-
-        if escolha == "auto" and session_flags is not None:
-            session_flags["trust_tool_creation"] = True
-
-        if escolha == "nao":
-            feedback = f"Criação da tool '{args.get('tool_name', '?')}' recusada pelo usuário."
-            print_step(step, "recusado", feedback, CLR_WARN)
-            return feedback
-
-        return None
-
-    for step in range(1, max_steps + 1):
-        print_step(step, "modelo", "aguardando…", CLR_STEP)
-
-        try:
-            #raw = call_model_with_spinner(messages, model)
-            raw, t_in, t_out = call_model_with_spinner(messages, model)
-            total_in  += t_in
-            total_out += t_out
-        except requests.RequestException:
-            console.print(
-                f"\n  [{CLR_ERR}]✗ Ollama não está respondendo[/{CLR_ERR}]\n"
-                f"  [muted]O serviço pode ter sido encerrado durante a execução.\n"
-                f"  Reinicie o Ollama e tente novamente.[/muted]\n"
-            )
-            return "Ollama não está respondendo. Reinicie o serviço e tente novamente.", total_in, total_out
-
-        parsed = parse_response(raw)
-
-        if parsed.get("done"):
-            msg = parsed.get("message", "Concluído.")
-            print_step(step, "done", msg, CLR_OK)
-            print_rule()
-            print_agent_footer(step)
-            return msg, total_in, total_out
-
-        if "error" in parsed:
-            print_step(step, "parse error", parsed["error"], CLR_ERR)
-            messages.append({"role": "assistant", "content": raw})
-            messages.append({
-                "role": "user",
-                "content": "Resposta inválida. Retorne APENAS JSON no formato especificado.",
-            })
-            continue
-
-        tool_name = parsed.get("tool", "")
-        args      = parsed.get("args", {})
-
-        print_step(step, f"tool › {tool_name}", json.dumps(args, ensure_ascii=False)[:80], CLR_TOOL)
-
-        if tool_name not in tools:
-            feedback = f"Tool '{tool_name}' não existe. Disponíveis: {list(tools.keys())}"
-            print_step(step, "erro", feedback, CLR_ERR)
-        else:
-            trusted = bool((session_flags or {}).get("trust_tool_creation", False))
-            try:
-                if needs_confirmation(tool_name, trusted):
-                    denial = _confirm_tool_creation(tool_name, args, step)
-                    feedback = denial if denial is not None else _invoke_tool(tool_name, args, step)
-                else:
-                    feedback = _invoke_tool(tool_name, args, step)
-            except TypeError as e:
-                # mostra assinatura real pro modelo corrigir os args ──────────
-                sig      = inspect.signature(tools[tool_name]["fn"])
-                feedback = (
-                    f"Args inválidos para '{tool_name}': {e}. "
-                    f"Assinatura correta: {tool_name}{sig}. "
-                    f"Args recebidos: {list(args.keys())}"
-                )
-                print_step(step, "erro", feedback, CLR_ERR)
-            except Exception as e:
-                feedback = f"Erro ao executar tool: {e}"
-                print_step(step, "erro", feedback, CLR_ERR)
-
-        messages.append({"role": "assistant", "content": raw})
-        messages.append({"role": "user", "content": f"Resultado da tool: {feedback}"})
-
-    # ── steps esgotados: tenta propor auto tool ───────────────────────────────
-    print_rule()
-    console.print(f"  [{CLR_WARN}]steps esgotados — verificando se uma nova tool resolveria...[/{CLR_WARN}]")
-    proposal = _ask_model_for_tool_proposal(messages, model)
-
-
-    if proposal:
-        return {"status": "needs_tool", "proposal": proposal}, total_in, total_out
-    # steps esgotados sem auto tool
-    return "⚠ Limite de steps atingido sem conclusão.", total_in, total_out
+    return _resolve_result_message(result), tools, schema
 
 
 # ── loop principal da CLI ─────────────────────────────────────────────────────
@@ -872,7 +671,7 @@ def _connect_agent_mcp(
 
 
 def _handle_auto_tool(
-    result: dict,
+    proposal: dict,
     user_input: str,
     tools: dict,
     schema: list,
@@ -884,7 +683,7 @@ def _handle_auto_tool(
     interactive: bool = True,
 ) -> tuple[str, dict, list]:
     """
-    Lida com o retorno needs_tool do run_agent.
+    Lida com o status="needs_tool" de um AgentResult.
 
     Pergunta ao usuário entre 3 opções:
       [s] salvar permanente  → tools/<nome>.py  via create_tool
@@ -893,11 +692,8 @@ def _handle_auto_tool(
 
     Retorna (mensagem_final, tools_atualizado, schema_atualizado).
     """
-    # ── contadores de sessão ───────────────────────────────────────────────
-    session_tokens_in  = 0
-    session_tokens_out = 0
+    session_flags = session_flags if session_flags is not None else {}
 
-    proposal  = result["proposal"]
     tool_name = proposal["nome"]
     print_auto_tool_proposal(proposal)
 
@@ -933,20 +729,22 @@ def _handle_auto_tool(
     if is_temp:
         create_instruction += " Use a tool 'create_temp_tool' para salvar."
 
-    create_result,  _, _ = run_agent(
+    # o usuário já aprovou explicitamente via [s/t/n] acima — passa um
+    # trust_state novo (não o session_flags da sessão) só pra essa chamada,
+    # pra não repetir o prompt genérico de confirmação aqui nem vazar
+    # "confia sempre" pro resto da sessão sem o usuário ter escolhido "auto".
+    print_rule("executando")
+    create_result = run_agent(
         create_instruction,
         tools,
         schema,
         model,
         agent_info,
         history=None,  # contexto isolado — não contamina histórico da tarefa
-        # o usuário já aprovou explicitamente via [s/t/n] acima — não
-        # repete o prompt genérico de confirmação aqui.
-        session_flags={"trust_tool_creation": True},
-        interactive=interactive,
+        **_make_run_callbacks({"trust_tool_creation": True}, interactive=interactive),
     )
 
-    create_msg = create_result if isinstance(create_result, str) else "?"
+    create_msg = create_result.message if create_result.status != "needs_tool" else "?"
     console.print(f"  [{CLR_OK}]resultado: {escape(str(create_msg)[:120])}[/{CLR_OK}]\n")
 
     # ── recarrega e valida ────────────────────────────────────────────────────
@@ -982,29 +780,35 @@ def _handle_auto_tool(
     )
 
     # ── reexecuta tarefa original ─────────────────────────────────────────────
-    retry_result, _, _ = run_agent(
+    print_rule("executando")
+    retry_result = run_agent(
         user_input,
         new_tools,
         new_schema,
         model,
         agent_info,
         history=history[:-1],
-        session_flags=session_flags,
-        interactive=interactive,
+        **_make_run_callbacks(session_flags, interactive=interactive),
     )
 
     # registra uso no temp-log se for temporária e executou com sucesso
-    if is_temp and isinstance(retry_result, str) and "temp_log" in new_tools:
+    # (equivalente ao isinstance(retry_result, str) de antes: só "needs_tool"
+    # não conta como uma mensagem final)
+    if is_temp and retry_result.status != "needs_tool" and "temp_log" in new_tools:
         try:
             new_tools["temp_log"]["fn"](tool_criada)
         except Exception:
             pass
 
     # se o retry também pedir tool, não entra em loop
-    if isinstance(retry_result, dict) and retry_result.get("status") == "needs_tool":
+    if retry_result.status == "needs_tool":
         return "⚠ Tarefa não concluída mesmo após criar a tool.", new_tools, new_schema
 
-    return retry_result, new_tools, new_schema
+    if retry_result.status == "done":
+        print_rule()
+        print_agent_footer(retry_result.steps)
+
+    return _resolve_result_message(retry_result), new_tools, new_schema
 
 
 def _save_session(
@@ -1150,12 +954,11 @@ def run_task_headless(task_path: Path, args) -> int:
     # ── executa ────────────────────────────────────────────────────────────
     task_prompt = build_task_prompt(task)
     try:
-        result, t_in, t_out = run_agent(
+        result = run_agent(
             task_prompt, tools, schema, args.model, agent_info,
             max_steps=MAX_STEPS_TASK,
             mcp_manager=mcp_manager,
-            session_flags={"trust_tool_creation": args.auto},
-            interactive=False,  # headless: nunca abre prompt (sem TTY)
+            **_make_run_callbacks({"trust_tool_creation": args.auto}, interactive=False),
         )
     except Exception as e:
         log.error("run_agent falhou: %s", e)
@@ -1163,12 +966,12 @@ def run_task_headless(task_path: Path, args) -> int:
     finally:
         mcp_manager.disconnect_all()
 
-    if isinstance(result, dict) and result.get("status") == "needs_tool":
+    if result.status == "needs_tool":
         log.error("task incompleta — tool necessária não disponível: %s", result)
         return 1
 
-    log.info("tokens: ↑%d ↓%d", t_in, t_out)
-    log.info("resultado:\n%s", result)
+    log.info("tokens: ↑%d ↓%d", result.tokens_in, result.tokens_out)
+    log.info("resultado:\n%s", result.message)
     return 0
 
 
@@ -1760,7 +1563,7 @@ def main():
                     picked["id"], agent_info.get("id", args.agent),
                     title=f"[branch] {picked['title'] or ''}"
                 )
-                header(args.model, agent_info["name"], tools, safe=args.safe)
+                header(args.model, agent_info["name"], tools, safe=args.safe, clear=False)
                 if context_injection:
                     console.print(
                         Panel(
@@ -2000,23 +1803,24 @@ def main():
             if current_session_id is not None:
                 store.append_turn(current_session_id, "user", injected, ts)
 
-            result, t_in, t_out = run_agent(
+            agent_result = run_agent(
                 injected, tools, schema, args.model, agent_info,
                 history=history[:-1],
                 session_id=str(current_session_id) if current_session_id else None,
-                session_flags=session_flags,
+                **_make_run_callbacks(session_flags),
             )
+            t_in  = agent_result.tokens_in
+            t_out = agent_result.tokens_out
             session_tokens_in  += t_in
             session_tokens_out += t_out
 
-            if isinstance(result, dict) and result.get("status") == "needs_tool":
-                result, tools, schema = _handle_auto_tool(
-                    result, injected, tools, schema,
-                    args.model, agent_info, history, safe=args.safe,
-                    session_flags=session_flags,
-                )
-                header(args.model, agent_info["name"], tools, safe=args.safe)
-                completer = make_completer(tools)
+            result, tools, schema = _finish_agent_turn(
+                agent_result, injected, tools, schema,
+                args.model, agent_info, history, safe=args.safe,
+                session_flags=session_flags,
+            )
+            header(args.model, agent_info["name"], tools, safe=args.safe, clear=False)
+            completer = make_completer(tools)
 
             ts = datetime.now().strftime("%a %H:%M")
             history.append({"role": "agent", "content": result, "ts": ts})
@@ -2077,7 +1881,7 @@ def main():
                     f.unlink()
                     removidas.append(f.stem)
             tools, schema = _reload_tools(agent_info, args.safe)
-            header(args.model, agent_info["name"], tools, safe=args.safe)
+            header(args.model, agent_info["name"], tools, safe=args.safe, clear=False)
             completer = make_completer(tools)
             if removidas:
                 console.print(f"[muted]tools temp removidas: {', '.join(removidas)}[/muted]\n")
@@ -2096,7 +1900,7 @@ def main():
             else:
                 src.rename(dst)
                 tools, schema = _reload_tools(agent_info, args.safe)
-                header(args.model, agent_info["name"], tools, safe=args.safe)
+                header(args.model, agent_info["name"], tools, safe=args.safe, clear=False)
                 completer = make_completer(tools)
                 console.print(f"[ok]'{tool_name}' promovida para tools permanentes.[/ok]\n")
             continue
@@ -2194,25 +1998,25 @@ def main():
             ts = datetime.now().strftime("%a %H:%M")
             history.append({"role": "user", "content": f"/criar {arg}", "ts": ts})
 
-            result, t_in, t_out = run_agent(
+            agent_result = run_agent(
                 task_prompt, tools, schema, args.model, agent_info,
                 history=history[:-1],
                 session_id=str(current_session_id) if current_session_id else None,
                 max_steps=MAX_STEPS_TASK,
                 mcp_manager=mcp_manager,
-                session_flags=session_flags,
+                **_make_run_callbacks(session_flags),
             )
+            t_in  = agent_result.tokens_in
+            t_out = agent_result.tokens_out
             session_tokens_in  += t_in
             session_tokens_out += t_out
 
-            if isinstance(result, dict) and result.get("status") == "needs_tool":
-                result, tools, schema = _handle_auto_tool(
-                    result, task_prompt, tools, schema,
-                    args.model, agent_info, history, safe=args.safe,
-                    session_flags=session_flags,
-                )
-                header(args.model, agent_info["name"], tools, safe=args.safe)
-                completer = make_completer(tools)
+            result, tools, schema = _finish_agent_turn(
+                agent_result, task_prompt, tools, schema,
+                args.model, agent_info, history, safe=args.safe,
+                session_flags=session_flags,
+            )
+            header(args.model, agent_info["name"], tools, safe=args.safe, clear=False)
 
             ts = datetime.now().strftime("%a %H:%M")
             history.append({"role": "agent", "content": result, "ts": ts})
@@ -2302,25 +2106,26 @@ def main():
             ts = datetime.now().strftime("%a %H:%M")
             history.append({"role": "user", "content": f"/task {task['nome']}", "ts": ts})
 
-            result, t_in, t_out = run_agent(
+            agent_result = run_agent(
                 task_prompt, tools, schema, args.model, agent_info,
                 history=history[:-1],
                 session_id=str(current_session_id) if current_session_id else None,
                 max_steps=MAX_STEPS_TASK,          # <-- usa o limite expandido
                 mcp_manager=mcp_manager,
-                session_flags=session_flags,
+                **_make_run_callbacks(session_flags),
             )
+            t_in  = agent_result.tokens_in
+            t_out = agent_result.tokens_out
             session_tokens_in  += t_in
             session_tokens_out += t_out
 
-            if isinstance(result, dict) and result.get("status") == "needs_tool":
-                result, tools, schema = _handle_auto_tool(
-                    result, task_prompt, tools, schema,
-                    args.model, agent_info, history, safe=args.safe,
-                    session_flags=session_flags,
-                )
-                header(args.model, agent_info["name"], tools, safe=args.safe)
-                completer = make_completer(tools)
+            result, tools, schema = _finish_agent_turn(
+                agent_result, task_prompt, tools, schema,
+                args.model, agent_info, history, safe=args.safe,
+                session_flags=session_flags,
+            )
+            header(args.model, agent_info["name"], tools, safe=args.safe, clear=False)
+            completer = make_completer(tools)
 
             ts = datetime.now().strftime("%a %H:%M")
             history.append({"role": "agent", "content": result, "ts": ts})
@@ -2361,26 +2166,27 @@ def main():
             if current_session_id is not None:
                 store.append_turn(current_session_id, "user", history_label, ts)
 
-            result, t_in, t_out = run_agent(
+            agent_result = run_agent(
                 prompt_final, tools, schema, args.model, agent_info,
                 history=history[:-1],
                 image_b64=img_b64,
                 context_injection=context_injection,
                 session_id=str(current_session_id) if current_session_id else None,
                 mcp_manager=mcp_manager,
-                session_flags=session_flags,
+                **_make_run_callbacks(session_flags),
             )
+            t_in  = agent_result.tokens_in
+            t_out = agent_result.tokens_out
             session_tokens_in  += t_in
             session_tokens_out += t_out
 
-            if isinstance(result, dict) and result.get("status") == "needs_tool":
-                result, tools, schema = _handle_auto_tool(
-                    result, prompt_final, tools, schema,
-                    args.model, agent_info, history, safe=args.safe,
-                    session_flags=session_flags,
-                )
-                header(args.model, agent_info["name"], tools, safe=args.safe)
-                completer = make_completer(tools)
+            result, tools, schema = _finish_agent_turn(
+                agent_result, prompt_final, tools, schema,
+                args.model, agent_info, history, safe=args.safe,
+                session_flags=session_flags,
+            )
+            header(args.model, agent_info["name"], tools, safe=args.safe, clear=False)
+            completer = make_completer(tools)
 
             ts = datetime.now().strftime("%a %H:%M")
             history.append({"role": "agent", "content": result, "ts": ts})
@@ -2440,34 +2246,31 @@ def main():
                 store.update_title(current_session_id, auto_title)
 
         # history[:-1] exclui o turno atual (já passado via user_input)
-        result, t_in, t_out = run_agent(
+        agent_result = run_agent(
             run_input, tools, schema, args.model, agent_info,
             history=history[:-1],
             image_b64=run_img_b64,
             context_injection=context_injection,
             session_id=str(current_session_id) if current_session_id else None,
             mcp_manager=mcp_manager,
-            session_flags=session_flags,
+            **_make_run_callbacks(session_flags),
         )
+        t_in  = agent_result.tokens_in
+        t_out = agent_result.tokens_out
         session_tokens_in  += t_in
         session_tokens_out += t_out
-        
-        # ── auto tool ─────────────────────────────────────────────────────────
-        if isinstance(result, dict) and result.get("status") == "needs_tool":
-            result, tools, schema = _handle_auto_tool(
-                result,
-                user_input,
-                tools,
-                schema,
-                args.model,
-                agent_info,
-                history,
-                safe=args.safe,
-                session_flags=session_flags,
-            )
-            # atualiza header e completer com as novas tools
-            header(args.model, agent_info["name"], tools, safe=args.safe)
-            completer = make_completer(tools)
+
+        # _finish_agent_turn trata: erro de conexão, proposta de auto tool
+        # (delega a _handle_auto_tool) e resposta normal — devolve string final.
+        result, tools, schema = _finish_agent_turn(
+            agent_result, run_input, tools, schema,
+            args.model, agent_info, history, safe=args.safe,
+            session_flags=session_flags,
+        )
+        # sempre atualiza header/completer: idempotente no caso normal,
+        # necessário quando _finish_agent_turn criou tools novas via auto tool.
+        header(args.model, agent_info["name"], tools, safe=args.safe, clear=False)
+        completer = make_completer(tools)
 
         ts = datetime.now().strftime("%a %H:%M")
         history.append({"role": "agent", "content": result, "ts": ts})
@@ -2477,7 +2280,7 @@ def main():
         # salva turno do agente em tempo real
         if current_session_id is not None:
             store.append_turn(current_session_id, "agent", result, ts)
-        
+
         # limpa injection depois do primeiro turno (já foi usado)
         context_injection = None
 
