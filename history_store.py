@@ -17,11 +17,47 @@ Uso:
   turns    = store.get_turns(sid)
 """
 
+import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 DB_PATH = Path("agent_history.db")
+
+# ── redaction de segredos ─────────────────────────────────────────────────────
+# Aplicado em append_turn antes de persistir qualquer conteúdo.
+# O usuário ainda vê o dado original na tela — só o banco não guarda.
+# Não é exaustivo (não existe lista completa de formatos de segredo),
+# mas cobre os vetores mais comuns: chaves de API, tokens, senhas em
+# pares KEY=VALUE e connection strings com credenciais embutidas.
+
+_REDACT_PATTERNS = re.compile(
+    "|".join([
+        r'sk-[A-Za-z0-9\-_]{20,}',             # OpenAI / Anthropic
+        r'nvapi-[A-Za-z0-9\-_]{20,}',          # NVIDIA NIM / build.nvidia.com
+        r'ghp_[A-Za-z0-9]{32,}',               # GitHub personal token
+        r'ghs_[A-Za-z0-9]{32,}',               # GitHub app token
+        r'github_pat_[A-Za-z0-9_]{50,}',       # GitHub fine-grained PAT
+        r'xoxb-[A-Za-z0-9\-]{40,}',            # Slack bot token
+        r'xoxp-[A-Za-z0-9\-]{40,}',            # Slack user token
+        r'Bearer\s+[A-Za-z0-9\-_.]{20,}',      # Authorization header genérico
+        # pares KEY=value e key: value — nomes suspeitos
+        r'(api[_\-]?key|api[_\-]?token|access[_\-]?token|secret[_\-]?key'
+        r'|auth[_\-]?token|private[_\-]?key)\s*[=:]\s*\S+',
+        r'(password|passwd|pwd|pass)\s*[=:]\s*\S+',
+        # connection strings com credenciais embutidas
+        r'(mysql|postgres|postgresql|mongodb|redis|amqp)'
+        r'://[A-Za-z0-9\-_.%]+:[^@\s]+@\S+',
+    ]),
+    re.IGNORECASE,
+)
+
+
+def _redact(text: str) -> str:
+    """Substitui padrões que parecem segredos por [REDACTED] antes de persistir."""
+    if not text:
+        return text
+    return _REDACT_PATTERNS.sub("[REDACTED]", text)
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -87,7 +123,7 @@ class HistoryStore:
     def save_summary(self, session_id: int, summary: str):
         self._conn.execute(
             "UPDATE sessions SET summary=?, updated_at=? WHERE id=?",
-            (summary, _now(), session_id),
+            (_redact(summary), _now(), session_id),
         )
         self._conn.commit()
 
@@ -154,7 +190,7 @@ class HistoryStore:
         ts = ts or _now()
         self._conn.execute(
             "INSERT INTO conversations (session_id, role, content, ts) VALUES (?, ?, ?, ?)",
-            (session_id, role, content, ts),
+            (session_id, role, _redact(content), ts),
         )
         self._conn.execute(
             "UPDATE sessions SET updated_at=? WHERE id=?", (_now(), session_id)
