@@ -2,6 +2,9 @@
 
 REQUIREMENTS = ["requests", "beautifulsoup4"]
 
+from tools._ssrf_guard import check_url
+
+
 def run(url: str, max_chars: int = 20000) -> str:
     """
     url: URL completa da página (deve começar com http:// ou https://)
@@ -13,6 +16,10 @@ def run(url: str, max_chars: int = 20000) -> str:
 
         if not url.startswith(("http://", "https://")):
             return "Erro: URL deve começar com http:// ou https://"
+
+        err = check_url(url)
+        if err:
+            return err
 
         headers = {
             "User-Agent": (

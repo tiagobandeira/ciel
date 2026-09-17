@@ -7,6 +7,7 @@ import requests
 from bs4 import BeautifulSoup
 import re
 from urllib.parse import urlparse
+from tools._ssrf_guard import check_url
 
 
 def _clean_text(html: str) -> str:
@@ -25,6 +26,9 @@ def _clean_text(html: str) -> str:
 
 def _scrape_page(url: str, timeout: int = 10, max_chars: int = 3000) -> str:
     """Baixa e extrai o conteúdo principal de uma página."""
+    err = check_url(url)
+    if err:
+        return f"[{err}]"
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"

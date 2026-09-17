@@ -4,6 +4,8 @@ REQUIREMENTS = ["requests"]
 
 import json
 import requests
+from tools._ssrf_guard import check_url
+
 
 def run(method='GET', url=None, headers=None, data=None, params=None, timeout=10):
     """
@@ -16,6 +18,10 @@ def run(method='GET', url=None, headers=None, data=None, params=None, timeout=10
     """
     if not url:
         return "Erro: URL é obrigatória."
+
+    err = check_url(url)
+    if err:
+        return err
 
     try:
         is_json = isinstance(data, dict)
