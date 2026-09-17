@@ -1,6 +1,7 @@
 """Baixa uma página web e retorna o texto limpo (sem HTML)."""
 
 REQUIREMENTS = ["requests", "beautifulsoup4"]
+OUTPUT = "external"
 
 from tools._ssrf_guard import check_url
 

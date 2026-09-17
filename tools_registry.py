@@ -22,6 +22,13 @@ Variáveis de módulo reconhecidas em cada tool:
                            diretamente, pois isso quebra na TUI (o Textual
                            já controla o terminal). Ver tools/entrevista_*.py
                            como referência.
+  OUTPUT = "external"     resultado da tool contém conteúdo de fonte externa
+                           (web, arquivo de terceiro, MCP remoto). Usado por
+                           trust/input_verifier.py pra marcar o conteúdo com
+                           [EXTERNAL_DATA] antes de entrar nas mensagens do
+                           agente — impede prompt injection indireta onde um
+                           site tenta promover instruções a USER_INSTRUCTION.
+                           Omitir (ou usar OUTPUT = "internal") = sem marcação.
 """
 
 import re
@@ -162,6 +169,7 @@ def _load_from_dir(directory: Path, categoria: str) -> dict:
                 "requirements": list(getattr(mod, "REQUIREMENTS", [])),
                 "permissions":  dict(getattr(mod, "PERMISSIONS", {})),
                 "interactive":  bool(getattr(mod, "INTERACTIVE", False)),
+                "output_type":  str(getattr(mod, "OUTPUT", "internal")),
             }
 
     return tools

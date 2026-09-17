@@ -1,6 +1,7 @@
 """Realiza requisições HTTP (GET, POST, PUT, DELETE) para APIs externas."""
 
 REQUIREMENTS = ["requests"]
+OUTPUT = "external"
 
 import json
 import requests
