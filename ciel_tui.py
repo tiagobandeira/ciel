@@ -307,8 +307,9 @@ COMMANDS: list[tuple[str, str]] = [
     ("/skill",             "ativa skill disponível        [F3]"),
     ("/agente",            "troca persona interativo      [F4]"),
     ("/agente <nome>",     "troca persona diretamente"),
-    ("/model <nome>",      "troca modelo Ollama"),
-    ("/model2 <nome>",     "define modelo secundário"),
+    ("/model",             "modelos — local e secundário  [F5]"),
+    ("/model <nome>",      "troca modelo Ollama direto"),
+    ("/connect",           "configura provedor do modelo secundário"),
     ("/novo",              "nova sessão"),
     ("/limpar",            "limpa display"),
     ("/history",           "lista sessões salvas"),
@@ -1180,6 +1181,489 @@ class WorkspaceGrantModal(ModalScreen):
     def action_read(self)  -> None: self.dismiss("leitura")
     def action_write(self) -> None: self.dismiss("escrita")
     def action_deny(self)  -> None: self.dismiss("nao")
+
+
+class ModelModal(ModalScreen):
+    """
+    Modal de /model — exibe modelo local e secundário ativo,
+    lista providers configurados em secrets.json e permite trocar.
+    Retorna None (sem mudança) ou (pid, model, base_url) ao selecionar.
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss", show=False),
+        Binding("q",      "dismiss", show=False),
+    ]
+
+    CSS = f"""
+    ModelModal {{
+        align: center middle;
+    }}
+    #model-modal-box {{
+        width: 74;
+        height: auto;
+        max-height: 36;
+        background: {P['panel']};
+        border: solid {P['accent']};
+        padding: 1 2;
+    }}
+    #model-modal-title {{
+        height: 2;
+        color: {P['accent']};
+        text-style: bold;
+        content-align: left middle;
+        border-bottom: solid {P['border']};
+        margin-bottom: 1;
+    }}
+    #model-modal-status {{
+        height: auto;
+        color: {P['text']};
+        margin-bottom: 1;
+        padding: 0 1;
+    }}
+    #model-modal-list {{
+        height: auto;
+        max-height: 12;
+        background: {P['panel']};
+        border: none;
+        padding: 0;
+    }}
+    #model-modal-list > .option-list--option {{
+        color: {P['silver']};
+        padding: 0 1;
+    }}
+    #model-modal-list > .option-list--option-highlighted {{
+        background: {P['hi']};
+        color: {P['accent']};
+    }}
+    #model-modal-list > .option-list--option:hover {{
+        background: {P['dim']};
+        color: {P['text']};
+    }}
+    #model-modal-hint {{
+        height: 1;
+        color: {P['muted']};
+        content-align: center middle;
+        margin-top: 1;
+        border-top: solid {P['border']};
+    }}
+    """
+
+    def __init__(self, current_local: str, **kw) -> None:
+        super().__init__(**kw)
+        self._current_local = current_local
+        self._entries: list[tuple] = []   # (secret_key, pid, model, base_url, has_key, is_active)
+
+    def _load_entries(self) -> tuple[dict, list[tuple]]:
+        """Lê ciel_config.json e secrets.json. Mesma lógica do /model na CLI."""
+        import json
+        from pathlib import Path
+        from trust.secrets import secrets as _sm
+
+        cfg_path = Path("ciel_config.json")
+        active_cfg: dict = {}
+        if cfg_path.exists():
+            try:
+                active_cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
+        active_pid   = active_cfg.get("provider_id", "")
+        active_model = active_cfg.get("model", "")
+
+        secret_keys = _sm.list_providers()
+
+        def _parse_key(key: str) -> tuple[str, str]:
+            if ":" in key:
+                pid, mdl = key.split(":", 1)
+                return pid, mdl
+            fallback = _sm.load_provider(key, "") or {}
+            return key, fallback.get("model", "")
+
+        entries: list[tuple] = []
+        for sk in secret_keys:
+            spid, smod = _parse_key(sk)
+            scfg       = _sm.load_provider(spid, smod) or {}
+            surl       = scfg.get("base_url", "")
+            has_key    = bool(scfg.get("api_key", "").strip())
+            is_active  = (active_pid == spid and active_model == smod)
+            entries.append((sk, spid, smod, surl, has_key, is_active))
+
+        return active_cfg, entries
+
+    def compose(self) -> ComposeResult:
+        import os
+        from trust.secrets import secrets as _sm
+
+        active_cfg, self._entries = self._load_entries()
+        active_pid   = active_cfg.get("provider_id", "")
+        active_model = active_cfg.get("model", "")
+
+        # ── monta texto de status ─────────────────────────────────────────
+        status = Text()
+        status.append(f"  {'local':<12}", style=f"dim {P['silver']}")
+        status.append(f"{self._current_local}\n", style=f"bold {P['gold']}")
+
+        via_env = os.environ.get("SECONDARY_MODEL_API_KEY", "").strip()
+        if via_env:
+            status.append(f"  {'secundário':<12}", style=f"dim {P['silver']}")
+            status.append("via variável de ambiente\n", style=P["green"])
+        elif active_pid and active_model:
+            key_ok = (
+                _sm.get_api_key(active_pid, active_model)
+                or _sm.get_api_key(active_pid)
+            )
+            short = active_model.split("/")[-1]
+            status.append(f"  {'secundário':<12}", style=f"dim {P['silver']}")
+            if key_ok:
+                status.append(f"{active_pid}", style=P["green"])
+                status.append(f"  {short}", style=f"bold {P['cyan']}")
+                status.append(f"  {active_cfg.get('base_url', '')}\n",
+                              style=f"dim {P['muted']}")
+            else:
+                status.append(f"{active_pid} · {short}", style=P["orange"])
+                status.append("  (chave não encontrada — use /connect)\n",
+                              style=f"dim {P['muted']}")
+        elif active_cfg.get("api_key", "").strip() not in ("", "SUA_CHAVE_AQUI"):
+            short = active_cfg.get("model", "").split("/")[-1]
+            status.append(f"  {'secundário':<12}", style=f"dim {P['silver']}")
+            status.append(f"{short}", style=P["green"])
+            status.append("  (config legada — ciel_config.json)\n",
+                          style=f"dim {P['muted']}")
+        else:
+            status.append(f"  {'secundário':<12}", style=f"dim {P['silver']}")
+            status.append("não configurado\n", style=f"dim {P['muted']}")
+
+        # ── monta opções ──────────────────────────────────────────────────
+        options: list[Option] = []
+        for i, (sk, spid, smod, surl, has_key, is_active) in enumerate(self._entries):
+            short     = smod.split("/")[-1] if smod else ""
+            key_badge = "" if has_key else "  (sem chave)"
+            act_badge = "  ← ativo" if is_active else ""
+            label     = f"{i + 1})  {spid:<14}  {short}{key_badge}{act_badge}"
+            options.append(Option(label, id=sk))
+
+        with Vertical(id="model-modal-box"):
+            yield Label("  ◈  modelo", id="model-modal-title")
+            yield Static(status, id="model-modal-status")
+            if options:
+                yield OptionList(*options, id="model-modal-list")
+                yield Label(
+                    "↑↓ navegar   Enter ativar   Esc cancelar"
+                    "   /connect para adicionar",
+                    id="model-modal-hint",
+                )
+            else:
+                yield Label(
+                    "nenhum provider configurado — use /connect para adicionar",
+                    id="model-modal-hint",
+                )
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        sk = event.option.id
+        # acha a entrada correspondente
+        entry = next((e for e in self._entries if e[0] == sk), None)
+        if entry is None:
+            self.dismiss(None)
+            return
+        _, pid, model, base_url, _, is_active = entry
+        if is_active:
+            self.dismiss(None)   # já ativo, não muda nada
+            return
+        self.dismiss((pid, model, base_url))
+
+    def on_key(self, event: events.Key) -> None:
+        """Atalho numérico — igual ao AskUserModal."""
+        if event.key.isdigit():
+            idx = int(event.key) - 1
+            if 0 <= idx < len(self._entries):
+                _, pid, model, base_url, _, is_active = self._entries[idx]
+                if not is_active:
+                    self.dismiss((pid, model, base_url))
+                else:
+                    self.dismiss(None)
+
+
+class ConnectModal(ModalScreen):
+    """
+    Modal de /connect — lista providers de providers.json.
+    Passo 1: selecionar provider.
+    Passo 2: confirmar/editar URL + model + api_key (senhas com asteriscos).
+    Ao confirmar, chama SecretsManager.save_provider() e nunca exibe a chave.
+    """
+
+    BINDINGS = [
+        Binding("escape", "go_back", show=False),
+    ]
+
+    CSS = f"""
+    ConnectModal {{
+        align: center middle;
+    }}
+    #connect-modal-box {{
+        width: 76;
+        height: auto;
+        max-height: 38;
+        background: {P['panel']};
+        border: solid {P['cyan']};
+        padding: 1 2;
+    }}
+    #connect-modal-title {{
+        height: 2;
+        color: {P['cyan']};
+        text-style: bold;
+        content-align: left middle;
+        border-bottom: solid {P['border']};
+        margin-bottom: 1;
+    }}
+    #connect-provider-list {{
+        height: auto;
+        max-height: 14;
+        background: {P['panel']};
+        border: none;
+        padding: 0;
+        margin-bottom: 1;
+    }}
+    #connect-provider-list > .option-list--option {{
+        color: {P['silver']};
+        padding: 0 1;
+    }}
+    #connect-provider-list > .option-list--option-highlighted {{
+        background: {P['hi']};
+        color: {P['cyan']};
+    }}
+    #connect-provider-list > .option-list--option:hover {{
+        background: {P['dim']};
+        color: {P['text']};
+    }}
+    /* ── passo 2: formulário ── */
+    #connect-form {{
+        height: auto;
+        display: none;
+    }}
+    #connect-form.visible {{
+        display: block;
+    }}
+    #connect-form-note {{
+        height: auto;
+        color: {P['muted']};
+        margin-bottom: 1;
+        padding: 0 1;
+    }}
+    .connect-field-label {{
+        height: 1;
+        color: {P['silver']};
+        margin-top: 1;
+        padding: 0 1;
+    }}
+    .connect-field-input {{
+        margin-bottom: 0;
+    }}
+    #connect-modal-btns {{
+        height: 3;
+        layout: horizontal;
+        align: right middle;
+        margin-top: 1;
+        border-top: solid {P['border']};
+        padding-top: 1;
+        display: none;
+    }}
+    #connect-modal-btns.visible {{
+        display: block;
+    }}
+    #connect-btn-confirm {{
+        background: {P['accent']};
+        color: {P['bg']};
+        text-style: none;
+        border: none;
+        margin: 0 1;
+        min-width: 14;
+    }}
+    #connect-btn-confirm:hover {{
+        background: {P['cyan']};
+    }}
+    #connect-btn-back {{
+        background: {P['surface']};
+        color: {P['silver']};
+        text-style: none;
+        border: none;
+        margin: 0 1;
+        min-width: 10;
+    }}
+    #connect-modal-hint {{
+        height: 1;
+        color: {P['muted']};
+        content-align: center middle;
+        margin-top: 1;
+        border-top: solid {P['border']};
+    }}
+    """
+
+    def __init__(self, **kw) -> None:
+        super().__init__(**kw)
+        self._providers: list[dict] = []
+        self._selected: dict | None = None   # provider escolhido no passo 1
+        self._step = 1
+
+    def _load_providers(self) -> list[dict]:
+        import json
+        from pathlib import Path
+        for candidate in (Path("providers.json"), Path(__file__).parent / "providers.json"):
+            if candidate.exists():
+                try:
+                    return json.loads(candidate.read_text(encoding="utf-8")).get("providers", [])
+                except Exception:
+                    pass
+        return []
+
+    def compose(self) -> ComposeResult:
+        self._providers = self._load_providers()
+        options = [
+            Option(
+                f"{p['name']:<24}  {p.get('notes', '')[:36]}",
+                id=p["id"],
+            )
+            for p in self._providers
+        ]
+
+        with Vertical(id="connect-modal-box"):
+            yield Label("  ⬡  /connect — provedor do modelo secundário",
+                        id="connect-modal-title")
+
+            # ── passo 1: lista de providers ───────────────────────────────
+            if options:
+                yield OptionList(*options, id="connect-provider-list")
+            else:
+                yield Label(
+                    "providers.json não encontrado.",
+                    id="connect-modal-hint",
+                )
+
+            # ── passo 2: formulário (oculto até seleção) ──────────────────
+            with Vertical(id="connect-form"):
+                yield Static("", id="connect-form-note")
+                yield Label("URL base", classes="connect-field-label")
+                yield Input(placeholder="https://...", id="connect-input-url",
+                            classes="connect-field-input")
+                yield Label("Modelo", classes="connect-field-label")
+                yield Input(placeholder="nome/do/modelo", id="connect-input-model",
+                            classes="connect-field-input")
+                yield Label("API Key", classes="connect-field-label", id="connect-key-label")
+                yield Input(placeholder="sua chave...", password=True,
+                            id="connect-input-key", classes="connect-field-input")
+
+            with Horizontal(id="connect-modal-btns"):
+                yield Button("Confirmar", id="connect-btn-confirm", variant="primary")
+                yield Button("Voltar",    id="connect-btn-back")
+
+            yield Label(
+                "↑↓ navegar   Enter selecionar   Esc voltar/fechar",
+                id="connect-modal-hint",
+            )
+
+    def _show_form(self, provider: dict) -> None:
+        """Preenche e exibe o formulário para o provider selecionado."""
+        self._selected = provider
+        self._step = 2
+        needs_key = provider.get("needs_key", True)
+
+        # preenche campos com defaults do provider
+        self.query_one("#connect-input-url",   Input).value = provider.get("base_url", "")
+        self.query_one("#connect-input-model", Input).value = provider.get("model", "")
+        self.query_one("#connect-input-key",   Input).value = ""
+
+        # esconde/mostra campo de chave
+        key_label = self.query_one("#connect-key-label",  Label)
+        key_input = self.query_one("#connect-input-key",  Input)
+        if needs_key:
+            key_label.display = True
+            key_input.display = True
+        else:
+            key_label.display = False
+            key_input.display = False
+
+        # nota informativa
+        note = Text()
+        note.append(f"  {provider['name']}", style=f"bold {P['cyan']}")
+        if provider.get("notes"):
+            note.append(f"  ·  {provider['notes']}", style=f"dim {P['muted']}")
+        if not needs_key:
+            note.append("\n  sem chave necessária", style=f"dim {P['green']}")
+        if provider.get("key_url"):
+            note.append(f"\n  chave em: {provider['key_url']}", style=f"dim {P['muted']}")
+        self.query_one("#connect-form-note", Static).update(note)
+
+        # exibe form + botões, oculta lista
+        self.query_one("#connect-provider-list", OptionList).display = False
+        self.query_one("#connect-form",           Vertical).add_class("visible")
+        self.query_one("#connect-modal-btns",     Horizontal).add_class("visible")
+
+        # foca primeiro campo editável
+        self.query_one("#connect-input-url", Input).focus()
+
+    def _go_back_to_list(self) -> None:
+        """Volta ao passo 1 sem perder a lista."""
+        self._step = 1
+        self._selected = None
+        self.query_one("#connect-provider-list", OptionList).display = True
+        self.query_one("#connect-form",           Vertical).remove_class("visible")
+        self.query_one("#connect-modal-btns",     Horizontal).remove_class("visible")
+
+    def _confirm(self) -> None:
+        """Lê os campos e chama save_provider. Nunca devolve a chave ao caller."""
+        if self._selected is None:
+            return
+        from trust.secrets import secrets as _sm
+
+        pid      = self._selected["id"]
+        base_url = self.query_one("#connect-input-url",   Input).value.strip()
+        model    = self.query_one("#connect-input-model", Input).value.strip()
+        needs_key = self._selected.get("needs_key", True)
+        api_key  = (
+            self.query_one("#connect-input-key", Input).value.strip()
+            if needs_key else ""
+        )
+
+        if not base_url or not model:
+            return   # campos obrigatórios vazios — permanece no form
+
+        _sm.save_provider(pid, base_url=base_url, model=model, api_key=api_key)
+        # retorna só pid + model para o caller exibir confirmação
+        # a chave NUNCA sai deste modal
+        self.dismiss((pid, model, base_url))
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        pid = event.option.id
+        provider = next((p for p in self._providers if p["id"] == pid), None)
+        if provider:
+            self._show_form(provider)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "connect-btn-confirm":
+            self._confirm()
+        elif event.button.id == "connect-btn-back":
+            self._go_back_to_list()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Enter num campo de Input avança para o próximo ou confirma."""
+        event.stop()
+        inp_id = event.input.id
+        if inp_id == "connect-input-url":
+            self.query_one("#connect-input-model", Input).focus()
+        elif inp_id == "connect-input-model":
+            needs_key = self._selected and self._selected.get("needs_key", True)
+            if needs_key:
+                self.query_one("#connect-input-key", Input).focus()
+            else:
+                self._confirm()
+        elif inp_id == "connect-input-key":
+            self._confirm()
+
+    def action_go_back(self) -> None:
+        if self._step == 2:
+            self._go_back_to_list()
+        else:
+            self.dismiss(None)
 
 
 class SelectionModal(ModalScreen):
@@ -2414,13 +2898,16 @@ class CielTUI(App):
         except Exception:
             pass
 
-        # le modelo secundario do ciel_config.json
+        # lê modelo secundário do ciel_config.json (suporta formato novo com
+        # provider_id e formato legado com model inline)
         try:
             from pathlib import Path
             cfg = json.loads(Path("ciel_config.json").read_text(encoding="utf-8"))
             model2_name = cfg.get("model", "")
             if model2_name:
-                self.query_one("#info-panel", InfoPanel).update_state(model2=model2_name)
+                # exibe só a parte final do nome (ex: "deepseek-v4-flash-0731")
+                short2 = model2_name.split("/")[-1]
+                self.query_one("#info-panel", InfoPanel).update_state(model2=short2)
         except Exception:
             pass
 
@@ -2841,8 +3328,9 @@ class CielTUI(App):
                 ("/skill",                "ativa skill disponível        [F3]"),
                 ("/agente",               "troca persona interativo      [F4]"),
                 ("/agente <nome>",        "troca persona diretamente"),
-                ("/model <nome>",         "troca modelo Ollama"),
-                ("/model2 <nome>",        "define modelo secundário"),
+                ("/model",                "modelos — local e secundário  [F5]"),
+                ("/model <nome>",         "troca modelo local direto"),
+                ("/connect",             "configura provedor do modelo secundário"),
                 ("/novo",                 "nova sessão"),
                 ("/limpar",               "limpa display"),
                 ("/history",              "lista sessões salvas"),
@@ -2967,20 +3455,62 @@ class CielTUI(App):
                     self._log_write(msg_system(f"agente '{nome}' não encontrado: {e}", "err"))
 
         elif verb == "/model":
-            if len(parts) < 2:
-                self._log_write(msg_system(f"modelo atual: {self.current_model}", "info"))
-            else:
+            if len(parts) >= 2:
+                # /model <nome> — troca modelo local direto, sem modal
                 self.current_model = parts[1]
                 self.query_one("#top-bar",    TopBar).update_state(model=parts[1])
                 self.query_one("#info-panel", InfoPanel).update_state(model=parts[1])
-                self._log_write(msg_system(f"modelo trocado para '{parts[1]}'", "ok"))
-
-        elif verb == "/model2":
-            if len(parts) < 2:
-                self._log_write(msg_system("uso: /model2 <nome>", "warn"))
+                self._log_write(msg_system(f"modelo local trocado para '{parts[1]}'", "ok"))
             else:
-                # modelo secundário ainda não implementado no painel
-                self._log_write(msg_system(f"modelo secundário '{parts[1]}' registrado (em breve no painel)", "info"))
+                # /model sem args — abre ModelModal
+                def _on_model_result(result) -> None:
+                    if result is None:
+                        return
+                    pid, chosen_model, chosen_url = result
+                    # persiste em ciel_config.json (mesma lógica da CLI)
+                    import json
+                    from pathlib import Path
+                    cfg_path = Path("ciel_config.json")
+                    new_cfg: dict = {}
+                    if cfg_path.exists():
+                        try:
+                            new_cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+                        except Exception:
+                            pass
+                    new_cfg["provider_id"] = pid
+                    new_cfg["base_url"]    = chosen_url
+                    new_cfg["model"]       = chosen_model
+                    new_cfg.pop("api_key", None)
+                    try:
+                        cfg_path.write_text(
+                            json.dumps(new_cfg, indent=2, ensure_ascii=False),
+                            encoding="utf-8",
+                        )
+                        short = chosen_model.split("/")[-1]
+                        self.query_one("#info-panel", InfoPanel).update_state(model2=short)
+                        self._log_write(msg_system(
+                            f"secundário → {pid} · {short}  "
+                            f"(salvo em ciel_config.json)", "ok"
+                        ))
+                    except Exception as e:
+                        self._log_write(msg_system(f"erro ao salvar config: {e}", "err"))
+
+                self.set_focus(None)
+                self.push_screen(ModelModal(self.current_model), _on_model_result)
+
+        elif verb == "/connect":
+            def _on_connect_result(result) -> None:
+                if result is None:
+                    return
+                pid, model, base_url = result
+                short = model.split("/")[-1]
+                self._log_write(msg_system(
+                    f"✓ {pid} · {short} configurado  "
+                    f"(chave salva em ~/.ciel/secrets.json)", "ok"
+                ))
+
+            self.set_focus(None)
+            self.push_screen(ConnectModal(), _on_connect_result)
 
         elif verb == "/novo":
             self.session_no  = "nova"
