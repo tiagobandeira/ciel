@@ -47,7 +47,8 @@ Orquestrador (Gemma4 / Ollama)
   ↓ chama a tool secondary_model
 Tool secondary_model
   ↓ verifica cota da sessão
-  ↓ lê ciel_config.json (provider, model, api_key)
+  ↓ lê ciel_config.json (provider_id, base_url, model)
+  ↓ busca a chave em ~/.ciel/secrets.json (ou SECONDARY_MODEL_API_KEY)
   ↓ faz POST para a API (padrão OpenAI-compatible)
 Modelo secundário (DeepSeek, GPT-4, Claude, etc.)
   ↓ retorna resposta
@@ -76,8 +77,11 @@ por ele.
 | Arquivo | Papel |
 |---|---|
 | `tools/secondary_model.py` | a tool em si — lógica de chamada, cota e resposta |
-| `ciel_config.json` | configuração local com provider, model e api_key (não commitado) |
-| `ciel_config.example.json` | template público sem chave real |
+| `ciel_config.json` | provider ativo — `provider_id`, `base_url`, `model` (sem chave; não commitado) |
+| `providers.json` | catálogo de providers conhecidos, usado pelo `/connect` |
+| `~/.ciel/secrets.json` | credenciais dos providers configurados — gerenciado por `trust/secrets.py`, fora do repositório |
+| `trust/model_manager.py` | lógica de listagem/ativação de provider usada por `/model` |
+| `ciel_config.example.json` | template público de referência (formato legado) |
 | `data/secondary_quota.json` | controle de caracteres consumidos por sessão |
 | `data/user/secondary_response_*.md` | respostas longas salvas automaticamente |
 
@@ -104,62 +108,84 @@ Opções gratuitas para começar:
 3. Gere uma API key no dashboard
 4. Escolha um modelo disponível (ex: `deepseek-ai/deepseek-v4-flash-0731`)
 
-### 3. Configure o ciel_config.json
+### 3. Configure com `/connect`
 
-Copie o arquivo de exemplo e preencha com suas credenciais:
-
-```bash
-cp ciel_config.example.json ciel_config.json
-```
-
-Edite `ciel_config.json`:
-
-```json
-{
-  "base_url": "https://integrate.api.nvidia.com/v1",
-  "model":    "deepseek-ai/deepseek-v4-flash-0731",
-  "api_key":  "nvapi-SUA_CHAVE_AQUI",
-
-  "timeout":               120,
-  "max_chars_per_session": 40000,
-  "max_response_chars":    8000
-}
-```
-
-### 4. Verifique o .gitignore
-
-O `ciel_config.json` já deve estar no `.gitignore` para proteger sua chave:
+Dentro do Ciel (CLI ou TUI), rode `/connect` — não precisa mais editar `ciel_config.json` na mão. O comando lista os providers de `providers.json`, você escolhe um número, confirma (ou edita) a URL e o modelo, e cola a API key quando pedido:
 
 ```
-ciel_config.json
+> /connect
+
+ 1  NVIDIA Build       (gratuito, vários modelos disponíveis)
+ 2  OpenRouter         (modelos gratuitos com :free no nome)
+ 3  9router            (proxy local)
+ 4  Custom             (qualquer endpoint OpenAI-compatible)
+
+ Número do provedor (Enter = cancelar): 1
+
+ url: https://integrate.api.nvidia.com/v1
+
+ Modelo (Enter = deepseek-ai/deepseek-v4-flash-0731)
+ ❯ 
+
+ obtenha sua chave em: https://build.nvidia.com
+ API key (oculta): ****************
+
+ ✓ NVIDIA Build configurado — modelo: deepseek-ai/deepseek-v4-flash-0731
+ credenciais salvas em ~/.ciel/secrets.json (chave não exibida)
 ```
+
+A chave nunca aparece na tela nem é salva em `ciel_config.json` — ela fica em `~/.ciel/secrets.json`, fora do repositório. Providers que não precisam de chave (locais, como o 9router) pulam essa etapa.
+
+> A lista que aparece no `/connect` vem de `providers.json`, na raiz do projeto — a tabela do passo 1 é só um resumo dos mais comuns. Na TUI, `/connect` (ou `F5`) abre o mesmo fluxo como um modal, com os mesmos campos.
+
+### 4. Ative com `/model`
+
+`/connect` só salva a credencial — quem decide qual provider está ativo é o `/model`:
+
+```
+> /model
+
+  local        gemma4:e2b-it-qat
+  secundário   não configurado
+
+  providers configurados:
+   1  nvidia          deepseek-v4-flash-0731
+   2  openrouter      qwen3-235b-a22b:free
+
+  /connect  adicionar ou atualizar provider
+
+ Número para ativar (Enter = manter atual): 1
+
+ ✓ modelo secundário atualizado  nvidia · deepseek-v4-flash-0731
+ salvo em ciel_config.json · chave lida de ~/.ciel/secrets.json
+```
+
+`/model` sem argumento também serve pra conferir o status a qualquer momento — mostra o modelo local, o secundário ativo (ou `não configurado`) e todos os providers já conectados, com `← ativo` marcando o atual. `/model <nome>` continua trocando o modelo **local** (Ollama) direto, sem abrir esse painel. Na TUI, o mesmo comando (ou `F5`) abre um modal equivalente — selecionar um provider na lista já ativa na hora.
+
+> Como a chave não fica mais em `ciel_config.json`, o arquivo passou a guardar só `provider_id`, `base_url` e `model`. Ele continua no `.gitignore` por ser config específica de cada ambiente, mas não há mais segredo nele — quem precisa ficar fora do repositório é o `~/.ciel/secrets.json`, que já vive fora da pasta do projeto.
 
 ---
 
 ## Parâmetros do ciel_config.json
 
+Escritos automaticamente pelo `/model` ao ativar um provider — normalmente não há necessidade de editar isso na mão:
+
 | Campo | Tipo | O que faz |
 |---|---|---|
-| `base_url` | string | Endpoint da API do provider |
+| `provider_id` | string | id do provider ativo (o mesmo usado no `/connect`, ex: `nvidia`, `openrouter`) |
+| `base_url` | string | Endpoint da API do provider ativo |
 | `model` | string | ID do modelo a ser usado |
-| `api_key` | string | Chave de autenticação (inline) |
-| `api_key_env` | string | Nome da variável de ambiente com a chave (alternativa ao `api_key`) |
 | `timeout` | int | Segundos de espera pela resposta (padrão: 120) |
 | `max_chars_per_session` | int | Limite de caracteres de input por sessão (padrão: 40000) |
 | `max_response_chars` | int | Respostas maiores que isso são salvas em arquivo (padrão: 8000) |
 | `max_tokens` | int | Máximo de tokens na resposta do modelo secundário (padrão: 16384) |
 
-### api_key vs api_key_env
+A API key correspondente a `provider_id` é lida de `~/.ciel/secrets.json` (gerenciado pelo `/connect`), não fica mais neste arquivo.
 
-**`api_key` direto no config** — mais simples, recomendado para uso pessoal:
-```json
-{ "api_key": "nvapi-..." }
-```
+### Chave via variável de ambiente
 
-**`api_key_env`** — a tool busca a chave em uma variável de ambiente:
-```json
-{ "api_key_env": "SECONDARY_MODEL_API_KEY" }
-```
+Pra não deixar a chave em disco nenhum (ex: CI, deploy), exporte `SECONDARY_MODEL_API_KEY` — ela tem prioridade sobre o provider configurado em `secrets.json`:
+
 ```bash
 # Linux/macOS
 export SECONDARY_MODEL_API_KEY="nvapi-..."
@@ -168,41 +194,22 @@ export SECONDARY_MODEL_API_KEY="nvapi-..."
 $env:SECONDARY_MODEL_API_KEY="nvapi-..."
 ```
 
+> Configs antigas que ainda tenham `api_key` ou `api_key_env` direto no `ciel_config.json` (formato pré-`/connect`) continuam sendo lidas como fallback — mas o caminho recomendado a partir de agora é `/connect` + `/model`.
+
 ---
 
 ## Trocando de provider
 
-O provider é intercambiável — basta editar `ciel_config.json`.
-Exemplos prontos:
+O provider é intercambiável — não precisa editar nada no código nem no `ciel_config.json` na mão. O fluxo é sempre o mesmo: `/connect` uma vez por provider (salva a credencial em `~/.ciel/secrets.json`), depois `/model` pra escolher qual fica ativo. Como cada provider conectado fica salvo, trocar entre eles depois é só rodar `/model` de novo e escolher outro número — sem passar pelo `/connect` de novo.
 
-**OpenRouter (modelos gratuitos):**
-```json
-{
-  "base_url": "https://openrouter.ai/api/v1",
-  "model":    "qwen/qwen3-235b-a22b:free",
-  "api_key":  "sk-or-SUA_CHAVE_AQUI"
-}
-```
+Alguns exemplos do que dá pra conectar:
 
-**9router (proxy local):**
-```json
-{
-  "base_url": "http://localhost:20128/v1",
-  "model":    "kr/claude-sonnet-4.5",
-  "api_key":  "sua-api-key-do-9router"
-}
-```
+- **OpenRouter** — bom pra testar modelos gratuitos (sufixo `:free` no nome do modelo)
+- **9router** — proxy local; se estiver rodando sem exigir autenticação própria, o `/connect` pula direto o campo de API key
+- **OpenAI** — `gpt-4o` e outros, com sua chave da OpenAI
+- **Custom** — qualquer outro endpoint OpenAI-compatible que não esteja na lista (Anthropic via proxy, Azure OpenAI, etc.) — o `/connect` pede a URL manualmente nesse caso
 
-**OpenAI:**
-```json
-{
-  "base_url": "https://api.openai.com/v1",
-  "model":    "gpt-4o",
-  "api_key":  "sk-SUA_CHAVE_AQUI"
-}
-```
-
-Nenhuma alteração no código é necessária — só o config muda.
+Pra ver todos os providers já conectados e qual está ativo, rode `/model` a qualquer momento.
 
 ---
 
@@ -289,9 +296,10 @@ o modelo secundário configurado. O recurso é uma adição, não uma dependênc
 # tools/secondary_model.py
 
 def run(prompt, session_id, system, save_response) -> str:
-    # 1. carrega ciel_config.json
+    # 1. carrega ciel_config.json (provider_id, base_url, model)
     # 2. verifica cota da sessão (secondary_quota.json)
-    # 3. obtém api_key (env ou config)
+    # 3. obtém api_key — secrets.json do provider ativo, com
+    #    SECONDARY_MODEL_API_KEY (ou o api_key legado do config) como fallback
     # 4. POST /chat/completions (padrão OpenAI)
     # 5. atualiza cota
     # 6. resposta curta → retorna str
@@ -311,24 +319,28 @@ Parâmetros da tool:
 
 ## Validação do setup
 
-Para verificar se tudo está configurado corretamente antes de usar no CIEL:
+A forma mais rápida é rodar `/model` dentro do Ciel: o painel já mostra se a chave foi encontrada, e sinaliza `(chave não encontrada — use /connect)` quando falta algo.
+
+Pra testar a chamada HTTP isolada, sem passar pelo Ciel:
 
 ```bash
 python -c "
 import json, os, requests
 from pathlib import Path
+from trust.secrets import secrets as sm
 
 cfg = json.loads(Path('ciel_config.json').read_text())
-print('Provider:', cfg.get('base_url'))
-print('Model:', cfg.get('model'))
+pid, model, base_url = cfg.get('provider_id'), cfg.get('model'), cfg.get('base_url')
+print('Provider:', pid)
+print('Model:', model)
 
-api_key = cfg.get('api_key') or os.environ.get(cfg.get('api_key_env', ''), '')
+api_key = os.environ.get('SECONDARY_MODEL_API_KEY') or sm.get_api_key(pid, model) or sm.get_api_key(pid)
 print('API key:', 'OK' if api_key else 'NAO ENCONTRADA')
 
 resp = requests.post(
-    cfg['base_url'].rstrip('/') + '/chat/completions',
+    base_url.rstrip('/') + '/chat/completions',
     headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
-    json={'model': cfg['model'], 'messages': [{'role': 'user', 'content': 'responda apenas: ok'}]},
+    json={'model': model, 'messages': [{'role': 'user', 'content': 'responda apenas: ok'}]},
     timeout=30,
 )
 print('Status:', resp.status_code)

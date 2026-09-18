@@ -70,24 +70,15 @@ ollama list
 
 ## Configuração
 
-O Ciel funciona sem nenhuma configuração extra — o `ciel_config.json` é opcional e ativa o [modelo secundário](#modelo-secundário-opcional).
+O Ciel funciona sem nenhuma configuração extra — o [modelo secundário](#modelo-secundário-opcional) é opcional e se configura de dentro do próprio Ciel, sem editar JSON na mão:
 
 ```bash
-# Copie o template de configuração
-cp ciel_config.example.json ciel_config.json
+python ciel.py
+> /connect        # escolhe um provider, informa URL/modelo/chave (chave nunca é exibida)
+> /model          # ativa o provider recém-conectado
 ```
 
-Edite `ciel_config.json` com seu provider e chave:
-
-```json
-{
-  "base_url": "https://integrate.api.nvidia.com/v1",
-  "model":    "deepseek-ai/deepseek-v4-flash-0731",
-  "api_key":  "SUA_CHAVE_AQUI"
-}
-```
-
-Funciona com qualquer API OpenAI-compatible: NVIDIA Build (gratuito), OpenRouter, OpenAI, Anthropic, entre outros.
+Funciona com qualquer API OpenAI-compatible: NVIDIA Build (gratuito), OpenRouter, OpenAI, Anthropic (via proxy), entre outros — ou um endpoint customizado. A chave fica em `~/.ciel/secrets.json`, fora do repositório; `ciel_config.json` guarda só qual provider está ativo.
 
 → **[Documentação completa: docs/secondary-model.md](docs/secondary-model.md)**
 
@@ -145,7 +136,9 @@ python server.py                           # versão server local
 | `/img <arquivo> [texto]` | envia imagem ao modelo (alias: `/imagem`) |
 | `/tokens` | mostra tokens gastos na sessão atual |
 | `/copiar` | copia última resposta do agente |
-| `/model` | exibe e configura modelos local e secundário |
+| `/model` | exibe modelo local/secundário e lista providers configurados; escolher um número ativa |
+| `/model <nome>` | troca o modelo local (Ollama) direto |
+| `/connect` | conecta ou atualiza um provider do modelo secundário |
 | `/tools-extras` | tools opcionais disponíveis e status de instalação |
 | `/mcp` | lista servidores MCP conectados e status |
 | `/mcp -v` | lista com todas as tools de cada servidor |
@@ -199,6 +192,7 @@ python ciel.py --tui --safe
 | Tecla | Ação |
 |---|---|
 | `F1`–`F4` | Tool / Task / Skill / Agente |
+| `F5` | Modelo — local e secundário (`/model`) |
 | `Tab` | Circula pelos painéis visíveis |
 | `/` | Foca o input |
 | `Ctrl+K` | Abre editor do conteúdo colado (pill) |
