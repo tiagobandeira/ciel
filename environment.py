@@ -80,33 +80,38 @@ def _model_exists(requested: str, available: list[str]) -> bool:
 def _check_secondary_config() -> list[str]:
     """
     Verifica configuração do modelo secundário.
-    Retorna lista de avisos (vazia = tudo ok ou não configurado intencionalmente).
-    Cada aviso é uma string de linha única no formato do tema do Ciel.
+    Retorna lista de avisos (vazia = configurado ou não necessário).
+
+    Ordem de verificação:
+      1. env var SECONDARY_MODEL_API_KEY → ok, sem aviso
+      2. secrets.json (via /connect) com provider ativo → ok
+      3. ciel_config.json com api_key inline (legado) → ok
+      4. Nada configurado → aviso informativo (não bloqueante)
     """
-    # env var tem prioridade — se definida, tudo certo
+    # 1. env var tem prioridade
     if os.environ.get(ENV_KEY_NAME, "").strip():
         return []
 
-    if not CONFIG_PATH.exists():
-        hint = f"cp {CONFIG_EXAMPLE} {CONFIG_PATH}" if CONFIG_EXAMPLE.exists() else f"cp ciel_config.example.json {CONFIG_PATH}"
-        return [
-            f"[warn]~[/warn]  [muted]sem modelo secundário  ·  /model[/muted]"
-        ]
-
-    # arquivo existe — verifica se a chave foi preenchida
+    # 2. secrets.json via model_manager
     try:
-        config  = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        api_key = config.get("api_key", "").strip()
-        if not api_key or api_key == PLACEHOLDER_KEY:
+        from trust.model_manager import get_secondary_status
+        status = get_secondary_status()
+        if status.configured and status.has_key:
+            return []
+        if status.configured and not status.has_key:
+            # provider ativo mas sem chave — aviso mais específico
             return [
-                f"[warn]~[/warn]  [muted]{CONFIG_PATH} sem api_key  ·  /model[/muted]"
+                f"[warn]~[/warn]  [muted]modelo secundário sem chave"
+                f"  ·  /connect para configurar[/muted]"
             ]
-    except (json.JSONDecodeError, OSError):
-        return [
-            f"[warn]~[/warn]  [muted]{CONFIG_PATH} inválido  ·  verifique se o arquivo é um JSON válido[/muted]"
-        ]
+    except Exception:
+        pass
 
-    return []
+    # 4. nada configurado — aviso genérico e informativo
+    return [
+        "[warn]~[/warn]  [muted]sem modelo secundário"
+        "  ·  /connect para configurar[/muted]"
+    ]
 
 
 # ── função principal ──────────────────────────────────────────────────────────
