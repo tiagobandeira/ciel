@@ -1,0 +1,83 @@
+{
+  "_comentario": "Provedores conhecidos pelo /connect. Edite à vontade ou use 'custom' pra qualquer outro.",
+  "providers": [
+    {
+      "id":          "nvidia",
+      "name":        "NVIDIA Build",
+      "base_url":    "https://integrate.api.nvidia.com/v1",
+      "model":       "deepseek-ai/deepseek-v4-flash-0731",
+      "needs_key":   true,
+      "key_url":     "https://build.nvidia.com/",
+      "notes":       "Gratuito com cota. Chave começa com nvapi-"
+    },
+    {
+      "id":          "openrouter",
+      "name":        "OpenRouter",
+      "base_url":    "https://openrouter.ai/api/v1",
+      "model":       "qwen/qwen3-235b-a22b:free",
+      "needs_key":   true,
+      "key_url":     "https://openrouter.ai/keys",
+      "notes":       "Acesso a centenas de modelos, incluindo gratuitos"
+    },
+    {
+      "id":          "groq",
+      "name":        "Groq",
+      "base_url":    "https://api.groq.com/openai/v1",
+      "model":       "llama-3.3-70b-versatile",
+      "needs_key":   true,
+      "key_url":     "https://console.groq.com/keys",
+      "notes":       "Rápido. Cota gratuita generosa"
+    },
+    {
+      "id":          "openai",
+      "name":        "OpenAI",
+      "base_url":    "https://api.openai.com/v1",
+      "model":       "gpt-4o",
+      "needs_key":   true,
+      "key_url":     "https://platform.openai.com/api-keys",
+      "notes":       "Compatível com API OpenAI padrão"
+    },
+    {
+      "id":          "anthropic_compat",
+      "name":        "Anthropic (via proxy OpenAI-compat)",
+      "base_url":    "https://api.anthropic.com/v1",
+      "model":       "claude-sonnet-4-6",
+      "needs_key":   true,
+      "key_url":     "https://console.anthropic.com/",
+      "notes":       "Requer proxy compatível com OpenAI"
+    },
+    {
+      "id":          "together",
+      "name":        "Together AI",
+      "base_url":    "https://api.together.xyz/v1",
+      "model":       "meta-llama/Llama-3-70b-chat-hf",
+      "needs_key":   true,
+      "key_url":     "https://api.together.ai/settings/api-keys",
+      "notes":       "Modelos open-source com API compatível"
+    },
+    {
+      "id":          "9router",
+      "name":        "9router (local)",
+      "base_url":    "http://localhost:20128/v1",
+      "model":       "kr/claude-sonnet-4.5",
+      "needs_key":   false,
+      "notes":       "Roteador local — sem chave necessária"
+    },
+    {
+      "id":          "ollama",
+      "name":        "Ollama (local)",
+      "base_url":    "http://localhost:11434/v1",
+      "model":       "llama3.2",
+      "needs_key":   false,
+      "notes":       "Modelo local via Ollama — sem chave"
+    },
+    {
+      "id":          "custom",
+      "name":        "Personalizado",
+      "base_url":    "",
+      "model":       "",
+      "needs_key":   true,
+      "notes":       "Qualquer provedor compatível com a API OpenAI"
+    }
+  ]
+}

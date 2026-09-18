@@ -692,7 +692,13 @@ def run(
 
     # ── obtém API key ─────────────────────────────────────────────────────────
     api_key_env = cfg.get("api_key_env", "SECONDARY_MODEL_API_KEY")
-    api_key     = os.environ.get(api_key_env, "") or cfg.get("api_key", "")
+    # prioridade: env var → secrets.json por provider:model → secrets por provider → ciel_config.json
+    from trust.secrets import secrets as _secrets
+    _provider = cfg.get("provider_id", "")
+    _model    = cfg.get("model", "")
+    api_key   = _secrets.resolve_api_key(_provider, model=_model, env_var=api_key_env)
+    if not api_key:
+        api_key = cfg.get("api_key", "").strip()
 
     if not api_key:
         return (
