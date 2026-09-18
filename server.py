@@ -59,20 +59,21 @@ from auth           import AuthManager
 DEFAULT_MODEL  = "gemma4:cloud"
 DEFAULT_AGENT  = "general"
 VERSION        = "2.0.0"
-UNSAFE_TOOLS   = {"run_script"}
 AUTH_COOKIE    = "ciel_auth"
 
 # ── auth (singleton, inicializado uma vez junto com o processo) ───────────────
-# Cria/lê ~/.ciel/secrets.json na primeira execução e gera senha padrão se
-# necessário. Não bloqueia o startup mesmo se o arquivo não existir.
 auth = AuthManager()
 
-# Estes são importados do cli.py para reaproveitar toda a lógica
+# ── importações do core ───────────────────────────────────────────────────────
+# run_agent vem do agent_loop (fonte única após refatoração da CLI)
+from agent_loop import run_agent, AgentResult
 from cli import (
-    run_agent, load_task, find_tasks, build_task_prompt,
+    load_task, find_tasks, build_task_prompt,
     _reload_tools, _handle_auto_tool, _save_session,
     MAX_STEPS, MAX_STEPS_TASK,
 )
+from tool_dispatch import filter_unsafe, UNSAFE_TOOLS
+from workspace import init_workspace
 
 # ── flask app ────────────────────────────────────────────────────────────────
 app = Flask(
@@ -110,8 +111,7 @@ class AppState:
         self.agent_info = load_agent(agent_id)
         all_tools       = load_tools()
         self.tools      = filter_tools(all_tools, self.agent_info["allowed_tools"])
-        if effective_safe:
-            self.tools = {k: v for k, v in self.tools.items() if k not in UNSAFE_TOOLS}
+        self.tools      = filter_unsafe(self.tools, effective_safe)
         self.schema = tools_schema(self.tools)
 
     def reload_tools_for_request(self):
@@ -393,6 +393,11 @@ def api_chat():
         auto_title = " ".join(user_input.split()[:8])
         state.store.update_title(state.session_id, auto_title)
 
+    # no server não há TTY — paths fora do workspace são recusados
+    # silenciosamente (retorna False sem abrir prompt)
+    def _server_confirm_path(raw_path: str, need_write: bool) -> bool:
+        return False   # sempre nega acesso fora do workspace no server
+
     result, t_in, t_out = run_agent(
         user_input,
         state.tools,
@@ -404,6 +409,9 @@ def api_chat():
         web_base_url=state.base_url,
         context_injection=state.context_injection,
         session_id=str(state.session_id) if state.session_id else None,
+        on_confirm_tool=None,       # create_tool bloqueado por filter_unsafe quando safe=True
+        on_confirm_path=_server_confirm_path,
+        on_ask_user=None,           # tools INTERACTIVE não têm UI no server
     )
 
     state.tokens_in  += t_in
@@ -498,6 +506,9 @@ def handle_command(cmd: str) -> tuple[str, bool]:
             web_base_url=state.base_url,
             session_id=str(state.session_id) if state.session_id else None,
             max_steps=MAX_STEPS_TASK,
+            on_confirm_tool=None,
+            on_confirm_path=_server_confirm_path,
+            on_ask_user=None,
         )
         state.tokens_in  += t_in
         state.tokens_out += t_out
@@ -1006,6 +1017,7 @@ def main():
             print(f"  └─────────────────────────────────────────────────────┘")
     print()
 
+    init_workspace()   # workspace padrão = cwd de onde o server foi chamado
     app.run(host=args.host, port=args.port, debug=args.debug)
 
 
