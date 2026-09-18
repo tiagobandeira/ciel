@@ -49,7 +49,14 @@ async function init() {
     document.getElementById('tools-count').textContent = (info.tools || []).length;
 
     renderToolsList(info.tools || []);
-    addSysMsg(`ciel · ${info.agent} · ${(info.tools||[]).length} tools`);
+
+    // Auth badge
+    await updateAuthBadge(info);
+
+    const safeHint = info.force_safe
+      ? ' · 🔒 safe permanente'
+      : (info.authenticated ? ' · 🔓 autenticado' : ' · 🔒 modo seguro');
+    addSysMsg(`ciel · ${info.agent} · ${(info.tools||[]).length} tools${safeHint}`);
 
     // Sessões
     await loadSessions();
@@ -61,7 +68,9 @@ async function init() {
 
 // ── API ───────────────────────────────────────────────────────
 async function api(url, opts = {}) {
-  const r = await fetch(url, opts);
+  // credentials: 'include' garante que o cookie ciel_auth é enviado
+  // em requests para o mesmo origin (acesso via IP na rede local incluso)
+  const r = await fetch(url, { credentials: 'include', ...opts });
   if (!r.ok) {
     const err = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
     throw new Error(err.error || `HTTP ${r.status}`);
@@ -604,7 +613,7 @@ window.addSource = async () => {
       form.append('global', isGlobal);
       form.append('session_id', currentSessionId ?? '');
 
-      const r = await fetch('/api/source/upload', { method: 'POST', body: form });
+      const r = await fetch('/api/source/upload', { method: 'POST', credentials: 'include', body: form });
       if (!r.ok) { const e = await r.json(); throw new Error(e.error || `HTTP ${r.status}`); }
 
       const name = pendingSourceFile.name;
@@ -1030,6 +1039,192 @@ function esc(s) {
 }
 function escAttr(s) {
   return String(s ?? '').replace(/\\/g,'\\\\').replace(/`/g,'\\`').replace(/\$/g,'\\$');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  Auth
+// ══════════════════════════════════════════════════════════════
+
+// estado local de auth (atualizado pelo badge e pelo modal)
+let _authState = { authenticated: false, is_default: false, force_safe: false };
+
+/** Busca /api/auth/status e atualiza o badge. Pode receber info já carregado. */
+async function updateAuthBadge(infoOrNull = null) {
+  try {
+    const s = infoOrNull
+      ? { authenticated: infoOrNull.authenticated, force_safe: infoOrNull.force_safe }
+      : await api('/api/auth/status');
+    _authState = { ..._authState, ...s };
+    _renderAuthBadge();
+  } catch(_) {}
+}
+
+function _renderAuthBadge() {
+  const badge  = document.getElementById('safe-badge');
+  const icon   = document.getElementById('safe-badge-icon');
+  const label  = document.getElementById('safe-badge-label');
+  if (!badge) return;
+
+  badge.classList.remove('authed', 'force-safe');
+
+  if (_authState.force_safe) {
+    icon.textContent  = '🔒';
+    label.textContent = 'safe';
+    badge.classList.add('force-safe');
+    badge.title = 'modo seguro permanente (--safe)';
+  } else if (_authState.authenticated) {
+    icon.textContent  = '🔓';
+    label.textContent = 'autenticado';
+    badge.classList.add('authed');
+    badge.title = 'autenticado — clique para gerenciar';
+  } else {
+    icon.textContent  = '🔒';
+    label.textContent = 'safe';
+    badge.title = 'modo seguro ativo — clique para autenticar';
+  }
+}
+
+/** Abre o modal correto dependendo do estado */
+async function openAuthModal() {
+  if (_authState.force_safe) return;  // modal não faz sentido com --safe
+
+  // busca status fresco (senha padrão, etc.)
+  let status;
+  try { status = await api('/api/auth/status'); }
+  catch(_) { return; }
+
+  _authState = { ..._authState, ...status };
+
+  // limpa erros
+  document.getElementById('auth-error').classList.add('hidden');
+  document.getElementById('auth-changepw-error').classList.add('hidden');
+  document.getElementById('auth-password-input').value = '';
+  document.getElementById('auth-newpw-input').value    = '';
+
+  if (status.authenticated) {
+    showAuthedPanel();
+  } else {
+    showLoginPanel(status);
+  }
+
+  document.getElementById('auth-modal').classList.remove('hidden');
+  setTimeout(() => {
+    const inp = document.getElementById('auth-password-input');
+    if (inp && !status.authenticated) inp.focus();
+  }, 80);
+}
+
+function showLoginPanel(status) {
+  document.getElementById('auth-panel-login').classList.remove('hidden');
+  document.getElementById('auth-panel-authed').classList.add('hidden');
+  document.getElementById('auth-panel-changepw').classList.add('hidden');
+
+  const hint   = document.getElementById('auth-default-hint');
+  const hintTx = document.getElementById('auth-default-pw-text');
+
+  if (status && status.is_default && status.default_password) {
+    hintTx.innerHTML =
+      `Primeira execução. Senha padrão: <strong style="font-family:var(--font-mono);letter-spacing:.05em">`
+      + esc(status.default_password) + `</strong>. Troque-a após entrar.`;
+    hint.classList.remove('hidden');
+  } else {
+    hint.classList.add('hidden');
+  }
+}
+
+function showAuthedPanel() {
+  document.getElementById('auth-panel-login').classList.add('hidden');
+  document.getElementById('auth-panel-authed').classList.remove('hidden');
+  document.getElementById('auth-panel-changepw').classList.add('hidden');
+}
+
+function openChangePwPanel() {
+  document.getElementById('auth-panel-login').classList.add('hidden');
+  document.getElementById('auth-panel-authed').classList.add('hidden');
+  document.getElementById('auth-panel-changepw').classList.remove('hidden');
+  setTimeout(() => document.getElementById('auth-newpw-input').focus(), 80);
+}
+
+async function doLogin() {
+  const btn = document.getElementById('auth-login-btn');
+  const pw  = document.getElementById('auth-password-input').value;
+  const err = document.getElementById('auth-error');
+
+  btn.disabled    = true;
+  btn.textContent = '…';
+  err.classList.add('hidden');
+
+  try {
+    await fetch('/api/auth/login', {
+      method:      'POST',
+      credentials: 'include',
+      headers:     { 'Content-Type': 'application/json' },
+      body:        JSON.stringify({ password: pw }),
+    }).then(async r => {
+      if (!r.ok) throw new Error('incorreta');
+      return r.json();
+    });
+
+    _authState.authenticated = true;
+    _renderAuthBadge();
+    closeModal('auth-modal');
+    // recarrega info para atualizar tools disponíveis
+    const info = await api('/api/info');
+    allTools = {};
+    (info.tools || []).forEach(t => { allTools[t.name] = t; });
+    renderToolsList(info.tools || []);
+    document.getElementById('tools-count').textContent = (info.tools || []).length;
+    addSysMsg('🔓 autenticado — todas as tools disponíveis');
+  } catch(_) {
+    err.classList.remove('hidden');
+    document.getElementById('auth-password-input').value = '';
+    document.getElementById('auth-password-input').focus();
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'entrar';
+  }
+}
+
+async function doLogout() {
+  try {
+    await fetch('/api/auth/logout', {
+      method: 'POST', credentials: 'include',
+    });
+  } catch(_) {}
+
+  _authState.authenticated = false;
+  _renderAuthBadge();
+  closeModal('auth-modal');
+  const info = await api('/api/info');
+  allTools = {};
+  (info.tools || []).forEach(t => { allTools[t.name] = t; });
+  renderToolsList(info.tools || []);
+  document.getElementById('tools-count').textContent = (info.tools || []).length;
+  addSysMsg('🔒 sessão encerrada — modo seguro ativo');
+}
+
+async function doChangePassword() {
+  const newPw = document.getElementById('auth-newpw-input').value;
+  const err   = document.getElementById('auth-changepw-error');
+  err.classList.add('hidden');
+
+  try {
+    const r = await fetch('/api/auth/change-password', {
+      method:      'POST',
+      credentials: 'include',
+      headers:     { 'Content-Type': 'application/json' },
+      body:        JSON.stringify({ new_password: newPw }),
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'erro');
+
+    _authState.is_default = false;
+    closeModal('auth-modal');
+    addSysMsg('✓ senha alterada com sucesso');
+  } catch(e) {
+    err.textContent = e.message || 'erro ao trocar senha';
+    err.classList.remove('hidden');
+  }
 }
 
 // ── Boot ───────────────────────────────────────────────────────

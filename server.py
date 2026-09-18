@@ -3,25 +3,38 @@ server.py — Ciel web server
 Compatível com cli.py atualizado. Expõe /api/* para o frontend.
 
 Rotas:
-  GET  /                    → index.html
-  GET  /static/<path>       → arquivos estáticos
-  GET  /api/info            → agente, modelo, tools, versão
-  POST /api/chat            → executa turno do agente
-  POST /api/clear           → limpa histórico
-  GET  /api/agents          → lista agentes disponíveis
-  POST /api/agent           → troca de agente
-  GET  /api/tasks           → lista tasks disponíveis
-  GET  /api/sessions        → histórico de sessões salvas
-  GET  /api/session/<id>    → turnos de uma sessão
-  POST /api/session/save    → salva sessão atual
-  POST /api/source          → indexa arquivo/URL como fonte
-  GET  /api/sources         → lista fontes da sessão atual
-  DELETE /api/source/<id>   → remove fonte
-  GET  /download            → download de arquivo gerado
+  GET  /                        → index.html
+  GET  /static/<path>           → arquivos estáticos
+  GET  /api/info                → agente, modelo, tools, versão
+  POST /api/chat                → executa turno do agente
+  POST /api/clear               → limpa histórico
+  GET  /api/agents              → lista agentes disponíveis
+  POST /api/agent               → troca de agente
+  GET  /api/tasks               → lista tasks disponíveis
+  GET  /api/sessions            → histórico de sessões salvas
+  GET  /api/session/<id>        → turnos de uma sessão
+  POST /api/session/save        → salva sessão atual
+  POST /api/source              → indexa arquivo/URL como fonte
+  GET  /api/sources             → lista fontes da sessão atual
+  DELETE /api/source/<id>       → remove fonte
+  GET  /download                → download de arquivo gerado
+
+  --- autenticação ---
+  GET  /api/auth/status         → { configured, is_default, default_password? }
+  POST /api/auth/login          → { password } → seta cookie ciel_auth
+  POST /api/auth/logout         → limpa cookie
+  POST /api/auth/change-password → { new_password } → troca senha (requer cookie)
+
+Comportamento de segurança:
+  - Sem cookie válido  → safe=True  (tools de execução arbitrária bloqueadas)
+  - Com cookie válido  → safe=False (todas as tools do agente disponíveis)
+  - Flag --safe na CLI força safe=True permanentemente, ignorando autenticação.
+  - Na primeira execução uma senha padrão é gerada em ~/.ciel/secrets.json.
 
 Uso:
   python server.py
   python server.py --agent dev_helper --model gemma4:cloud --port 5000
+  python server.py --safe   # sempre em modo seguro, ignora autenticação
 """
 
 import sys
@@ -40,12 +53,19 @@ from tools_registry import load_tools, tools_schema
 from agent_loader   import load_agent, filter_tools, list_agents
 from history_store  import HistoryStore, DB_PATH
 from history_ui     import build_context_injection
+from auth           import AuthManager
 
 # ── config ──────────────────────────────────────────────────────────────────
 DEFAULT_MODEL  = "gemma4:cloud"
 DEFAULT_AGENT  = "general"
 VERSION        = "2.0.0"
 UNSAFE_TOOLS   = {"run_script"}
+AUTH_COOKIE    = "ciel_auth"
+
+# ── auth (singleton, inicializado uma vez junto com o processo) ───────────────
+# Cria/lê ~/.ciel/secrets.json na primeira execução e gera senha padrão se
+# necessário. Não bloqueia o startup mesmo se o arquivo não existir.
+auth = AuthManager()
 
 # Estes são importados do cli.py para reaproveitar toda a lógica
 from cli import (
@@ -64,28 +84,43 @@ app = Flask(
 # ── estado de sessão (in-memory, por processo) ───────────────────────────────
 class AppState:
     def __init__(self, agent_id: str, model: str, safe: bool = False):
-        self.model      = model
-        self.safe       = safe
-        self.history    = []          # list[dict]
-        self.store      = HistoryStore(DB_PATH)
+        self.model       = model
+        # force_safe: True quando --safe foi passado na CLI.
+        # Quando False, o safe é decidido por request via _safe_for_request().
+        self.force_safe  = safe
+        self.history     = []          # list[dict]
+        self.store       = HistoryStore(DB_PATH)
         self.session_id: int | None = None
         self.context_injection = None
-        self.tokens_in  = 0
-        self.tokens_out = 0
+        self.tokens_in   = 0
+        self.tokens_out  = 0
         # ── branch ───────────────────────────────────────────────────────────
         # Quando o usuário abre uma sessão existente, ficamos em modo leitura.
         # No primeiro input do usuário, criamos a branch automaticamente.
         self.branch_pending: int | None = None   # id da sessão pai (None = não pendente)
         self._load_agent(agent_id)
 
-    def _load_agent(self, agent_id: str):
+    def _load_agent(self, agent_id: str, safe: bool | None = None):
+        """
+        Carrega (ou recarrega) o agente.
+        safe=None → usa force_safe (startup); safe=bool → override por request.
+        """
+        effective_safe  = self.force_safe if safe is None else safe
         self.agent_id   = agent_id
         self.agent_info = load_agent(agent_id)
         all_tools       = load_tools()
         self.tools      = filter_tools(all_tools, self.agent_info["allowed_tools"])
-        if self.safe:
+        if effective_safe:
             self.tools = {k: v for k, v in self.tools.items() if k not in UNSAFE_TOOLS}
         self.schema = tools_schema(self.tools)
+
+    def reload_tools_for_request(self):
+        """
+        Recarrega tools com o safe correto para a request atual.
+        Chamado no início de cada /api/chat para garantir que o conjunto
+        de tools reflete o estado de autenticação desta request.
+        """
+        self._load_agent(self.agent_id, safe=_safe_for_request())
 
     def switch_agent(self, agent_id: str):
         self.history.clear()
@@ -94,7 +129,7 @@ class AppState:
         self.branch_pending    = None
         self.tokens_in         = 0
         self.tokens_out        = 0
-        self._load_agent(agent_id)
+        self._load_agent(agent_id, safe=_safe_for_request())
 
     def new_session(self):
         self.history.clear()
@@ -165,6 +200,31 @@ class AppState:
         ]
 
 
+# ── helpers de autenticação ───────────────────────────────────────────────────
+
+def _is_authenticated() -> bool:
+    """
+    Verifica se a request atual tem um cookie de sessão válido.
+    Retorna False se --safe foi passado na linha de comando (força safe permanente).
+    """
+    if state and state.force_safe:
+        return False
+    token = request.cookies.get(AUTH_COOKIE)
+    return auth.verify_token(token)
+
+
+def _safe_for_request() -> bool:
+    """
+    Decide se esta request roda em modo safe.
+    - --safe na CLI  → sempre True
+    - autenticado    → False  (todas as tools)
+    - sem autenticação → True  (tools restritas)
+    """
+    if state and state.force_safe:
+        return True
+    return not _is_authenticated()
+
+
 # Inicializado no startup
 state: AppState = None
 
@@ -197,19 +257,91 @@ def download():
 # ── /api/info ─────────────────────────────────────────────────────────────────
 @app.route("/api/info")
 def api_info():
+    state.reload_tools_for_request()
+    authenticated = _is_authenticated()
     return jsonify({
-        "agent":      state.agent_id,
-        "agent_full": state.agent_info.get("name", state.agent_id),
-        "agent_desc": state.agent_info.get("description", ""),
-        "model":      state.model,
-        "version":    VERSION,
-        "tools":      state.tools_as_list(),
+        "agent":         state.agent_id,
+        "agent_full":    state.agent_info.get("name", state.agent_id),
+        "agent_desc":    state.agent_info.get("description", ""),
+        "model":         state.model,
+        "version":       VERSION,
+        "tools":         state.tools_as_list(),
+        "authenticated": authenticated,
+        "safe":          _safe_for_request(),
+        "force_safe":    state.force_safe,
     })
+
+
+# ── /api/auth/* ────────────────────────────────────────────────────────────────
+
+@app.route("/api/auth/status")
+def api_auth_status():
+    """
+    Retorna estado público de autenticação — consultado pelo frontend
+    no carregamento da página e após login/logout.
+    Nunca expõe hash nem token.
+    """
+    status = auth.status()
+    status["authenticated"] = _is_authenticated()
+    status["force_safe"]    = state.force_safe if state else False
+    return jsonify(status)
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_auth_login():
+    data     = request.get_json(force=True)
+    password = data.get("password", "")
+
+    token = auth.login(password)
+    if token is None:
+        return jsonify({"ok": False, "error": "senha incorreta"}), 401
+
+    resp = jsonify({"ok": True})
+    resp.set_cookie(
+        AUTH_COOKIE,
+        token,
+        httponly=True,   # não acessível via JS
+        samesite="Lax",  # proteção CSRF básica
+        max_age=12 * 3600,
+    )
+    return resp
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_auth_logout():
+    resp = jsonify({"ok": True})
+    resp.delete_cookie(AUTH_COOKIE, samesite="Lax")
+    return resp
+
+
+@app.route("/api/auth/change-password", methods=["POST"])
+def api_auth_change_password():
+    token    = request.cookies.get(AUTH_COOKIE)
+    data     = request.get_json(force=True)
+    new_pw   = data.get("new_password", "")
+
+    result = auth.change_password(token, new_pw)
+    if not result["ok"]:
+        return jsonify(result), 400 if "curta" in result.get("error", "") else 401
+
+    # emite novo token (senha mudou → chave HMAC diferente)
+    resp = jsonify({"ok": True})
+    resp.set_cookie(
+        AUTH_COOKIE,
+        result["token"],
+        httponly=True,
+        samesite="Lax",
+        max_age=12 * 3600,
+    )
+    return resp
 
 
 # ── /api/chat ─────────────────────────────────────────────────────────────────
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
+    # garante que as tools refletem o estado de auth desta request
+    state.reload_tools_for_request()
+
     data        = request.get_json(force=True)
     user_input  = data.get("message", "").strip()
     image_b64   = data.get("image_b64")
@@ -441,7 +573,7 @@ def handle_command(cmd: str) -> tuple[str, bool]:
                 f.unlink()
                 removidas.append(f.stem)
         if removidas:
-            state.tools, state.schema = _reload_tools(state.agent_info, state.safe)
+            state.tools, state.schema = _reload_tools(state.agent_info, _safe_for_request())
             changed = True
             return f"tools temp removidas: {', '.join(removidas)}", True
         return "nenhuma tool temporária encontrada.", False
@@ -855,11 +987,24 @@ def main():
         print(f"Erro: {e}")
         sys.exit(1)
 
+    auth_status = auth.status()
+
     print(f"\n  ◈ ciel v{VERSION}")
-    print(f"  agente : {state.agent_info.get('name', args.agent)}")
-    print(f"  modelo : {args.model}")
-    print(f"  tools  : {len(state.tools)}")
-    print(f"  endereço: http://{args.host}:{args.port}\n")
+    print(f"  agente  : {state.agent_info.get('name', args.agent)}")
+    print(f"  modelo  : {args.model}")
+    print(f"  tools   : {len(state.tools)}")
+    print(f"  endereço: http://{args.host}:{args.port}")
+
+    if args.safe:
+        print(f"  modo    : 🔒 safe permanente (--safe)")
+    else:
+        print(f"  modo    : autenticação habilitada (safe por padrão)")
+        if auth_status.get("is_default"):
+            print(f"\n  ┌─ primeira execução ─────────────────────────────────┐")
+            print(f"  │  senha padrão: {auth_status['default_password']:<36}│")
+            print(f"  │  Acesse a interface web e troque a senha.            │")
+            print(f"  └─────────────────────────────────────────────────────┘")
+    print()
 
     app.run(host=args.host, port=args.port, debug=args.debug)
 

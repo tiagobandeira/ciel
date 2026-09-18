@@ -97,6 +97,11 @@
       <div class="token-pill" id="token-pill" title="tokens desta sessão">
         <span id="token-in">0</span>↑ <span id="token-out">0</span>↓
       </div>
+      <!-- badge de modo: clicável para abrir modal de auth -->
+      <button class="safe-badge" id="safe-badge" onclick="openAuthModal()" title="status de autenticação">
+        <span id="safe-badge-icon">🔒</span>
+        <span id="safe-badge-label">safe</span>
+      </button>
       <button class="icon-btn" onclick="clearChat()" title="nova sessão">↺</button>
       <button class="icon-btn" onclick="toggleRightPanel()" title="painel" id="right-panel-btn">⊟</button>
     </div>
@@ -320,6 +325,75 @@
     <div id="history-sessions-list" class="sessions-list-modal">
       <div class="panel-empty">nenhuma sessão salva</div>
     </div>
+  </div>
+</div>
+
+<!-- Modal: Autenticação ──────────────────────────────────── -->
+<div id="auth-modal" class="modal-backdrop hidden" onclick="closeModal('auth-modal')">
+  <div class="modal modal-sm" onclick="event.stopPropagation()">
+
+    <!-- estado: não autenticado → formulário de login -->
+    <div id="auth-panel-login">
+      <div class="modal-header">
+        <span>🔒 modo seguro ativo</span>
+        <button class="icon-btn" onclick="closeModal('auth-modal')">✕</button>
+      </div>
+      <div class="auth-body">
+        <p class="auth-desc">
+          Você está em <strong>modo seguro</strong>. Tools que executam código ou escrevem arquivos
+          estão desabilitadas. Autentique-se para liberar o acesso completo.
+        </p>
+        <div id="auth-default-hint" class="auth-hint hidden">
+          <span class="auth-hint-icon">ℹ</span>
+          <span id="auth-default-pw-text"></span>
+        </div>
+        <div class="auth-field-row">
+          <input type="password" id="auth-password-input" class="panel-search"
+            placeholder="senha" onkeydown="if(event.key==='Enter') doLogin()">
+        </div>
+        <div id="auth-error" class="auth-error hidden">senha incorreta</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-outline btn-sm" onclick="closeModal('auth-modal')">cancelar</button>
+        <button class="btn-primary btn-sm" onclick="doLogin()" id="auth-login-btn">entrar</button>
+      </div>
+    </div>
+
+    <!-- estado: autenticado → opções -->
+    <div id="auth-panel-authed" class="hidden">
+      <div class="modal-header">
+        <span>🔓 autenticado</span>
+        <button class="icon-btn" onclick="closeModal('auth-modal')">✕</button>
+      </div>
+      <div class="auth-body">
+        <p class="auth-desc">Sessão ativa. Todas as tools estão disponíveis.</p>
+        <button class="btn-outline btn-sm w-full" onclick="openChangePwPanel()">trocar senha</button>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-danger btn-sm" onclick="doLogout()">sair</button>
+      </div>
+    </div>
+
+    <!-- estado: trocar senha -->
+    <div id="auth-panel-changepw" class="hidden">
+      <div class="modal-header">
+        <span>trocar senha</span>
+        <button class="icon-btn" onclick="showAuthedPanel()">←</button>
+      </div>
+      <div class="auth-body">
+        <div class="auth-field-row">
+          <input type="password" id="auth-newpw-input" class="panel-search"
+            placeholder="nova senha (mín. 6 caracteres)"
+            onkeydown="if(event.key==='Enter') doChangePassword()">
+        </div>
+        <div id="auth-changepw-error" class="auth-error hidden"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-outline btn-sm" onclick="showAuthedPanel()">cancelar</button>
+        <button class="btn-primary btn-sm" onclick="doChangePassword()">salvar</button>
+      </div>
+    </div>
+
   </div>
 </div>
 
