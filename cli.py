@@ -1248,106 +1248,38 @@ def main():
             continue
 
         if user_input == "/model":
-            # ── /model — exibe status e permite selecionar modelo secundário ──
-            from trust.secrets import secrets as _sm
+            from trust.model_manager import (
+                list_configured_providers,
+                get_secondary_status,
+                activate_provider,
+            )
 
-            _cfg_path = Path("ciel_config.json")
+            _entries = list_configured_providers()
+            _status  = get_secondary_status()
 
-            # ── lê config ativa (ciel_config.json) ───────────────────────────
-            _active_cfg: dict = {}
-            if _cfg_path.exists():
-                try:
-                    _active_cfg = json.loads(_cfg_path.read_text(encoding="utf-8"))
-                except Exception:
-                    pass
-
-            _active_pid   = _active_cfg.get("provider_id", "")
-            _active_model = _active_cfg.get("model", "")
-
-            # ── lê providers configurados em secrets.json ─────────────────────
-            # Cada chave é "provider_id:model" ou "provider_id" (local sem key)
-            _secret_keys = _sm.list_providers()
-
-            def _parse_secret_key(key: str) -> tuple[str, str]:
-                """Separa 'pid:model' → (pid, model); 'pid' → (pid, '')."""
-                if ":" in key:
-                    pid, mdl = key.split(":", 1)
-                    return pid, mdl
-                _fallback = _sm.load_provider(key, "") or {}
-                return key, _fallback.get("model", "")
-
-            # Monta lista: (secret_key, pid, model, base_url, has_key, is_active)
-            _entries: list[tuple] = []
-            for _sk in _secret_keys:
-                _spid, _smod = _parse_secret_key(_sk)
-                _scfg        = _sm.load_provider(_spid, _smod) or {}
-                _surl        = _scfg.get("base_url", "")
-                _has_key     = bool(_scfg.get("api_key", "").strip())
-                _is_active   = (_active_pid == _spid and _active_model == _smod)
-                _entries.append((_sk, _spid, _smod, _surl, _has_key, _is_active))
-
-            # ── monta linha de status do secundário ───────────────────────────
-            _via_env = os.environ.get("SECONDARY_MODEL_API_KEY", "").strip()
-            if _via_env:
-                _sec_line = "[ok]configurado via variável de ambiente[/ok]"
-            elif _active_pid and _active_model:
-                # config nova com provider_id — checa se chave existe em secrets
-                _sec_key_ok = (
-                    _sm.get_api_key(_active_pid, _active_model)
-                    or _sm.get_api_key(_active_pid)
-                )
-                if _sec_key_ok:
-                    _short_model = _active_model.split("/")[-1]
-                    _sec_line = (
-                        f"[ok]{_active_pid}[/ok]"
-                        f"  [tool]{_short_model}[/tool]"
-                        f"  [muted]{_active_cfg.get('base_url', '')}[/muted]"
-                    )
-                else:
-                    _sec_line = (
-                        f"[warn]{_active_pid} · {_active_model}[/warn]"
-                        f"  [muted](chave não encontrada — rode /connect)[/muted]"
-                    )
-            elif _active_cfg.get("api_key", "").strip() not in ("", "SUA_CHAVE_AQUI"):
-                # config legada com api_key inline — ainda funciona
-                _short_model = _active_cfg.get("model", "").split("/")[-1]
-                _sec_line = (
-                    f"[ok]{_short_model}[/ok]"
-                    f"  [muted]{_active_cfg.get('base_url', '')}[/muted]"
-                    f"  [muted](config legada — ciel_config.json)[/muted]"
-                )
-            else:
-                _sec_line = "[muted]não configurado[/muted]"
-
-            # ── monta corpo do painel ─────────────────────────────────────────
             _body_lines = [
                 f"  [muted]local      [/muted]  [tool]{args.model}[/tool]",
-                f"  [muted]secundário [/muted]  {_sec_line}",
+                f"  [muted]secundário [/muted]  {_status.label}",
             ]
 
             if _entries:
-                _body_lines.append("")
-                _body_lines.append("  [muted]providers configurados:[/muted]")
-                for _i, (_sk, _spid, _smod, _surl, _has_key, _is_active) in enumerate(_entries):
-                    _short      = _smod.split("/")[-1] if _smod else ""
-                    _key_badge  = "" if _has_key else "  [muted](sem chave)[/muted]"
-                    _act_badge  = "  [ok]← ativo[/ok]" if _is_active else ""
+                _body_lines += ["", "  [muted]providers configurados:[/muted]"]
+                for _i, _e in enumerate(_entries):
+                    _key_badge = "" if _e.has_key else "  [muted](sem chave)[/muted]"
+                    _act_badge = "  [ok]← ativo[/ok]" if _e.is_active else ""
                     _body_lines.append(
                         f"  [{CLR_OK}]{_i + 1:2}[/{CLR_OK}]"
-                        f"  [white]{_spid}[/white]"
-                        f"  [tool]{_short}[/tool]"
+                        f"  [white]{_e.provider_id}[/white]"
+                        f"  [tool]{_e.short_model}[/tool]"
                         f"{_key_badge}{_act_badge}"
                     )
-                _body_lines.append("")
-                _body_lines.append(
-                    "  [muted]/connect[/muted]  adicionar ou atualizar provider"
-                )
+                _body_lines += ["", "  [muted]/connect[/muted]  adicionar ou atualizar provider"]
             else:
-                _body_lines.append("")
-                _body_lines.append(
+                _body_lines += [
+                    "",
                     "  [muted]nenhum provider configurado"
-                    " — use[/muted] [tool]/connect[/tool] [muted]para adicionar[/muted]"
-                )
+                    " — use[/muted] [tool]/connect[/tool] [muted]para adicionar[/muted]",
+                ]
 
             console.print()
             console.print(Panel(
@@ -1359,7 +1291,6 @@ def main():
             ))
             console.print()
 
-            # ── seleção interativa (só se houver providers configurados) ──────
             if not _entries:
                 continue
 
@@ -1381,49 +1312,24 @@ def main():
                 console.print()
                 continue
 
-            _, _chosen_pid, _chosen_model, _chosen_url, _, _chosen_is_active = _entries[_sel_idx]
-
-            if _chosen_is_active:
+            _chosen = _entries[_sel_idx]
+            if _chosen.is_active:
                 console.print("  [muted]já é o provider ativo.[/muted]")
                 console.print()
                 continue
 
-            # ── persiste em ciel_config.json ──────────────────────────────────
-            # Preserva campos extras (timeout, max_tokens…); só troca roteamento.
-            # api_key é removida se existir — a chave vive em secrets.json.
-            _new_cfg: dict = {}
-            if _cfg_path.exists():
-                try:
-                    _new_cfg = json.loads(_cfg_path.read_text(encoding="utf-8"))
-                except Exception:
-                    pass
-
-            _new_cfg["provider_id"] = _chosen_pid
-            _new_cfg["base_url"]    = _chosen_url
-            _new_cfg["model"]       = _chosen_model
-            _new_cfg.pop("api_key", None)
-
-            try:
-                _cfg_path.write_text(
-                    json.dumps(_new_cfg, indent=2, ensure_ascii=False),
-                    encoding="utf-8",
-                )
-            except Exception as _write_err:
+            _err = activate_provider(_chosen.provider_id, _chosen.model, _chosen.base_url)
+            if _err:
+                console.print(f"  [{CLR_ERR}]erro ao salvar: {_err}[/{CLR_ERR}]")
+            else:
                 console.print(
-                    f"  [{CLR_ERR}]erro ao salvar ciel_config.json: {_write_err}[/{CLR_ERR}]"
+                    f"  [{CLR_OK}]✓[/{CLR_OK}] modelo secundário atualizado  "
+                    f"[white]{_chosen.provider_id}[/white] · [tool]{_chosen.short_model}[/tool]"
                 )
-                console.print()
-                continue
-
-            _short_chosen = _chosen_model.split("/")[-1]
-            console.print(
-                f"  [{CLR_OK}]✓[/{CLR_OK}] modelo secundário atualizado  "
-                f"[white]{_chosen_pid}[/white] · [tool]{_short_chosen}[/tool]"
-            )
-            console.print(
-                "  [muted]salvo em ciel_config.json"
-                " · chave lida de ~/.ciel/secrets.json[/muted]"
-            )
+                console.print(
+                    "  [muted]salvo em ciel_config.json"
+                    " · chave lida de ~/.ciel/secrets.json[/muted]"
+                )
             console.print()
             continue
 
