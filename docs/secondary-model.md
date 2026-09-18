@@ -48,7 +48,7 @@ Orquestrador (Gemma4 / Ollama)
 Tool secondary_model
   ↓ verifica cota da sessão
   ↓ lê ciel_config.json (provider_id, base_url, model)
-  ↓ busca a chave em ~/.ciel/secrets.json (ou SECONDARY_MODEL_API_KEY)
+  ↓ resolve a api_key (env var → secrets.json → ciel_config.json)
   ↓ faz POST para a API (padrão OpenAI-compatible)
 Modelo secundário (DeepSeek, GPT-4, Claude, etc.)
   ↓ retorna resposta
@@ -162,29 +162,38 @@ A chave nunca aparece na tela nem é salva em `ciel_config.json` — ela fica em
 
 `/model` sem argumento também serve pra conferir o status a qualquer momento — mostra o modelo local, o secundário ativo (ou `não configurado`) e todos os providers já conectados, com `← ativo` marcando o atual. `/model <nome>` continua trocando o modelo **local** (Ollama) direto, sem abrir esse painel. Na TUI, o mesmo comando (ou `F5`) abre um modal equivalente — selecionar um provider na lista já ativa na hora.
 
-> Como a chave não fica mais em `ciel_config.json`, o arquivo passou a guardar só `provider_id`, `base_url` e `model`. Ele continua no `.gitignore` por ser config específica de cada ambiente, mas não há mais segredo nele — quem precisa ficar fora do repositório é o `~/.ciel/secrets.json`, que já vive fora da pasta do projeto.
+> Como a chave não precisa mais ficar em `ciel_config.json` pra usar um provider configurado via `/connect`, o arquivo passou a guardar só `provider_id`, `base_url` e `model` nesse fluxo. Ele continua no `.gitignore` por ser config específica de cada ambiente — e ainda pode guardar a chave direto, se você preferir (ver abaixo).
 
 ---
 
 ## Parâmetros do ciel_config.json
 
-Escritos automaticamente pelo `/model` ao ativar um provider — normalmente não há necessidade de editar isso na mão:
+Os três primeiros são escritos automaticamente pelo `/model` ao ativar um provider; os demais são só pra ajuste fino:
 
 | Campo | Tipo | O que faz |
 |---|---|---|
 | `provider_id` | string | id do provider ativo (o mesmo usado no `/connect`, ex: `nvidia`, `openrouter`) |
 | `base_url` | string | Endpoint da API do provider ativo |
 | `model` | string | ID do modelo a ser usado |
+| `api_key` | string | Chave direto no arquivo — fallback manual, sem passar por `/connect` (ver abaixo) |
+| `api_key_env` | string | Nome da variável de ambiente a checar (padrão: `SECONDARY_MODEL_API_KEY`) |
 | `timeout` | int | Segundos de espera pela resposta (padrão: 120) |
 | `max_chars_per_session` | int | Limite de caracteres de input por sessão (padrão: 40000) |
 | `max_response_chars` | int | Respostas maiores que isso são salvas em arquivo (padrão: 8000) |
 | `max_tokens` | int | Máximo de tokens na resposta do modelo secundário (padrão: 16384) |
 
-A API key correspondente a `provider_id` é lida de `~/.ciel/secrets.json` (gerenciado pelo `/connect`), não fica mais neste arquivo.
+### De onde vem a API key
 
-### Chave via variável de ambiente
+`/connect` é o caminho recomendado, mas não é o único — a tool resolve a chave nesta ordem, parando na primeira que encontrar:
 
-Pra não deixar a chave em disco nenhum (ex: CI, deploy), exporte `SECONDARY_MODEL_API_KEY` — ela tem prioridade sobre o provider configurado em `secrets.json`:
+1. Variável de ambiente, com o nome definido em `api_key_env` (padrão `SECONDARY_MODEL_API_KEY`)
+2. `~/.ciel/secrets.json`, pelo par `provider_id` + `model` (o que o `/connect` salva)
+3. `~/.ciel/secrets.json`, só pelo `provider_id` (se não achar o modelo específico)
+4. `api_key` direto no `ciel_config.json`
+
+Então colocar a chave direto no `api_key` do config continua funcionando — é um fallback manual intencional, não uma opção descontinuada, bom pra testar um provider rápido sem cadastrá-lo formalmente com `/connect`. Se nenhuma das quatro opções resolver, a tool retorna erro pedindo pra configurar a variável de ambiente ou adicionar `api_key` no config.
+
+Pra não deixar a chave em disco nenhum (ex: CI, deploy), a variável de ambiente é a opção mais indicada — tem prioridade sobre tudo:
 
 ```bash
 # Linux/macOS
@@ -194,9 +203,8 @@ export SECONDARY_MODEL_API_KEY="nvapi-..."
 $env:SECONDARY_MODEL_API_KEY="nvapi-..."
 ```
 
-> Configs antigas que ainda tenham `api_key` ou `api_key_env` direto no `ciel_config.json` (formato pré-`/connect`) continuam sendo lidas como fallback — mas o caminho recomendado a partir de agora é `/connect` + `/model`.
-
 ---
+
 
 ## Trocando de provider
 
@@ -298,8 +306,8 @@ o modelo secundário configurado. O recurso é uma adição, não uma dependênc
 def run(prompt, session_id, system, save_response) -> str:
     # 1. carrega ciel_config.json (provider_id, base_url, model)
     # 2. verifica cota da sessão (secondary_quota.json)
-    # 3. obtém api_key — secrets.json do provider ativo, com
-    #    SECONDARY_MODEL_API_KEY (ou o api_key legado do config) como fallback
+    # 3. resolve api_key: env var → secrets.json (provider:model) →
+    #    secrets.json (provider) → api_key inline no config
     # 4. POST /chat/completions (padrão OpenAI)
     # 5. atualiza cota
     # 6. resposta curta → retorna str
@@ -334,7 +342,8 @@ pid, model, base_url = cfg.get('provider_id'), cfg.get('model'), cfg.get('base_u
 print('Provider:', pid)
 print('Model:', model)
 
-api_key = os.environ.get('SECONDARY_MODEL_API_KEY') or sm.get_api_key(pid, model) or sm.get_api_key(pid)
+api_key_env = cfg.get('api_key_env', 'SECONDARY_MODEL_API_KEY')
+api_key = sm.resolve_api_key(pid, model=model, env_var=api_key_env) or cfg.get('api_key', '').strip()
 print('API key:', 'OK' if api_key else 'NAO ENCONTRADA')
 
 resp = requests.post(
