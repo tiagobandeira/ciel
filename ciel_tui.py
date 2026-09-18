@@ -3467,33 +3467,17 @@ class CielTUI(App):
                     if result is None:
                         return
                     pid, chosen_model, chosen_url = result
-                    # persiste em ciel_config.json (mesma lógica da CLI)
-                    import json
-                    from pathlib import Path
-                    cfg_path = Path("ciel_config.json")
-                    new_cfg: dict = {}
-                    if cfg_path.exists():
-                        try:
-                            new_cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-                        except Exception:
-                            pass
-                    new_cfg["provider_id"] = pid
-                    new_cfg["base_url"]    = chosen_url
-                    new_cfg["model"]       = chosen_model
-                    new_cfg.pop("api_key", None)
-                    try:
-                        cfg_path.write_text(
-                            json.dumps(new_cfg, indent=2, ensure_ascii=False),
-                            encoding="utf-8",
-                        )
-                        short = chosen_model.split("/")[-1]
-                        self.query_one("#info-panel", InfoPanel).update_state(model2=short)
-                        self._log_write(msg_system(
-                            f"secundário → {pid} · {short}  "
-                            f"(salvo em ciel_config.json)", "ok"
-                        ))
-                    except Exception as e:
-                        self._log_write(msg_system(f"erro ao salvar config: {e}", "err"))
+                    from trust.model_manager import activate_provider
+                    err = activate_provider(pid, chosen_model, chosen_url)
+                    if err:
+                        self._log_write(msg_system(f"erro ao salvar config: {err}", "err"))
+                        return
+                    short = chosen_model.split("/")[-1]
+                    self.query_one("#info-panel", InfoPanel).update_state(model2=short)
+                    self._log_write(msg_system(
+                        f"secundário → {pid} · {short}  "
+                        f"(salvo em ciel_config.json)", "ok"
+                    ))
 
                 self.set_focus(None)
                 self.push_screen(ModelModal(self.current_model), _on_model_result)
