@@ -1123,7 +1123,7 @@ def main():
         "/mcp", "/mcp -v",
         "/analisar",
         "/img", "/imagem",
-        "/model", "/tools-extras",
+        "/model", "/connect", "/tools-extras",
     ]
     pt_style = PtStyle.from_dict({"prompt": "ansibrightcyan bold"})
 
@@ -1289,6 +1289,83 @@ def main():
                 padding=(0, 1),
                 expand=False,
             ))
+            console.print()
+            continue
+
+        if user_input == "/connect":
+            # ── configuração de provedor de modelo secundário ──────────────
+            import getpass as _getpass
+            from trust.secrets import secrets as _sm
+
+            _prov_path = Path(__file__).parent / "providers.json"
+            try:
+                _prov_list = json.loads(_prov_path.read_text(encoding="utf-8"))["providers"]
+            except Exception:
+                console.print(f"  [{CLR_ERR}]providers.json não encontrado.[/{CLR_ERR}]")
+                console.print()
+                continue
+
+            # lista provedores com índice
+            console.print()
+            console.print(Panel(
+                "\n".join(
+                    f"  [{CLR_OK}]{i+1:2}[/{CLR_OK}]  [white]{p['name']}[/white]"
+                    + (f"  [muted]({p['notes']})[/muted]" if p.get("notes") else "")
+                    for i, p in enumerate(_prov_list)
+                ),
+                title="[tool]conectar provedor[/tool]",
+                border_style=CLR_BORDER,
+                padding=(0, 1),
+            ))
+            console.print()
+
+            _idx_str = Prompt.ask("  Número do provedor (Enter = cancelar)").strip()
+            if not _idx_str:
+                console.print("  [muted]cancelado.[/muted]")
+                console.print()
+                continue
+            try:
+                _idx = int(_idx_str) - 1
+                assert 0 <= _idx < len(_prov_list)
+            except Exception:
+                console.print(f"  [{CLR_ERR}]opção inválida.[/{CLR_ERR}]")
+                console.print()
+                continue
+
+            _prov = _prov_list[_idx]
+            _pid  = _prov["id"]
+
+            # base_url — usa default ou pede se for custom/vazio
+            _default_url = _prov.get("base_url", "")
+            if _default_url and _pid != "custom":
+                _base_url = _default_url
+                console.print(f"  [muted]url:[/muted] {_base_url}")
+            else:
+                _base_url = Prompt.ask("  URL base da API").strip()
+
+            # model — sempre pede, mostra default como sugestão
+            _default_model = _prov.get("model", "")
+            _model_prompt = f"  Modelo" + (f" [muted](Enter = {_default_model})[/muted]" if _default_model else "")
+            console.print()
+            console.print(_model_prompt)
+            _model_name = Prompt.ask("  ❯").strip() or _default_model
+
+            # api key — mascarada, sempre pede se o provedor precisar
+            _api_key = ""
+            if _prov.get("needs_key", True):
+                if _prov.get("key_url"):
+                    console.print(f"  [muted]obtenha sua chave em: {_prov['key_url']}[/muted]")
+                console.print()
+                _api_key = _getpass.getpass("  API key (oculta): ").strip()
+
+            if not _base_url or not _model_name:
+                console.print(f"  [{CLR_ERR}]URL e modelo são obrigatórios.[/{CLR_ERR}]")
+                console.print()
+                continue
+
+            _sm.save_provider(_pid, base_url=_base_url, model=_model_name, api_key=_api_key)
+            console.print(f"  [{CLR_OK}]✓[/{CLR_OK}] [white]{_prov['name']}[/white] configurado — modelo: [tool]{_model_name}[/tool]")
+            console.print(f"  [muted]credenciais salvas em ~/.ciel/secrets.json (chave não exibida)[/muted]")
             console.print()
             continue
 
