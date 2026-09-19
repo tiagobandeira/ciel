@@ -68,7 +68,7 @@ auth = AuthManager()
 # run_agent vem do agent_loop (fonte única após refatoração da CLI)
 from agent_loop import run_agent, AgentResult
 from cli import (
-    load_task, find_tasks, build_task_prompt,
+    load_task, find_tasks, build_task_prompt, is_trusted_task_path,
     _reload_tools, _handle_auto_tool, _save_session,
     MAX_STEPS, MAX_STEPS_TASK,
 )
@@ -493,6 +493,18 @@ def handle_command(cmd: str) -> tuple[str, bool]:
             if not candidates:
                 return f"task `{arg}` não encontrada.", False
             task_path = candidates[0]
+
+        if not is_trusted_task_path(task_path):
+            if not _is_authenticated():
+                return (
+                    f"⚠ Task `{task_path.name}` está fora da pasta tasks/ do projeto "
+                    f"e requer autenticação para ser executada. "
+                    f"Faça login e tente novamente."
+                ), False
+            # autenticado: executa mas deixa log de auditoria
+            app.logger.warning(
+                "task externa executada por usuário autenticado: %s", task_path.resolve()
+            )
 
         task = load_task(task_path)
         if not task:

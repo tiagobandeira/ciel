@@ -331,6 +331,25 @@ def find_tasks(query: str, tasks_dir: Path) -> list[Path]:
     return matches
 
 
+TASKS_DIR_DEFAULT = Path("tasks")
+
+
+def is_trusted_task_path(task_path: Path, tasks_dir: Path | None = None) -> bool:
+    """
+    Retorna True se a task está dentro da pasta tasks/ padrão do projeto.
+    Tasks externas (path absoluto ou relativo fora de tasks/) são não-confiáveis
+    e exigem confirmação do usuário (CLI/TUI) ou autenticação (server).
+    No headless (--task) são simplesmente recusadas — automação só roda
+    tasks do próprio projeto.
+    """
+    base = (tasks_dir or TASKS_DIR_DEFAULT).resolve()
+    try:
+        task_path.resolve().relative_to(base)
+        return True
+    except ValueError:
+        return False
+
+
 def build_task_prompt(task: dict) -> str:
     """
     Converte a task num prompt direto pro run_agent.
@@ -914,6 +933,15 @@ def run_task_headless(task_path: Path, args) -> int:
     task = load_task(task_path)
     if not task:
         log.error("Arquivo '%s' não segue o formato de task.", task_path)
+        return 1
+
+    if not is_trusted_task_path(task_path):
+        log.error(
+            "Task '%s' está fora da pasta tasks/ do projeto. "
+            "O modo headless (--task) só executa tasks do próprio projeto "
+            "por segurança — use o modo interativo para tasks externas.",
+            task_path,
+        )
         return 1
 
     log.info("task: %s (%d ações)", task["nome"], len(task["acoes"]))
@@ -2198,6 +2226,25 @@ def main():
             if not task:
                 console.print(f"  [err]arquivo '{task_path.name}' não segue o formato de task.[/err]\n")
                 continue
+
+            if not is_trusted_task_path(task_path):
+                console.print(Panel(
+                    f"[white]{task_path.resolve()}[/white]\n\n"
+                    f"[muted]Esta task está fora da pasta tasks/ do projeto.\n"
+                    f"Tasks externas podem conter ações não verificadas.[/muted]",
+                    title=f"[warn]⚠ task externa[/warn]",
+                    border_style=CLR_WARN,
+                    padding=(0, 1),
+                ))
+                console.print()
+                raw = Prompt.ask(
+                    f"  [{CLR_WARN}]executar mesmo assim?[/{CLR_WARN}]",
+                    choices=["s", "n"], default="n",
+                ).strip().lower()
+                if raw != "s":
+                    console.print("  [muted]cancelado.[/muted]\n")
+                    continue
+                console.print()
 
             # valida tools sugeridas antes de executar
             tools_sugeridas = []
