@@ -398,7 +398,7 @@ def api_chat():
     def _server_confirm_path(raw_path: str, need_write: bool) -> bool:
         return False   # sempre nega acesso fora do workspace no server
 
-    result, t_in, t_out = run_agent(
+    result = run_agent(
         user_input,
         state.tools,
         state.schema,
@@ -414,6 +414,8 @@ def api_chat():
         on_ask_user=None,           # tools INTERACTIVE não têm UI no server
     )
 
+    t_in  = result.tokens_in
+    t_out = result.tokens_out
     state.tokens_in  += t_in
     state.tokens_out += t_out
     state.context_injection = None  # limpa após primeiro uso
@@ -421,8 +423,8 @@ def api_chat():
     tools_changed = False
 
     # auto tool
-    if isinstance(result, dict) and result.get("status") == "needs_tool":
-        proposal = result.get("proposal", {})
+    if result.status == "needs_tool":
+        proposal = result.proposal or {}
         reply    = (
             f"⚡ **Auto Tool**\n\n"
             f"O agente precisa de uma nova tool para concluir esta tarefa:\n\n"
@@ -440,7 +442,7 @@ def api_chat():
             "session_id": state.session_id,
         })
 
-    final_reply = result if isinstance(result, str) else str(result)
+    final_reply = result.message
 
     ts = datetime.now().strftime("%a %H:%M")
     state.history.append({"role": "agent", "content": final_reply, "ts": ts})
