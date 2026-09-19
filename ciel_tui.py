@@ -147,6 +147,20 @@ def build_task_prompt(task: dict) -> str:
     )
 
 
+def is_trusted_task_path(task_path, tasks_dir=None) -> bool:
+    """
+    Retorna True se a task está dentro da pasta tasks/ padrão do projeto.
+    Espelhado de cli.py — tasks externas exigem confirmação do usuário.
+    """
+    from pathlib import Path
+    base = (Path(tasks_dir) if tasks_dir else Path("tasks")).resolve()
+    try:
+        Path(task_path).resolve().relative_to(base)
+        return True
+    except ValueError:
+        return False
+
+
 MAX_STEPS_TASK = 9  # +3 vs padrão, igual à CLI
 
 
@@ -1664,6 +1678,107 @@ class ConnectModal(ModalScreen):
             self._go_back_to_list()
         else:
             self.dismiss(None)
+
+
+class ExternalTaskModal(ModalScreen):
+    """
+    Confirmação de execução de task externa (fora de tasks/).
+    Equivalente ao Prompt.ask [s/n] da CLI para tasks não confiáveis.
+    Retorna: "sim" | "nao"
+    """
+
+    BINDINGS = [
+        Binding("escape", "deny",  show=False),
+        Binding("s",      "allow", show=False),
+        Binding("n",      "deny",  show=False),
+    ]
+
+    CSS = f"""
+    ExternalTaskModal {{
+        align: center middle;
+    }}
+    #ext-task-box {{
+        width: 68;
+        height: auto;
+        background: {P['panel']};
+        border: solid {P['orange']};
+        padding: 1 2;
+    }}
+    #ext-task-title {{
+        height: 2;
+        color: {P['orange']};
+        text-style: bold;
+        content-align: left middle;
+        border-bottom: solid {P['border']};
+        margin-bottom: 1;
+    }}
+    #ext-task-path {{
+        height: auto;
+        background: {P['surface']};
+        border: solid {P['border']};
+        color: {P['text']};
+        padding: 1 2;
+        margin-bottom: 1;
+    }}
+    #ext-task-hint {{
+        height: 1;
+        color: {P['muted']};
+        content-align: left middle;
+        margin-top: 1;
+    }}
+    #ext-task-btns {{
+        height: 3;
+        layout: horizontal;
+        align: right middle;
+        margin-top: 1;
+        border-top: solid {P['border']};
+        padding-top: 1;
+    }}
+    #ext-task-btn-sim {{
+        background: {P['accent']};
+        color: {P['bg']};
+        text-style: none;
+        border: none;
+        margin: 0 1;
+        min-width: 26;
+    }}
+    #ext-task-btn-nao {{
+        background: {P['surface']};
+        color: {P['crimson']};
+        text-style: none;
+        border: none;
+        margin: 0 1;
+        min-width: 12;
+    }}
+    """
+
+    def __init__(self, task_path: str, **kw) -> None:
+        super().__init__(**kw)
+        self._task_path = task_path
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="ext-task-box"):
+            yield Static("  ⚠ task externa", id="ext-task-title")
+            yield Static(
+                f"{self._task_path}\n\n"
+                "Esta task está fora da pasta tasks/ do projeto.\n"
+                "Tasks externas podem conter ações não verificadas.",
+                id="ext-task-path",
+            )
+            yield Label(
+                r"\[s] executar mesmo assim   \[n] cancelar   · Esc cancela",
+                id="ext-task-hint",
+            )
+            with Horizontal(id="ext-task-btns"):
+                yield Button("Executar mesmo assim", id="ext-task-btn-sim", variant="primary")
+                yield Button("Cancelar",             id="ext-task-btn-nao")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        mapping = {"ext-task-btn-sim": "sim", "ext-task-btn-nao": "nao"}
+        self.dismiss(mapping.get(event.button.id, "nao"))
+
+    def action_allow(self) -> None: self.dismiss("sim")
+    def action_deny(self)  -> None: self.dismiss("nao")
 
 
 class SelectionModal(ModalScreen):
@@ -3210,11 +3325,34 @@ class CielTUI(App):
             ))
             return
 
+        # ── checagem de tools ausentes (espelhado da CLI) ─────────────────
+        tools_sugeridas = []
+        for acao in task["acoes"]:
+            m = re.search(r"\[tool:\s*(\w+)\]", acao)
+            if m:
+                tools_sugeridas.append(m.group(1))
+        tools_ausentes = [t for t in tools_sugeridas if t not in self._tools]
+        if tools_ausentes:
+            self._log_write(msg_system(
+                f"⚠ tools ausentes nesta task: {', '.join(tools_ausentes)}"
+                f"  ·  o agente tentará criar as tools necessárias.", "warn"
+            ))
+
         n_acoes = len(task["acoes"])
         self._log_write(msg_system(
             f"task: {task['nome']}  │  {n_acoes} ações  │  até {MAX_STEPS_TASK} steps",
             "info",
         ))
+
+        # ── registra turno do usuário no histórico ────────────────────────
+        # _agent_turn passa history[:-1] ao run_agent — sem este append, o
+        # último turno do agente seria descartado do contexto e o comando
+        # da task não ficaria salvo na sessão (bug silencioso).
+        ts_str = datetime.now().strftime("%a %H:%M")
+        self._history.append({"role": "user", "content": f"/task {task['nome']}", "ts": ts_str})
+        if self._session_id is not None:
+            self._store.append_turn(self._session_id, "user", f"/task {task['nome']}", ts_str)
+
         task_prompt = build_task_prompt(task)
         self._agent_turn(task_prompt, log, max_steps=MAX_STEPS_TASK)
 
@@ -3399,7 +3537,26 @@ class CielTUI(App):
             if len(parts) < 2:
                 self._open_task_modal()
             else:
-                self._run_task_by_name(parts[1], log)
+                # suporta nomes com espaço e caminhos diretos
+                name = " ".join(parts[1:])
+                from pathlib import Path as _P
+                _task_path = _P(name) if name.endswith(".md") else _P("tasks") / f"{name}.md"
+
+                if not is_trusted_task_path(_task_path):
+                    # task externa: pede confirmação via modal (equivalente
+                    # ao Prompt.ask [s/n] da CLI para tasks fora de tasks/)
+                    _resolved = str(_task_path.resolve())
+
+                    def _on_trust(choice: str | None) -> None:
+                        if choice == "sim":
+                            _log = self.query_one("#chat-log", RichLog)
+                            self._run_task_by_name(name, _log)
+                        else:
+                            self._log_write(msg_system("execução cancelada.", "warn"))
+
+                    self.push_screen(ExternalTaskModal(_resolved), _on_trust)
+                else:
+                    self._run_task_by_name(name, log)
 
         elif verb == "/skill":
             if len(parts) < 2:
