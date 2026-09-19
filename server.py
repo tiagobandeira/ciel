@@ -336,6 +336,12 @@ def api_auth_change_password():
     return resp
 
 
+# ── helpers do agente ────────────────────────────────────────────────────────
+def _server_confirm_path(raw_path: str, need_write: bool) -> bool:
+    """No server não há TTY — paths fora do workspace são sempre recusados."""
+    return False
+
+
 # ── /api/chat ─────────────────────────────────────────────────────────────────
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
@@ -393,11 +399,6 @@ def api_chat():
         auto_title = " ".join(user_input.split()[:8])
         state.store.update_title(state.session_id, auto_title)
 
-    # no server não há TTY — paths fora do workspace são recusados
-    # silenciosamente (retorna False sem abrir prompt)
-    def _server_confirm_path(raw_path: str, need_write: bool) -> bool:
-        return False   # sempre nega acesso fora do workspace no server
-
     result = run_agent(
         user_input,
         state.tools,
@@ -442,14 +443,17 @@ def api_chat():
             "session_id": state.session_id,
         })
 
-    final_reply = result.message
+    if result.status == "error":
+        final_reply = "⚠ Ollama não está respondendo. Reinicie o serviço e tente novamente."
+    else:
+        final_reply = result.message
 
     ts = datetime.now().strftime("%a %H:%M")
     state.history.append({"role": "agent", "content": final_reply, "ts": ts})
     state.store.append_turn(state.session_id, "agent", final_reply, ts)
 
     return jsonify({
-        "status":        "done",
+        "status":        result.status,   # "done" | "limit" | "error"
         "reply":         final_reply,
         "branch_notice": branch_notice,
         "tokens_in":     t_in,
@@ -498,7 +502,7 @@ def handle_command(cmd: str) -> tuple[str, bool]:
         ts = datetime.now().strftime("%a %H:%M")
         state.history.append({"role": "user", "content": f"/task {task['nome']}", "ts": ts})
 
-        result, t_in, t_out = run_agent(
+        result = run_agent(
             task_prompt,
             state.tools,
             state.schema,
@@ -512,13 +516,15 @@ def handle_command(cmd: str) -> tuple[str, bool]:
             on_confirm_path=_server_confirm_path,
             on_ask_user=None,
         )
-        state.tokens_in  += t_in
-        state.tokens_out += t_out
+        state.tokens_in  += result.tokens_in
+        state.tokens_out += result.tokens_out
 
-        if isinstance(result, dict) and result.get("status") == "needs_tool":
+        if result.status == "needs_tool":
             return "⚠ A task requer uma tool que ainda não existe.", False
+        if result.status == "error":
+            return "⚠ Ollama não está respondendo. Reinicie o serviço e tente novamente.", False
 
-        final = result if isinstance(result, str) else str(result)
+        final = result.message
         ts = datetime.now().strftime("%a %H:%M")
         state.history.append({"role": "agent", "content": final, "ts": ts})
         if state.session_id:
