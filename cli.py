@@ -47,6 +47,7 @@ from environment import check_environment
 from tool_dispatch import filter_unsafe
 from workspace import get_workspace, init_workspace
 from agent_loop import run_agent, AgentResult
+from task_runner import run_task
 
 # ── config ────────────────────────────────────────────────────────────────────
 OLLAMA_URL       = "http://localhost:11434/api/chat"
@@ -185,6 +186,23 @@ def print_step(step: int, label: str, content: str, color: str = CLR_STEP):
         f"[muted]{escape(content[:120])}[/muted]"
     )
 
+def print_subaction(action_idx: int, total: int, label: str, content: str, color: str = CLR_STEP):
+    """Renderiza uma sub-ação de fila indentada abaixo do step corrente."""
+    is_last = (action_idx == total)
+    branch  = "└─" if is_last else "├─"
+    console.print(
+        f"         {branch} [{color}]{label}[/{color}]  "
+        f"[muted]{escape(content[:100])}[/muted]"
+    )
+
+def print_subaction_result(action_idx: int, total: int, content: str, color: str = CLR_STEP):
+    """Renderiza o resultado de uma sub-ação, alinhado com o conteúdo acima."""
+    is_last = (action_idx == total)
+    pipe    = " " if is_last else "│"
+    console.print(
+        f"         {pipe}  [muted]{escape(content[:100])}[/muted]"
+    )
+
 
 def print_rule(label: str = ""):
     console.print(Rule(label, style=CLR_BORDER))
@@ -290,11 +308,12 @@ def load_task(path: Path) -> dict | None:
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
 
-    nome     = ""
-    objetivo = ""
-    acoes    = []
+    nome      = ""
+    objetivo  = ""
+    acoes     = []
     resultado = ""
-    section  = None
+    grupo     = ""
+    section   = None
 
     for line in lines:
         stripped = line.strip()
@@ -303,6 +322,9 @@ def load_task(path: Path) -> dict | None:
         elif stripped.startswith("objetivo:"):
             objetivo = stripped.split(":", 1)[1].strip()
             section  = None
+        elif stripped.startswith("grupo:"):
+            grupo   = stripped.split(":", 1)[1].strip()
+            section = None
         elif stripped == "ações:" or stripped == "acoes:":
             section = "acoes"
         elif stripped.startswith("resultado esperado:"):
@@ -314,7 +336,7 @@ def load_task(path: Path) -> dict | None:
     if not nome or not acoes:
         return None
 
-    return {"nome": nome, "objetivo": objetivo, "acoes": acoes, "resultado": resultado}
+    return {"nome": nome, "objetivo": objetivo, "acoes": acoes, "resultado": resultado, "grupo": grupo}
 
 
 def find_tasks(query: str, tasks_dir: Path) -> list[Path]:
@@ -364,6 +386,13 @@ def build_task_prompt(task: dict) -> str:
         f"Siga as ações na ordem indicada. Se uma ação especificar [tool: nome], "
         f"use essa tool. Caso contrário, escolha a tool mais adequada disponível."
     )
+
+
+def _run_agent_callbacks(session_flags: dict, interactive: bool = True) -> dict:
+    """Retorna callbacks compatíveis com run_agent (sem _on_queue_action)."""
+    cb = _make_run_callbacks(session_flags, interactive)
+    cb.pop("_on_queue_action", None)
+    return cb
 
 
 def _make_run_callbacks(session_flags: dict, interactive: bool = True) -> dict:
@@ -419,6 +448,24 @@ def _make_run_callbacks(session_flags: dict, interactive: bool = True) -> dict:
         else:  # "model"
             color = CLR_STEP
         print_step(step, label, content, color)
+
+    def on_queue_action(
+        action_idx: int,
+        total: int,
+        label: str,
+        content: str,
+        status: str,
+    ) -> None:
+        """Callback para sub-ações de fila — renderiza indentado abaixo do step."""
+        if status == "result":
+            color = CLR_OK
+            print_subaction_result(action_idx, total, content, color)
+        elif status in ("error", "parse_error"):
+            color = CLR_ERR
+            print_subaction_result(action_idx, total, content, color)
+        else:  # tool, model, done
+            color = CLR_TOOL if status == "tool" else CLR_STEP
+            print_subaction(action_idx, total, label, content, color)
 
     def on_steps_exhausted(max_steps: int, t_in: int, t_out: int) -> None:
         print_rule()
@@ -524,10 +571,18 @@ def _make_run_callbacks(session_flags: dict, interactive: bool = True) -> dict:
                 console.print(f"  [{CLR_ERR}]Opção inválida, tente de novo.[/{CLR_ERR}]")
         return Prompt.ask("  Resposta")
 
+    def on_done(msg: str, steps: int, t_in: int, t_out: int) -> None:
+        # garante que não sobrou nenhum live ativo
+        live = _live_holder.pop("live", None)
+        if live is not None:
+            live.stop()
+
     return {
         "on_step": on_step,
+        "_on_queue_action": on_queue_action,  # extraído pelo chamador, não vai pro run_agent
         "on_model_start": on_model_start,
         "on_model_end": on_model_end,
+        "on_done": on_done,  
         "on_limit": on_steps_exhausted,   # agent_loop espera on_limit, não on_steps_exhausted
         "on_confirm_tool": on_confirm_tool,
         "on_confirm_path": on_confirm_path,
@@ -760,7 +815,7 @@ def _handle_auto_tool(
         model,
         agent_info,
         history=None,  # contexto isolado — não contamina histórico da tarefa
-        **_make_run_callbacks({"trust_tool_creation": True}, interactive=interactive),
+        **_run_agent_callbacks({"trust_tool_creation": True}, interactive=interactive),
     )
 
     create_msg = create_result.message if create_result.status != "needs_tool" else "?"
@@ -807,7 +862,7 @@ def _handle_auto_tool(
         model,
         agent_info,
         history=history[:-1],
-        **_make_run_callbacks(session_flags, interactive=interactive),
+        **_run_agent_callbacks(session_flags, interactive=interactive),
     )
 
     # registra uso no temp-log se for temporária e executou com sucesso
@@ -981,13 +1036,25 @@ def run_task_headless(task_path: Path, args) -> int:
 
     # ── executa ────────────────────────────────────────────────────────────
     task_prompt = build_task_prompt(task)
+    use_queue = not getattr(args, "no_queue", False)
     try:
-        result = run_agent(
-            task_prompt, tools, schema, args.model, agent_info,
-            max_steps=MAX_STEPS_TASK,
-            mcp_manager=mcp_manager,
-            **_make_run_callbacks({"trust_tool_creation": args.auto}, interactive=False),
-        )
+        if use_queue:
+            _callbacks = _make_run_callbacks({"trust_tool_creation": args.auto}, interactive=False)
+            _on_queue = _callbacks.pop("_on_queue_action", None)
+            result = run_task(
+                task, tools, schema, args.model, agent_info,
+                max_steps=MAX_STEPS_TASK,
+                mcp_manager=mcp_manager,
+                on_queue_action=_on_queue,
+                **_callbacks,
+            )
+        else:
+            result = run_agent(
+                task_prompt, tools, schema, args.model, agent_info,
+                max_steps=MAX_STEPS_TASK,
+                mcp_manager=mcp_manager,
+                **_run_agent_callbacks({"trust_tool_creation": args.auto}, interactive=False),
+            )
     except Exception as e:
         log.error("run_agent falhou: %s", e)
         return 1
@@ -1011,6 +1078,7 @@ def main():
     parser.add_argument("--auto",         action="store_true",    help="não pede confirmação antes de create_tool/create_temp_tool rodarem (mesmo que escolher auto no prompt)")
     parser.add_argument("--list-agents", action="store_true",    help="lista agentes disponíveis e sai")
     parser.add_argument("--task",        metavar="TASK",         help="executa task headless e sai (nome ou caminho .md)")
+    parser.add_argument("--no-queue",    action="store_true",    default=False, help="desativa o task_runner (run_agent direto, comportamento antigo)")
     args = parser.parse_args()
 
     # ── contadores de sessão ───────────────────────────────────────────────
@@ -1953,7 +2021,7 @@ def main():
                 injected, tools, schema, args.model, agent_info,
                 history=history[:-1],
                 session_id=str(current_session_id) if current_session_id else None,
-                **_make_run_callbacks(session_flags),
+                **_run_agent_callbacks(session_flags),
             )
             t_in  = agent_result.tokens_in
             t_out = agent_result.tokens_out
@@ -2150,7 +2218,7 @@ def main():
                 session_id=str(current_session_id) if current_session_id else None,
                 max_steps=MAX_STEPS_TASK,
                 mcp_manager=mcp_manager,
-                **_make_run_callbacks(session_flags),
+                **_run_agent_callbacks(session_flags),
             )
             t_in  = agent_result.tokens_in
             t_out = agent_result.tokens_out
@@ -2271,14 +2339,27 @@ def main():
             ts = datetime.now().strftime("%a %H:%M")
             history.append({"role": "user", "content": f"/task {task['nome']}", "ts": ts})
 
-            agent_result = run_agent(
-                task_prompt, tools, schema, args.model, agent_info,
-                history=history[:-1],
-                session_id=str(current_session_id) if current_session_id else None,
-                max_steps=MAX_STEPS_TASK,          # <-- usa o limite expandido
-                mcp_manager=mcp_manager,
-                **_make_run_callbacks(session_flags),
-            )
+            if getattr(args, "no_queue", False):
+                agent_result = run_agent(
+                    task_prompt, tools, schema, args.model, agent_info,
+                    history=history[:-1],
+                    session_id=str(current_session_id) if current_session_id else None,
+                    max_steps=MAX_STEPS_TASK,
+                    mcp_manager=mcp_manager,
+                    **_run_agent_callbacks(session_flags),
+                )
+            else:
+                _callbacks = _make_run_callbacks(session_flags)
+                _on_queue = _callbacks.pop("_on_queue_action", None)
+                agent_result = run_task(
+                    task, tools, schema, args.model, agent_info,
+                    history=history[:-1],
+                    session_id=str(current_session_id) if current_session_id else None,
+                    max_steps=MAX_STEPS_TASK,
+                    mcp_manager=mcp_manager,
+                    on_queue_action=_on_queue,
+                    **_callbacks,
+                )
             t_in  = agent_result.tokens_in
             t_out = agent_result.tokens_out
             session_tokens_in  += t_in
@@ -2338,7 +2419,7 @@ def main():
                 context_injection=context_injection,
                 session_id=str(current_session_id) if current_session_id else None,
                 mcp_manager=mcp_manager,
-                **_make_run_callbacks(session_flags),
+                **_run_agent_callbacks(session_flags),
             )
             t_in  = agent_result.tokens_in
             t_out = agent_result.tokens_out
@@ -2418,7 +2499,7 @@ def main():
             context_injection=context_injection,
             session_id=str(current_session_id) if current_session_id else None,
             mcp_manager=mcp_manager,
-            **_make_run_callbacks(session_flags),
+            **_run_agent_callbacks(session_flags),
         )
         t_in  = agent_result.tokens_in
         t_out = agent_result.tokens_out
