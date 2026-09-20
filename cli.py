@@ -186,22 +186,28 @@ def print_step(step: int, label: str, content: str, color: str = CLR_STEP):
         f"[muted]{escape(content[:120])}[/muted]"
     )
 
-def print_subaction(action_idx: int, total: int, label: str, content: str, color: str = CLR_STEP):
+def print_subaction(label: str, content: str, color: str = CLR_STEP):
     """Renderiza uma sub-ação de fila indentada abaixo do step corrente."""
-    is_last = (action_idx == total)
-    branch  = "└─" if is_last else "├─"
     console.print(
-        f"         {branch} [{color}]{label}[/{color}]  "
+        f"    [{color}]› {label}[/{color}]  "
         f"[muted]{escape(content[:100])}[/muted]"
     )
 
-def print_subaction_result(action_idx: int, total: int, content: str, color: str = CLR_STEP):
-    """Renderiza o resultado de uma sub-ação, alinhado com o conteúdo acima."""
-    is_last = (action_idx == total)
-    pipe    = " " if is_last else "│"
-    console.print(
-        f"         {pipe}  [muted]{escape(content[:100])}[/muted]"
-    )
+def print_subaction_result(content: str, color: str = CLR_STEP):
+    """Renderiza o resultado de uma sub-ação."""
+    console.print(f"    [muted]› resultado  {escape(content[:100])}[/muted]")
+
+def print_subaction_done(total: int, failed: int = 0):
+    """Renderiza linha de fechamento da fila."""
+    if failed:
+        console.print(
+            f"    [{CLR_WARN}]› fila concluída  "
+            f"{total} ações ({total - failed} ok · {failed} com erro)[/{CLR_WARN}]"
+        )
+    else:
+        console.print(
+            f"    [{CLR_OK}]› fila concluída  {total} ações executadas[/{CLR_OK}]"
+        )
 
 
 def print_rule(label: str = ""):
@@ -449,6 +455,8 @@ def _make_run_callbacks(session_flags: dict, interactive: bool = True) -> dict:
             color = CLR_STEP
         print_step(step, label, content, color)
 
+    _queue_failed = 0  # contador de falhas na fila atual
+
     def on_queue_action(
         action_idx: int,
         total: int,
@@ -457,15 +465,21 @@ def _make_run_callbacks(session_flags: dict, interactive: bool = True) -> dict:
         status: str,
     ) -> None:
         """Callback para sub-ações de fila — renderiza indentado abaixo do step."""
+        nonlocal _queue_failed
         if status == "result":
-            color = CLR_OK
-            print_subaction_result(action_idx, total, content, color)
+            print_subaction_result(content, CLR_OK)
+            if action_idx == total:
+                print_subaction_done(total, _queue_failed)
+                _queue_failed = 0  # reset para próxima fila
         elif status in ("error", "parse_error"):
-            color = CLR_ERR
-            print_subaction_result(action_idx, total, content, color)
+            _queue_failed += 1
+            print_subaction_result(content, CLR_ERR)
+            if action_idx == total:
+                print_subaction_done(total, _queue_failed)
+                _queue_failed = 0
         else:  # tool, model, done
             color = CLR_TOOL if status == "tool" else CLR_STEP
-            print_subaction(action_idx, total, label, content, color)
+            print_subaction(label, content, color)
 
     def on_steps_exhausted(max_steps: int, t_in: int, t_out: int) -> None:
         print_rule()

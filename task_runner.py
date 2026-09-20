@@ -51,6 +51,11 @@ from agent_loop import (
     MAX_STEPS_TASK,
 )
 
+# ── limites de conteúdo ─────────────────────────────────────────────────────
+# Aumentar QUEUE_MAX_RESULT_CHARS se tools como read_url estiverem sendo cortadas.
+QUEUE_MAX_RESULT_CHARS  = 20000  # máximo por resultado no checkpoint (contexto do modelo)
+QUEUE_MAX_DISPLAY_CHARS = 50    # truncamento só para exibição no terminal
+
 # ── tipos dos callbacks (mesmos do agent_loop) ────────────────────────────────
 
 OnStep       = Callable[[int, str, str, str], None]
@@ -64,6 +69,11 @@ OnError      = Callable[[str, str], None]
 def _call(cb, *args):
     if cb is not None:
         cb(*args)
+
+
+def _truncate(text: str, limit: int = QUEUE_MAX_DISPLAY_CHARS) -> str:
+    """Trunca texto para exibição no terminal, adicionando '...' se cortado."""
+    return text[:limit] + "..." if len(text) > limit else text
 
 
 def _extract_text(raw: str) -> str:
@@ -262,7 +272,7 @@ class TaskCheckpoint:
             result = self.results.get(aid, "")
             if result and not result.startswith("[ERRO]"):
                 desc = action.get("descricao", "")
-                lines.append(f"  - {desc}: {result[:5000]}")
+                lines.append(f"  - {desc}: {result[:QUEUE_MAX_RESULT_CHARS]}")
         return "\n".join(lines)
 
     def to_dict(self) -> dict:
@@ -270,7 +280,7 @@ class TaskCheckpoint:
             "completed": self.completed,
             "failed":    self.failed,
             "skipped":   self.skipped,
-            "results":   {k: v[:5000] for k, v in self.results.items()},
+            "results":   {k: v[:10000] for k, v in self.results.items()},
         }
 
 
@@ -526,13 +536,13 @@ def run_task(
 
             if ok:
                 if on_queue_action is not None:
-                    _call(on_queue_action, action_idx, total_tool_actions, "resultado", result[:100], "result")
+                    _call(on_queue_action, action_idx, total_tool_actions, "resultado", _truncate(result), "result")
                 else:
                     _call(on_step, step, "resultado", result[:100], "done")
                 checkpoint.mark_done(aid, result)
             else:
                 if on_queue_action is not None:
-                    _call(on_queue_action, action_idx, total_tool_actions, "erro", result[:100], "error")
+                    _call(on_queue_action, action_idx, total_tool_actions, "erro", _truncate(result), "error")
                 else:
                     _call(on_step, step, "erro", result[:100], "error")
                 checkpoint.mark_failed(aid, result)
@@ -604,7 +614,6 @@ def run_task(
 
             result = sub_result.message
             checkpoint.mark_done(aid, result)
-            _call(on_step, step, "modelo concluiu", result[:100], "done")
 
         else:
             # tipo desconhecido — pula sem consumir step
@@ -683,5 +692,5 @@ def _build_final_message(task: dict, checkpoint: TaskCheckpoint) -> str:
         aid = action["id"]
         result = checkpoint.results.get(aid, "")
         if result and not result.startswith("[ERRO]"):
-            lines.append(result[:5000])
+            lines.append(result[:QUEUE_MAX_RESULT_CHARS])
     return "\n\n".join(lines) if lines else f"Task {task.get('nome', '')} concluída."
