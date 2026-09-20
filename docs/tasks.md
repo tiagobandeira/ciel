@@ -31,6 +31,8 @@ tasks/
 
 objetivo: descrição curta do que a task faz
 
+grupo: tudo                    # opcional — controla agrupamento de tools
+
 ações:
 - ação em linguagem natural
 - ação com tool sugerida  [tool: nome_da_tool]
@@ -44,6 +46,30 @@ resultado esperado: o que deve ser entregue ao final
 - `[tool: nome]` é opcional por ação — use quando quiser precisão (ex: tool customizada)
 - Sem `[tool:]`, o agente escolhe a tool mais adequada
 - `objetivo` e `resultado esperado` são opcionais mas ajudam o agente
+- `grupo` é opcional — omitir usa o comportamento padrão (uma chamada ao modelo por ação)
+
+---
+
+## Campo `grupo`
+
+Controla se o agente pode agrupar chamadas de tools em fila, sem acionar o modelo entre elas.
+
+| Valor | Comportamento |
+|---|---|
+| ausente | cada ação chama o modelo individualmente (padrão) |
+| `tudo` | qualquer tool repetida consecutivamente é agrupada em fila |
+| `calculator, web_search` | só as tools listadas são elegíveis para agrupamento |
+
+**Quando usar:**
+Use `grupo` quando a task tiver múltiplas chamadas à mesma tool. O agente executa todas
+de uma vez e só aciona o modelo quando encontra uma ação que exige raciocínio.
+
+**Quando não usar:**
+Tasks com entrevistas, fluxos interativos, ou ações que dependem do resultado da anterior
+para montar os parâmetros da próxima — omitir `grupo` nesses casos.
+
+O modelo que cria a task via `/criar task` já decide automaticamente se deve incluir
+o campo `grupo` com base nas ações definidas.
 
 ---
 
@@ -66,9 +92,14 @@ Os 3 steps extras cobrem a margem de leitura de URLs, retries e etapas extras do
 
 Se os steps se esgotarem e faltar uma tool, o auto tool é acionado normalmente.
 
+Quando `grupo` está definido, ações de fila não consomem steps — todas as chamadas
+à mesma tool dentro de um bloco contíguo rodam dentro do mesmo step.
+
 ---
 
-## Exemplo real
+## Exemplos
+
+### Task padrão (sem grupo)
 
 ```markdown
 ## task: noticias-do-dia
@@ -84,6 +115,28 @@ ações:
 
 resultado esperado: notícias do dia com conteúdo real organizadas por categoria
 ```
+
+### Task com grupo (fila de tools)
+
+```markdown
+## task: relatorio-financeiro
+
+objetivo: calcular indicadores financeiros e gerar relatório
+
+grupo: calculator
+
+ações:
+- calcular receita bruta: 1250 + 890 + 2100  [tool: calculator]
+- calcular impostos (15% da receita bruta): (1250 + 890 + 2100) * 0.15  [tool: calculator]
+- calcular lucro líquido: receita bruta menos impostos menos custos fixos (800)  [tool: calculator]
+- calcular margem de lucro percentual  [tool: calculator]
+- montar relatório com análise interpretativa dos números
+
+resultado esperado: relatório estruturado com receita, impostos, lucro, margem e análise
+```
+
+Nesse exemplo, as 4 chamadas à `calculator` rodam em fila no step 1 sem acionar o modelo.
+O modelo é chamado apenas para montar o relatório final com os resultados acumulados.
 
 ---
 
