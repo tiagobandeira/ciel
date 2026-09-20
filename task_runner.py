@@ -262,7 +262,7 @@ class TaskCheckpoint:
             result = self.results.get(aid, "")
             if result and not result.startswith("[ERRO]"):
                 desc = action.get("descricao", "")
-                lines.append(f"  - {desc}: {result[:300]}")
+                lines.append(f"  - {desc}: {result[:5000]}")
         return "\n".join(lines)
 
     def to_dict(self) -> dict:
@@ -270,7 +270,7 @@ class TaskCheckpoint:
             "completed": self.completed,
             "failed":    self.failed,
             "skipped":   self.skipped,
-            "results":   {k: v[:200] for k, v in self.results.items()},
+            "results":   {k: v[:5000] for k, v in self.results.items()},
         }
 
 
@@ -683,5 +683,5 @@ def _build_final_message(task: dict, checkpoint: TaskCheckpoint) -> str:
         aid = action["id"]
         result = checkpoint.results.get(aid, "")
         if result and not result.startswith("[ERRO]"):
-            lines.append(result[:500])
+            lines.append(result[:5000])
     return "\n\n".join(lines) if lines else f"Task {task.get('nome', '')} concluída."
