@@ -237,6 +237,7 @@ def _call_secondary(prompt: str) -> str | None:
     """
     Chama a API do modelo secundário diretamente (sem passar pelo orquestrador).
     Retorna o conteúdo bruto ou None em caso de erro.
+    Resolução de api_key: env var → secrets.json (via /connect) → ciel_config.json.
     """
     import requests as _req
 
@@ -244,9 +245,16 @@ def _call_secondary(prompt: str) -> str | None:
     base_url    = cfg.get("base_url", "").rstrip("/")
     model       = cfg.get("model", "")
     api_key_env = cfg.get("api_key_env", "SECONDARY_MODEL_API_KEY")
-    api_key     = os.environ.get(api_key_env, "") or cfg.get("api_key", "")
     timeout     = cfg.get("timeout", 180)
     max_tokens  = cfg.get("max_tokens", 16384)
+
+    # resolve api_key pela mesma ordem que secondary_model.py usa
+    try:
+        from trust.secrets import secrets as _secrets
+        provider_id = cfg.get("provider_id", "")
+        api_key = _secrets.resolve_api_key(provider_id, model=model, env_var=api_key_env)
+    except Exception:
+        api_key = os.environ.get(api_key_env, "") or cfg.get("api_key", "")
 
     if not base_url or not model:
         return None
