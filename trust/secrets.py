@@ -98,21 +98,40 @@ class SecretsManager:
         self._save(data)
 
     def load_provider(self, name: str, model: str = "") -> dict | None:
-        """Retorna a config de um provedor+modelo ou None se não existir."""
         key = f"{name}:{model}" if model else name
         data = self._load().get("providers", {})
-        # tenta chave composta primeiro, depois só o nome (retrocompat)
-        return data.get(key) or data.get(name)
+        # 1. chave exata (provider:model ou só provider)
+        if key in data:
+            return data[key]
+        # 2. só o nome sem sufixo (retrocompat)
+        if name in data:
+            return data[name]
+        # 3. qualquer entrada do provider, independente do modelo
+        for k, v in data.items():
+            if k.startswith(f"{name}:"):
+                return v
+        return None
 
     def delete_provider(self, name: str, model: str = "") -> bool:
-        """Remove um provedor+modelo. Retorna True se existia."""
         key = f"{name}:{model}" if model else name
         data = self._load()
         providers = data.get("providers", {})
+
+        # tenta chave exata primeiro
         if key in providers:
             del providers[key]
             self._save(data)
             return True
+
+        # fallback: deleta qualquer entrada do provider com sufixo :model
+        if not model:
+            keys_to_delete = [k for k in providers if k.startswith(f"{name}:")]
+            if keys_to_delete:
+                for k in keys_to_delete:
+                    del providers[k]
+                self._save(data)
+                return True
+
         return False
 
     # ── resolução de api_key (usado por secondary_model) ─────────────────────
