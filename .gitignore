@@ -48,3 +48,7 @@ telegram_channels.json
 
 # Configs
 ciel_config.json
+
+# Tests
+
+tests/.pytest_cache
