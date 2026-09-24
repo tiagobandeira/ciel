@@ -39,6 +39,15 @@ omit =
     tools/entrevista_interativa.py
     tools/fast_decision.py
     tools/gerar_cronograma_enem.py
+    tool/read_pdf.py
+    tools/hello_world.py
+    tools/get_hardware_info.py
+    tools/get_network_info.py
+    tools/latex_compile.py
+    tools/project_structure_generator.py
+    tools/list_directory_files.py
+    tools/temp/gerar_grafico_barras.py
+    tools/temp_log.py
 
     # ── utilitários de sistema sem lógica de negócio ─────────────────────────
     environment.py
