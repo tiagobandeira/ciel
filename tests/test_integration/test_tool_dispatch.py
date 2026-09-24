@@ -84,7 +84,8 @@ class TestNeedsConfirmation:
 
 class TestGetPathChecks:
     @pytest.fixture(scope="class")
-    def tools(self):
+    @classmethod
+    def tools(cls):
         import tools_registry
         return tools_registry.load_tools()
 
