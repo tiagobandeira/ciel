@@ -1,0 +1,55 @@
+# .coveragerc — configuração de cobertura de testes do Ciel
+#
+# Critério de omissão:
+#   OMITIDO = interface de usuário (TUI/CLI interativa), integrações externas
+#             com estado não-testável localmente (MCP servers, Google, Telegram),
+#             e entrypoints de processo (server.py, ciel.py).
+#
+#   INCLUÍDO = todo código de lógica: core, tools, knowledge, history, trust, mcp adapter.
+#
+# Para ver cobertura completa (incluindo arquivos omitidos):
+#   pytest tests/ --cov=. --no-cov-on-fail --cov-report=html --override-ini="addopts="
+#
+# Threshold atual: 60% (revise ao subir test_knowledge, test_history_store, test_mcp_*)
+
+[run]
+omit =
+    # ── interfaces de usuário interativas ────────────────────────────────────
+    # Requerem terminal/TTY, impossível testar sem mocking muito invasivo.
+    ciel_tui.py
+    cli.py
+    history_ui.py
+    image_input.py
+
+    # ── entrypoints de processo ───────────────────────────────────────────────
+    # Apenas inicialização — lógica real está nos módulos importados.
+    ciel.py
+    server.py
+
+    # ── integrações externas com estado (sem mock viável localmente) ──────────
+    # MCP servers do Google e Telegram dependem de credenciais e conexões reais.
+    # mcp/adapter.py e mcp/client.py têm lógica testável — ficam INCLUÍDOS.
+    mcp/google/*
+    mcp/telegram/*
+
+    # ── tools de domínio específico (baixa criticidade ao core) ─────────────
+    # docx: dependem de arquivo Word real; testáveis mas baixa prioridade agora.
+    tools/docx_*.py
+    # ferramentas de nicho que não afetam o loop principal do agente:
+    tools/entrevista_interativa.py
+    tools/fast_decision.py
+    tools/gerar_cronograma_enem.py
+
+    # ── utilitários de sistema sem lógica de negócio ─────────────────────────
+    environment.py
+    token_tracker.py
+
+    # ── arquivos de teste (não contam como código testado) ───────────────────
+    tests/*
+    conftest.py
+
+[report]
+# Mostra linhas não cobertas no terminal
+show_missing = true
+# Ignora arquivos com 0 linhas executáveis (ex: __init__.py vazios)
+skip_empty = true
