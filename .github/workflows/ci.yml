@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  tests:
+    name: Testes (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configura Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Instala dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Roda os testes
+        run: pytest tests/ --tb=short -m "not slow"
+
+      - name: Cobertura
+        run: pytest tests/ --cov=. --cov-report=term-missing --cov-fail-under=60 -m "not slow"
