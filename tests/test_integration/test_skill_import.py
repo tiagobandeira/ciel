@@ -92,18 +92,29 @@ class TestResolucaoApiKey:
         sm.save_provider("groq", base_url="https://api.groq.com/openai/v1",
                          model="llama-3.3-70b-versatile", api_key="gsk-do-secrets")
 
-        with patch("trust.secrets.secrets", sm):
-            mock_response = MagicMock()
-            mock_response.json.return_value = {
-                "choices": [{"message": {"content": "ok"}}]
-            }
-            mock_response.raise_for_status = MagicMock()
+        cfg_mock = {
+            "base_url": "https://api.groq.com/openai/v1",
+            "model": "llama-3.3-70b-versatile",
+            "provider_id": "groq",
+        }
 
-            with patch("requests.post", return_value=mock_response) as mock_post:
-                skill_import_mod._call_secondary("prompt teste")
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "choices": [{"message": {"content": "ok"}}]
+        }
+        mock_response.raise_for_status = MagicMock()
 
-            auth_header = str(mock_post.call_args)
-            assert "from-env-var-fake" in auth_header
+        # patch em _load_config necessário porque skill_import_mod tem scope=module
+        # e foi carregado antes do monkeypatch.chdir(tmp_path) da fixture config_basico,
+        # então _load_config() retornaria {} sem esse patch
+        with patch("trust.secrets.secrets", sm), \
+             patch.object(skill_import_mod, "_load_config", return_value=cfg_mock), \
+             patch("requests.post", return_value=mock_response) as mock_post:
+            skill_import_mod._call_secondary("prompt teste")
+
+        assert mock_post.called, "requests.post não foi chamado — chave não foi resolvida"
+        auth_header = str(mock_post.call_args)
+        assert "from-env-var-fake" in auth_header
 
 
 class TestConfigInvalida:
