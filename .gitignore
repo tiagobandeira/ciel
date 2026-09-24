@@ -52,5 +52,6 @@ ciel_config.json
 # Tests
 
 tests/.pytest_cache
+.pytest_cache
 .coverage
 htmlcov/
