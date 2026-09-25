@@ -1,97 +1,135 @@
 # Roadmap de Testes — Ciel
 
-Estado atual: **238 passed** de 238 testes (execução: `pytest tests/ -v`).
+Estado atual: **667 passed** · cobertura **58.1%** (2088/3592) · meta CI: **60%**
 
 ---
 
-## Cobertura atual (o que já existe)
+## Cobertura por módulo
 
-| Pasta | O que cobre |
-|---|---|
-| `test_tools/test_calculator.py` | Operações básicas, funções matemáticas, modo rad/deg, proteções (MAX_POWER, expressão longa, builtins) |
-| `test_tools/test_registry.py` | Metadados de tools (permissions, output_type, interactive), shadow warning, path checks |
-| `test_security/test_workspace.py` | Acesso dentro/fora do workspace, path traversal, grants (leitura/escrita/persistência/remoção) |
-| `test_security/test_ssrf_guard.py` | Bloqueio de loopback, redes locais, metadata endpoint AWS, schemes inválidos; permissão de domínios públicos |
-| `test_security/test_trust.py` | InputVerifier (terminal trusted, fonte desconhecida), wrap_tool_output (marcação EXTERNAL_DATA), SOURCE_REGISTRY |
-| `test_security/test_redaction.py` | Redação de API keys (OpenAI, Anthropic, NVIDIA, GitHub, Bearer), connection strings, falsos positivos |
-| `test_security/test_secrets.py` | SecretsManager: save/load/delete, múltiplos modelos por provider, chmod 600, persistência, resolve_api_key |
-| `test_security/test_task_guard.py` | is_trusted_task_path: paths internos, externos, traversal, .ciel/ interno |
-| `test_integration/test_agent_loop.py` | Loop com modelo mockado: resposta direta, tool call, max_steps, on_confirm_tool/path, EXTERNAL_DATA no contexto |
-| `test_integration/test_tool_dispatch.py` | filter_unsafe (--safe), needs_confirmation, get_path_checks |
-| `test_integration/test_skill_import.py` | _call_secondary: resolução de api_key via secrets, fallback sem chave (1 teste falhando — ver bugs acima) |
-| `test_core/test_agent_loader.py` | Parsing dos `.md` de persona, filtragem de tools e servidores MCP, níveis de skill, injeção de formato |
-| `test_core/test_task_runner.py` | Carregamento de tasks, construção de prompt, validação de grupos de tools, checkpoint, fila determinística |
+| Módulo | Stmts | Miss | Cover | |
+|---|---|---|---|---|
+| `agent_loader.py` | 113 | 2 | 98% | ✅ |
+| `agent_loop.py` | 213 | 82 | 62% | 🔶 |
+| `auth/manager.py` | 113 | 113 | 0% | ❌ sem testes |
+| `history_store.py` | 100 | 4 | 96% | ✅ |
+| `knowledge/db.py` | 102 | 44 | 57% | 🔶 |
+| `knowledge/ingest.py` | 109 | 42 | 61% | 🔶 |
+| `knowledge/ingest_url.py` | 124 | 22 | 82% | ✅ |
+| `knowledge/retriever.py` | 66 | 25 | 62% | 🔶 |
+| `mcp/adapter.py` | 73 | 60 | 18% | ❌ sem testes |
+| `mcp/client.py` | 308 | 239 | 22% | ❌ sem testes |
+| `mcp/manager.py` | 200 | 161 | 20% | ❌ sem testes |
+| `task_runner.py` | 266 | 88 | 67% | 🔶 |
+| `tool_dispatch.py` | 20 | 0 | 100% | ✅ |
+| `tools/_ssrf_guard.py` | 33 | 6 | 82% | ✅ |
+| `tools/calculator.py` | 21 | 0 | 100% | ✅ |
+| `tools/create_temp_tool.py` | 113 | 32 | 72% | 🔶 |
+| `tools/create_tool.py` | 127 | 37 | 71% | 🔶 |
+| `tools/get_local_datetime.py` | 4 | 2 | 50% | 🔶 |
+| `tools/http_request.py` | 21 | 0 | 100% | ✅ |
+| `tools/list_directory.py` | 38 | 2 | 95% | ✅ |
+| `tools/list_skills.py` | 48 | 43 | 10% | ❌ sem testes |
+| `tools/list_sources.py` | 17 | 15 | 12% | ❌ sem testes |
+| `tools/mcp_add_server.py` | 28 | 25 | 11% | ❌ sem testes |
+| `tools/mcp_list_servers.py` | 28 | 25 | 11% | ❌ sem testes |
+| `tools/mcp_remove_server.py` | 10 | 7 | 30% | ❌ sem testes |
+| `tools/read_file.py` | 18 | 2 | 89% | ✅ |
+| `tools/read_pdf.py` | 20 | 15 | 25% | ❌ sem testes |
+| `tools/read_source.py` | 17 | 14 | 18% | ❌ sem testes |
+| `tools/read_url.py` | 41 | 37 | 10% | ❌ sem testes |
+| `tools/run_script.py` | 22 | 2 | 91% | ✅ |
+| `tools/search_knowledge.py` | 7 | 5 | 29% | ❌ sem testes |
+| `tools/secondary_model.py` | 439 | 262 | 40% | 🔶 |
+| `tools/skill_import.py` | 236 | 31 | 87% | ✅ |
+| `tools/web_search_extended.py` | 53 | 1 | 98% | ✅ |
+| `tools/write_file.py` | 15 | 2 | 87% | ✅ |
+| `tools_registry.py` | 93 | 23 | 75% | 🔶 |
+| `trust/` (todos) | 157 | 2 | 99% | ✅ |
+| `workspace.py` | 97 | 18 | 81% | ✅ |
+| **TOTAL** | **3592** | **1504** | **58.1%** | meta: 60% |
 
 ---
 
 ## O que falta (priorizado)
 
-### Prioridade média — funcionalidades com estado
+### Prioritário — bate o threshold de 60% do CI
 
-#### `tests/test_core/test_history_store.py`
-Sessões persistentes — garante que salvar/retomar/branchar não perde dados.
-
-Casos a cobrir:
-- `save_session` / `load_session`: round-trip do histórico
-- Branch herda histórico e sources da sessão pai
-- Sessão deletada remove suas sources (não remove fontes `_shared`)
-- `list_sessions` retorna sessões ordenadas por data
-- `_redact` aplicado ao salvar (não salva chaves em disco)
-- Sessão com ID inexistente retorna `None` graciosamente
-
-#### `tests/test_core/test_knowledge.py`
-RAG — ingestão e busca por relevância.
+#### `tests/test_tools/test_list_skills.py` — a fazer (estimativa: +36 linhas)
+Cobre `tools/list_skills.py` (43 miss).
 
 Casos a cobrir:
-- Ingestão de `.txt`, `.md` e `.pdf` (se pymupdf disponível)
-- `search_knowledge` retorna trecho relevante dado query
-- Fonte de sessão só visível na sessão correta (não vaza para `_shared`)
-- Fonte `--global` visível em sessões diferentes do mesmo agente
-- `--remover <id>` remove a fonte e não aparece na busca
-- `--limpar-orfas` remove fontes de sessões deletadas
+- `_extract_metadata`: frontmatter YAML com `description` e `mode`
+- `_extract_metadata`: fallback via chave `description:` no corpo
+- `_extract_metadata`: fallback via primeiro parágrafo após título
+- `_extract_metadata`: texto vazio sem erros; truncagem em 120 chars
+- `run()`: pasta inexistente → mensagem de erro
+- `run()`: pasta vazia → mensagem de vazio
+- `run()`: skill com frontmatter listada com mode correto
+- `run()`: múltiplas skills ordenadas alfabeticamente
+- `run()`: skill sem descrição usa fallback `"sem descrição"`
+- `run()`: erro de leitura de arquivo retorna graciosamente
 
-#### `tests/test_core/test_task_guard_extended.py`
-Extensão do `test_task_guard.py` existente — casos de borda não cobertos.
+#### `tests/test_tools/test_list_and_read_source.py` — a fazer (estimativa: +23 linhas)
+Cobre `tools/list_sources.py` (15 miss) e `tools/read_source.py` (14 miss).
 
-Casos a cobrir:
-- `find_tasks`: busca por nome parcial, case-insensitive
-- `find_tasks`: match exato tem prioridade sobre parcial
-- `find_tasks`: diretório inexistente retorna lista vazia
-- `find_tasks`: múltiplos resultados retornados em ordem
+**list_sources:**
+- Sem fontes → mensagem de vazio
+- Fonte compartilhada (`_shared`) → label "compartilhada"
+- Fonte de sessão → label "desta sessão"
+- Resumo exibido quando presente
+- `session_id` em branco normalizado para `None`
+- Exceção de DB → mensagem de erro
+- Contagem de fontes no cabeçalho
 
-### Prioridade baixa — cobertura de tools individuais
+**read_source:**
+- ID inexistente → erro gracioso
+- Fonte sem chunks → erro gracioso
+- Conteúdo correto com chunks concatenados
+- Cabeçalho inclui filename, n_chunks, session_id
+- Conteúdo longo truncado em `MAX_CHARS` (6000)
+- Exceção de DB → mensagem de erro
 
-#### `tests/test_tools/test_read_write_file.py`
-- `read_file`: arquivo existente, inexistente, binário (não-UTF-8)
-- `write_file`: cria arquivo, sobrescreve, cria diretórios intermediários
+#### `tests/test_tools/test_search_and_datetime.py` — a fazer (estimativa: +6 linhas)
+Cobre `tools/search_knowledge.py` (5 miss) e `tools/get_local_datetime.py` (2 miss).
 
-#### `tests/test_tools/test_http_request.py`
-- Bloqueio via SSRF guard (integração com `_ssrf_guard`)
-- Resposta mockada com `requests_mock` ou `unittest.mock`
+**search_knowledge:**
+- Retorna resultado da busca
+- `session_id` vazio normalizado para `None`
+- `top_k=0` corrigido para mínimo 1
+- `top_k=999` limitado a máximo 10
+- Exceção → mensagem de erro
 
-#### `tests/test_tools/test_list_directory.py`
-- Lista arquivos em diretório, ignora ocultos se configurado
-- Diretório inexistente retorna erro gracioso
+**get_local_datetime:**
+- Retorna dict com chaves `datetime`, `date`, `time`
+- Formatos corretos: `YYYY-MM-DD HH:MM:SS`, `YYYY-MM-DD`, `HH:MM:SS`
 
-#### `tests/test_tools/test_create_tool.py`
-- `_validate`: nome inválido, sem docstring, sem `run()`, shadow de tool permanente
-- `_sanitize_code`: remoção de padrões proibidos
-- `_extract_requirements`: presença e ausência do bloco REQUIREMENTS
-- `_check_permission_coverage`: paths sem cobertura em PERMISSIONS geram aviso
-- `run()`: criação bem-sucedida, falha de validação AST
+> **Projeção:** os três arquivos juntos cobrem ~65 linhas → cobertura estimada **60.0%** ✅
 
-#### `tests/test_tools/test_create_temp_tool.py`
-- Mesmos casos de `_validate`, `_sanitize_code`, `_extract_requirements`
-- Shadow de tool permanente bloqueia — temp não substitui permanente
-- Tool temporária não persiste após encerramento da sessão
+---
 
-#### `tests/test_tools/test_run_script.py`
-- Script existente executa e retorna stdout
-- Script inexistente retorna erro gracioso
-- Arquivo não-`.py` é rejeitado
-- Timeout estourado retorna status adequado
-- Exit code != 0 propagado corretamente
-- Separação entre stdout e stderr
+### Backlog — média complexidade
+
+#### `tools/read_url.py` — 37 miss, 10%
+Mock de `requests`. Cobre fetch, timeout, erros HTTP, integração com SSRF guard.
+
+#### `tools/read_pdf.py` — 15 miss, 25%
+Mock de `PyPDF2.PdfReader`. Cobre PDF com texto, PDF vazio (escaneado), truncagem, erro de leitura.
+
+#### `tools/mcp_add_server.py` / `mcp_list_servers.py` / `mcp_remove_server.py`
+~57 miss combinados. Mock de `mcp.manager`. Ganho de ~50 linhas com poucos casos.
+
+#### `tools/secondary_model.py` — 262 miss, 40%
+Já tem base em `test_secondary_and_web.py`. Expandir com mock de chamadas LLM de 40% → 70%+ cobre ~130 linhas.
+
+---
+
+### Backlog — alta complexidade / infra
+
+#### `mcp/` (client, manager, adapter) — ~460 miss
+Requerem mock de servidor MCP e protocolo de rede. Priorizar quando MCP estiver estável em produção.
+
+#### `auth/manager.py` — 113 miss, 0%
+Requer mock de infra de autenticação (OAuth, tokens).
 
 ---
 
@@ -101,47 +139,52 @@ Casos a cobrir:
 # tudo
 pytest tests/ -v
 
-# só os rápidos (sem Ollama ou rede)
+# sem Ollama ou rede (rápido)
 pytest tests/ -v -m "not slow"
 
-# um arquivo específico
-pytest tests/test_core/test_task_runner.py -v
-
-# com cobertura (requer pytest-cov)
+# com cobertura completa
 pytest tests/ --cov=. --cov-report=term-missing
+
+# arquivo específico
+pytest tests/test_tools/test_list_skills.py -v
 ```
 
 ---
 
-## Estrutura de pastas sugerida (estado final)
+## Estrutura de pastas
 
 ```
 tests/
 ├── pytest.ini
 ├── test_core/
-│   ├── test_agent_loader.py         ← existente
-│   ├── test_task_runner.py          ← existente
-│   ├── test_history_store.py        ← a fazer
-│   ├── test_knowledge.py            ← a fazer
-│   └── test_task_guard_extended.py  ← a fazer
+│   ├── test_agent_loader.py
+│   ├── test_history_store.py
+│   ├── test_ingest_url.py
+│   ├── test_knowledge.py
+│   ├── test_secondary_and_web.py
+│   ├── test_task_guard_extended.py
+│   └── test_task_runner.py
 ├── test_integration/
-│   ├── test_agent_loop.py           ← existente
-│   ├── test_skill_import.py         ← existente
-│   └── test_tool_dispatch.py        ← existente
+│   ├── test_agent_loop.py
+│   ├── test_skill_import.py
+│   └── test_tool_dispatch.py
 ├── test_security/
-│   ├── test_redaction.py            ← existente
-│   ├── test_secrets.py              ← existente
-│   ├── test_ssrf_guard.py           ← existente
-│   ├── test_task_guard.py           ← existente
-│   ├── test_trust.py                ← existente
-│   └── test_workspace.py            ← existente
+│   ├── test_redaction.py
+│   ├── test_secrets.py
+│   ├── test_ssrf_guard.py
+│   ├── test_task_guard.py
+│   ├── test_trust.py
+│   └── test_workspace.py
 └── test_tools/
-    ├── test_calculator.py            ← existente
-    ├── test_registry.py              ← existente
-    ├── test_read_write_file.py       ← a fazer
-    ├── test_http_request.py          ← a fazer
-    ├── test_list_directory.py        ← a fazer
-    ├── test_create_tool.py           ← a fazer
-    ├── test_create_temp_tool.py      ← a fazer
-    └── test_run_script.py            ← a fazer
+    ├── test_calculator.py
+    ├── test_create_temp_tool.py
+    ├── test_create_tool.py
+    ├── test_http_request.py
+    ├── test_list_directory.py
+    ├── test_list_skills.py           ← a fazer
+    ├── test_list_and_read_source.py  ← a fazer
+    ├── test_read_write_file.py
+    ├── test_registry.py
+    ├── test_run_script.py
+    └── test_search_and_datetime.py   ← a fazer
 ```
