@@ -1,6 +1,6 @@
 # Roadmap de Testes — Ciel
 
-Estado atual: **667 passed** · cobertura **58.1%** (2088/3592) · meta CI: **60%**
+Estado atual: **703 passed** · cobertura **61%** (2174/3592) · meta CI: **60%** ✅
 
 ---
 
@@ -46,7 +46,7 @@ Estado atual: **667 passed** · cobertura **58.1%** (2088/3592) · meta CI: **60
 | `tools_registry.py` | 93 | 23 | 75% | 🔶 |
 | `trust/` (todos) | 157 | 2 | 99% | ✅ |
 | `workspace.py` | 97 | 18 | 81% | ✅ |
-| **TOTAL** | **3592** | **1504** | **58.1%** | meta: 60% |
+| **TOTAL** | **3592** | **1418** | **61%** | ✅ meta atingida |
 
 ---
 
@@ -104,6 +104,57 @@ Cobre `tools/search_knowledge.py` (5 miss) e `tools/get_local_datetime.py` (2 mi
 - Formatos corretos: `YYYY-MM-DD HH:MM:SS`, `YYYY-MM-DD`, `HH:MM:SS`
 
 > **Projeção:** os três arquivos juntos cobrem ~65 linhas → cobertura estimada **60.0%** ✅
+
+---
+
+---
+
+### Valor agregado — comportamento de borda crítico
+
+Esses testes não são exigidos pelo threshold do CI, mas protegem contra regressões
+silenciosas em caminhos que o usuário real vai encontrar. Priorizá-los antes de
+expandir cobertura de módulos menos usados.
+
+#### `task_runner` — fila com falha no meio
+
+As linhas 544-621 cobrem o caminho de erro da fila determinística: quando uma tool
+call falha, a fila continua (`mark_failed` + falha não bloqueante). Não testar isso
+significa que uma regressão nesse trecho passa direto pelo CI sem sinalizar.
+
+Casos a cobrir:
+- Tool call da ação 2 falha → ações 3 e 4 continuam normalmente
+- `checkpoint.failed` registra a ação com erro; `checkpoint.completed` não inclui ela
+- Ação `model` com `step + 1 >= max_steps` retorna `"limit"` antes de executar
+- Sub-agente retorna `status="error"` → `run_task` propaga o erro e para
+- Ação com `atype` desconhecido → `mark_skipped` e continua sem consumir step
+- Consolidador sem step disponível → entrega melhor resultado parcial
+
+#### `agent_loop` — caminhos de recusa e erro
+
+As linhas 75-89 (parse error loop), 370-410 (confirmações) e 454-464 (exceção em tool)
+são os caminhos que aparecem em uso real mas nunca no caminho feliz dos testes atuais.
+
+Casos a cobrir:
+- Modelo retorna JSON inválido → loop injeta mensagem de correção e continua
+- `on_confirm_tool=None` com tool sensível → bloqueada com feedback, loop continua
+- `on_confirm_tool` retorna `False` → recusada, feedback enviado ao modelo
+- `on_confirm_path` retorna `False` → acesso negado, feedback enviado ao modelo
+- Tool lança `TypeError` → capturado, feedback enviado ao modelo
+- Tool lança `Exception` genérica → capturado, feedback enviado ao modelo
+- `requests.RequestException` → retorna `AgentResult("error", ...)`
+
+#### `knowledge/db.py` — remoção e escopo
+
+44 linhas descobertas cobrindo os métodos de remoção e escopo global — funcionalidade
+que o usuário usa diretamente com `--remover` e `--limpar-orfas`.
+
+Casos a cobrir:
+- Fonte removida por ID não aparece em buscas posteriores
+- Fonte de sessão deletada não vaza para nova sessão do mesmo agente
+- Fonte `_shared` persiste após remoção de sessão individual
+- `purge_orphan_sources` remove fontes de sessões inexistentes, preserva as demais
+- `list_sources` com `session_id=None` retorna só fontes `_shared`
+- `list_sources` com `session_id` específico retorna fontes da sessão + `_shared`
 
 ---
 
