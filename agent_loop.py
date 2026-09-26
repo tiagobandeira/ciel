@@ -320,7 +320,11 @@ def run_agent(
             messages.append({"role": "assistant", "content": raw})
             messages.append({
                 "role": "user",
-                "content": "Resposta inválida. Retorne APENAS JSON no formato especificado.",
+                "content": (
+                    "[SISTEMA] Formato inválido detectado. "
+                    "Continue respondendo APENAS em JSON puro, sem texto adicional, "
+                    "sem markdown. O usuário não viu sua resposta anterior."
+                ),
             })
             continue
 
