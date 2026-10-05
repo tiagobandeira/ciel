@@ -18,6 +18,7 @@ Uso:
     python ciel.py bot --safe
     python ciel.py bot --model gemma4:cloud
     python ciel.py bot --agent dev_helper
+    python ciel.py bot --no-bridge     # não sobe o bridge (você roda node bridge.js)
 """
 
 import sys

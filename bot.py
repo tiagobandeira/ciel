@@ -5,6 +5,7 @@ Uso:
     python bot.py
     python bot.py --model gemma4:cloud
     python bot.py --safe
+    python bot.py --no-bridge          # não sobe o bridge (você roda node bridge.js)
     python bot.py --agent dev_helper   # sobrescreve o agente do whatsapp_channels.json
 
 Mantém o terminal aberto exibindo o banner de status e o log de execuções
@@ -171,6 +172,12 @@ def main() -> None:
         default=False,
         help="desabilita tools de execução arbitrária (run_script, create_tool)",
     )
+    parser.add_argument(
+        "--no-bridge",
+        action="store_true",
+        default=False,
+        help="não sobe o bridge; rode `node bridge.js` por conta própria",
+    )
     args = parser.parse_args()
 
     # --agent sobrescreve temporariamente a config (sem salvar)
@@ -197,6 +204,7 @@ def main() -> None:
         on_done   = _on_done,
         on_error  = _on_error,
         on_ready  = _on_ready,
+        start_bridge = not args.no_bridge,
     )
 
     console.print("\n  [muted]Modo bot encerrado.[/muted]\n")
