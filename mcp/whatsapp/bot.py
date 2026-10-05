@@ -42,6 +42,7 @@ _ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(_ROOT))
 
 from mcp.whatsapp import channels as ch
+from mcp.whatsapp import launcher
 from agent_loader import load_agent, filter_tools
 from tool_dispatch import filter_unsafe
 from tools_registry import load_tools, tools_schema
@@ -215,7 +216,7 @@ def _make_handler(
 
             # processa em thread separada pra não bloquear o servidor
             t = threading.Thread(
-                target=_handle_message_inner,
+                target=_handle_message,
                 args=(event, model, safe, on_event, on_step, on_done, on_error),
                 daemon=True,
             )
@@ -253,14 +254,17 @@ def run_bot(
     on_done:   OnDone  | None = None,
     on_error:  OnError | None = None,
     on_ready:  Callable[[], None] | None = None,
+    start_bridge: bool = True,
 ) -> None:
     """
     Inicia o loop do modo bot. Bloqueia até Ctrl+C.
 
-    model     : nome do modelo Ollama a usar
-    safe      : se True, desabilita tools de execução arbitrária
-    on_*      : callbacks de log/display (injetados pelo bot.py da raiz)
-    on_ready  : chamado após o servidor subir e o bridge estar acessível
+    model        : nome do modelo Ollama a usar
+    safe         : se True, desabilita tools de execução arbitrária
+    on_*         : callbacks de log/display (injetados pelo bot.py da raiz)
+    on_ready     : chamado após o servidor subir e o bridge estar acessível
+    start_bridge : se True, sobe o bridge.js junto (e o encerra no final);
+                   False para quem roda o bridge por conta própria (--no-bridge)
     """
     if not ch.bot_enabled():
         print(
@@ -271,14 +275,29 @@ def run_bot(
         sys.exit(1)
 
     handler_cls = _make_handler(model, safe, on_event, on_step, on_done, on_error)
-    server      = HTTPServer(("127.0.0.1", WEBHOOK_PORT), handler_cls)
-
-    if on_ready:
-        on_ready()
-
     try:
+        server = HTTPServer(("127.0.0.1", WEBHOOK_PORT), handler_cls)
+    except OSError as e:
+        print(
+            f"[whatsapp] Não consegui abrir a porta {WEBHOOK_PORT} do webhook ({e}).\n"
+            "  Já existe outro `ciel bot` rodando?",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    bridge = None
+    try:
+        if start_bridge:
+            bridge = launcher.ensure_bridge(ch.bridge_url(), WEBHOOK_PORT)
+        if on_ready:
+            on_ready()
         server.serve_forever()
+    except launcher.BridgeError as e:
+        print(f"[whatsapp] {e}", file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
+        if bridge is not None:
+            bridge.stop()
