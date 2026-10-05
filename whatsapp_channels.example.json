@@ -1,0 +1,17 @@
+{
+  "_comentario": "Modelo do whatsapp_channels.json. Normalmente você não edita à mão: rode /criar canal whatsapp no Ciel. Se preferir manual, copie este arquivo para whatsapp_channels.json e troque os números. allow_from é a lista de quem pode falar com o bot (o SEU número, não o número do Ciel). O remetente pode chegar como LID (ex: +247000000000000); se o bot logar 'fora da allowlist', copie o valor de 'remetente' para cá.",
+  "bridge_url": "http://127.0.0.1:8765",
+  "bot": {
+    "enabled": true,
+    "agent": "general",
+    "allow_from": ["+55 11 99999-9999", "+247000000000000"],
+    "groups": {
+      "policy": "allowlist",
+      "allow_from": []
+    },
+    "dm_policy": "allowlist"
+  },
+  "mcp": {
+    "enabled": false
+  }
+}

@@ -4,37 +4,9 @@ objetivo: guiar o usuário na configuração do canal WhatsApp via entrevista e 
 
 ações:
 - conduzir entrevista inicial: explicar os dois modos disponíveis (Modo Bot = Ciel responde mensagens em tempo real, como extensão do terminal; MCP = o modelo usa WhatsApp como tool pontual dentro de tasks) e perguntar qual o usuário quer ativar — pode ser um ou os dois  [tool: entrevista_interativa]
-- se modo bot foi escolhido: perguntar qual agente vai atender esse número (listar os disponíveis em agents/) e qual o número pessoal do usuário que poderá mandar mensagens (explicar que é o número de quem vai conversar com o agente, não o número do WhatsApp onde o Ciel vai rodar)  [tool: entrevista_interativa]
+- se modo bot foi escolhido: perguntar qual agente vai atender esse número (listar os disponíveis em agents/) e qual o número pessoal do usuário que poderá mandar mensagens, no formato internacional com + e código do país (explicar que é o número de quem vai conversar com o agente, não o número do WhatsApp onde o Ciel vai rodar)  [tool: entrevista_interativa]
 - perguntar se quer usar a bridge_url padrão (http://127.0.0.1:8765) ou configurar outra  [tool: entrevista_interativa]
-- gravar a configuração em whatsapp_channels.json na raiz do projeto usando o script abaixo  [tool: run_script]
-- informar no message: configuração salva, próximos passos para parear o bridge e subir o modo bot
+- gravar a configuração chamando whatsapp_configure com os valores da entrevista: agent, allow_from, bot, mcp e bridge_url (omitir bridge_url se for a padrão). Não inventar valores nem editar o JSON de outro jeito: a tool parte do whatsapp_channels.example.json e preenche só esses campos. Se a tool responder que já existe uma configuração, mostrar ao usuário o que ela informou e perguntar se quer substituir; só chamar de novo com overwrite=true se ele confirmar. Se responder com Erro, corrigir o valor com o usuário e chamar de novo  [tool: whatsapp_configure]
+- informar no message: configuração salva e que o arquivo pode ser conferido ou editado à mão (whatsapp_channels.json na raiz; o modelo está em whatsapp_channels.example.json). Depois listar os próximos passos: (1) uma única vez, rodar `cd mcp/whatsapp && npm install` (precisa de Node 20 ou superior e Git); (2) subir o modo bot com `python ciel.py bot`, que inicia o bridge sozinho (use `--no-bridge` só se for rodar o bridge por conta própria); (3) na primeira vez aparece um QR no terminal: no WhatsApp, Aparelhos conectados > Conectar um aparelho, e escanear; (4) mandar uma mensagem do número que está na allowlist; (5) se o log disser que o remetente está fora da allowlist, copiar o valor de remetente que aparece no log para allow_from em whatsapp_channels.json, porque o WhatsApp às vezes entrega um ID interno (LID) no lugar do telefone
 
 resultado esperado: whatsapp_channels.json criado/atualizado na raiz do projeto, pronto para uso com `python ciel.py bot`
-
----
-
-instrução para a ação de gravar (run_script):
-montar e executar o seguinte script Python com os valores coletados na entrevista:
-
-```python
-import sys
-sys.path.insert(0, '.')
-from mcp.whatsapp.channels import configure_interactive
-
-cfg = configure_interactive(
-    agent_name='<agente_escolhido>',
-    allow_from=['<numero_do_usuario>'],
-    bot=<True_se_modo_bot>,
-    mcp=<True_se_mcp>,
-    bridge_url_override='<bridge_url_se_diferente_do_padrao_ou_None>',
-)
-print('ok:', cfg)
-```
-
-instrução para o message final:
-incluir os próximos passos na mensagem de conclusão:
-1. instalar e subir o bridge: `git clone https://github.com/lharries/whatsapp-mcp && cd whatsapp-mcp && go run .`
-2. configurar o bridge pra enviar eventos pro webhook do Ciel: `WEBHOOK_URL=http://127.0.0.1:8766/webhook`
-3. parear escaneando o QR que aparece no terminal do bridge
-4. subir o modo bot: `python ciel.py bot`
-5. mandar uma mensagem do número configurado na allowlist
