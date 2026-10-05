@@ -61,3 +61,6 @@ htmlcov/
 whatsapp_channels.json
 mcp/whatsapp/auth/
 mcp/whatsapp/node_modules/
+
+# Bot
+iniciar_bot.bat
