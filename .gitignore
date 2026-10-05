@@ -55,3 +55,9 @@ tests/.pytest_cache
 .pytest_cache
 .coverage
 htmlcov/
+
+# Whatsapp
+
+whatsapp_channels.json
+mcp/whatsapp/auth/
+mcp/whatsapp/node_modules/

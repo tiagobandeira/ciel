@@ -1226,7 +1226,7 @@ def main():
 
     # ── prompt_toolkit: autocomplete ──────────────────────────────────────────
     CMDS = [
-        "/sair", "/limpar", "/novo", "/criar", "/criar agente", "/criar task", "/task", "/tools", "/agente",
+        "/sair", "/limpar", "/novo", "/criar", "/criar agente", "/criar task", "/criar canal whatsapp", "/task", "/tools", "/agente",
         "/source", "/source --listar","/source --remover","/source --global","/source --limpar-orfas","/skill", "/limpar-temp",
         "/promover ", "/copiar", "/tokens", "/ajuda",
         "/history", "/history salvar", "/history exportar",
@@ -2064,7 +2064,9 @@ def main():
                 "  [tool]/sair[/tool]                    encerra (pergunta se salva)\n"
                 "  [tool]/limpar[/tool]                  limpa a tela\n"
                 "  [tool]/novo[/tool]                    nova sessão (pergunta se salva)\n"
-                "  [tool]/criar [white]<agente>[/white][/tool]          cria agente novo via entrevista guiada\n"
+                "  [tool]/criar agente[/tool]             cria agente novo via entrevista guiada\n"
+                "  [tool]/criar task[/tool]               cria task nova via entrevista guiada\n"
+                "  [tool]/criar canal whatsapp[/tool]     configura o canal WhatsApp (bot e/ou MCP)\n"
                 "  [tool]/task[/tool]                    lista tasks disponíveis\n"
                 "  [tool]/task [white]<nome ou prompt>[/white][/tool]  executa task pelo nome ou busca\n"
                 "  [tool]/task [white]<arquivo.md>[/white][/tool]      executa task por caminho direto\n"
@@ -2194,7 +2196,7 @@ def main():
             partes = user_input.split(None, 1)
             arg    = partes[1].strip().lower() if len(partes) > 1 else ""
 
-            _CRIAR_OPCOES = {"agente": "criar_agente", "task": "criar_task"}
+            _CRIAR_OPCOES = {"agente": "criar_agente", "task": "criar_task", "canal whatsapp": "criar_canal_whatsapp"}
 
             if not arg or arg not in _CRIAR_OPCOES:
                 opcoes_str = "  ·  ".join(f"[tool]{k}[/tool]" for k in _CRIAR_OPCOES)

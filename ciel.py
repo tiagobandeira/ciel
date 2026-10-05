@@ -13,6 +13,11 @@ Uso:
     python ciel.py --model gemma4:cloud
     python ciel.py --safe
     python ciel.py --list-agents
+
+    python ciel.py bot          # Modo Bot WhatsApp (terminal fica aberto com logs)
+    python ciel.py bot --safe
+    python ciel.py bot --model gemma4:cloud
+    python ciel.py bot --agent dev_helper
 """
 
 import sys
@@ -26,8 +31,12 @@ import argparse
 def _parse_mode() -> tuple[str, list[str]]:
     """
     Retorna (modo, argv_restante).
-    modo: "auto" | "tui" | "cli"
+    modo: "auto" | "tui" | "cli" | "bot"
     """
+    # subcomando "bot" tem prioridade — `python ciel.py bot [flags]`
+    if len(sys.argv) > 1 and sys.argv[1] == "bot":
+        return "bot", sys.argv[2:]
+
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--tui",  action="store_true", default=False)
     parser.add_argument("--cli",  action="store_true", default=False)
@@ -90,12 +99,21 @@ def _launch_cli(extra_argv: list[str]) -> None:
     main()
 
 
+def _launch_bot(extra_argv: list[str]) -> None:
+    """Inicia o Modo Bot WhatsApp. Terminal fica aberto com logs em tempo real."""
+    sys.argv = ["bot.py"] + extra_argv
+    from bot import main
+    main()
+
+
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     mode, rest = _parse_mode()
 
-    if mode == "tui":
+    if mode == "bot":
+        _launch_bot(rest)
+    elif mode == "tui":
         _launch_tui(rest)
     elif mode == "cli":
         _launch_cli(rest)
