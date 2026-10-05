@@ -104,11 +104,11 @@ def _handle_message_inner(
     text      = event.get("text", "").strip()
     chat_type = event.get("type", "direct")
 
+    # ── 1. descarta from_me (silencioso: é esperado, não é erro) ─────────────
     if event.get("from_me"):
-        if on_error:
-            on_error("ignorado", "mensagem from_me")
         return
 
+    # ── 2. verifica allowlist (o descarte aparece no log com o remetente) ────
     if not ch.is_allowed(sender, chat_type):
         if on_error:
             on_error("ignorado", f"remetente {sender!r} ({chat_type}) fora da allowlist | chat_id={chat_id}")

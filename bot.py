@@ -6,7 +6,7 @@ Uso:
     python bot.py --model gemma4:cloud
     python bot.py --safe
     python bot.py --no-bridge          # não sobe o bridge (você roda node bridge.js)
-    python bot.py --agent dev_helper   # sobrescreve o agente do whatsapp_channels.json
+    python bot.py --agent dev_helper   # troca o agente e GRAVA no whatsapp_channels.json
 
 Mantém o terminal aberto exibindo o banner de status e o log de execuções
 em tempo real (mesmo formato de steps do CLI).
@@ -164,7 +164,7 @@ def main() -> None:
         "--agent",
         default=None,
         metavar="AGENTE",
-        help="sobrescreve o agente configurado em whatsapp_channels.json",
+        help="usa este agente e grava a troca em whatsapp_channels.json (persiste e ativa o modo bot)",
     )
     parser.add_argument(
         "--safe",
@@ -180,7 +180,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # --agent sobrescreve temporariamente a config (sem salvar)
+    # --agent PERSISTE: grava o agente em whatsapp_channels.json e força bot.enabled = true
     if args.agent:
         cfg = ch.load()
         cfg["bot"]["enabled"] = True
