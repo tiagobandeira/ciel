@@ -43,6 +43,7 @@ sys.path.insert(0, str(_ROOT))
 
 from mcp.whatsapp import channels as ch
 from mcp.whatsapp import launcher
+from mcp.whatsapp import router
 from agent_loader import load_agent, filter_tools
 from tool_dispatch import filter_unsafe
 from tools_registry import load_tools, tools_schema
@@ -121,7 +122,10 @@ def _handle_message_inner(
     if on_event:
         on_event(chat_id, sender, text)
 
-    # ── 4. carrega agente e tools ─────────────────────────────────────────────
+    # ── 4. registra atividade (usado pelo GC de sessão) ───────────────────────
+    router.record_activity(chat_id)
+
+    # ── 5. carrega agente e tools ─────────────────────────────────────────────
     agent_name = ch.bot_agent()
     try:
         agent_info = load_agent(agent_name)
@@ -148,11 +152,31 @@ def _handle_message_inner(
 
     schema = tools_schema(tools)
 
-    # ── 5. recupera histórico do chat ─────────────────────────────────────────
+    # ── 6. roteador de comandos '/' ───────────────────────────────────────────
+    router_context = {
+        "histories":      _histories,
+        "histories_lock": _histories_lock,
+        "run_agent_fn":   run_agent,
+        "send_reply_fn":  _send_reply,
+        "on_step":        on_step,
+        "on_done":        on_done,
+        "on_error":       on_error,
+        "model":          model,
+        "safe":           safe,
+        "agent_info":     agent_info,
+        "tools":          tools,
+        "schema":         schema,
+    }
+    cmd_reply = router.handle(text, chat_id, router_context)
+    if cmd_reply is not None:
+        _send_reply(chat_id, cmd_reply)
+        return
+
+    # ── 7. recupera histórico do chat ─────────────────────────────────────────
     with _histories_lock:
         history = list(_histories.get(chat_id, []))
 
-    # ── 6. roda o loop agêntico ───────────────────────────────────────────────
+    # ── 8. roda o loop agêntico ───────────────────────────────────────────────
     result: AgentResult = run_agent(
         user_input  = text,
         tools       = tools,
@@ -166,7 +190,7 @@ def _handle_message_inner(
         on_error    = on_error,
     )
 
-    # ── 7. atualiza histórico ─────────────────────────────────────────────────
+    # ── 9. atualiza histórico ─────────────────────────────────────────────────
     with _histories_lock:
         h = _histories.setdefault(chat_id, [])
         h.append({"role": "user",      "content": text})
@@ -175,7 +199,7 @@ def _handle_message_inner(
         if len(h) > 40:
             _histories[chat_id] = h[-40:]
 
-    # ── 8. envia resposta ─────────────────────────────────────────────────────
+    # ── 10. envia resposta ────────────────────────────────────────────────────
     reply = result.message or "(sem resposta)"
     _send_reply(chat_id, reply)
 
@@ -284,6 +308,9 @@ def run_bot(
             file=sys.stderr,
         )
         sys.exit(1)
+
+    # inicia GC de sessões ociosas (timeout: SESSION_TIMEOUT_MINUTES)
+    router.start_session_gc(_histories, _histories_lock)
 
     bridge = None
     try:
