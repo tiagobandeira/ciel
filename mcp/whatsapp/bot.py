@@ -109,8 +109,8 @@ def _handle_message_inner(
     if event.get("from_me"):
         return
 
-    # ── 2. verifica allowlist (o descarte aparece no log com o remetente) ────
-    if not ch.is_allowed(sender, chat_type):
+    # ── 2. verifica allowlist (agora com chat_id) ───────────────────────────
+    if not ch.is_allowed(sender, chat_type, chat_id):
         if on_error:
             on_error("ignorado", f"remetente {sender!r} ({chat_type}) fora da allowlist | chat_id={chat_id}")
         return
@@ -119,14 +119,30 @@ def _handle_message_inner(
     if not text:
         return
 
+    # ── 4. filtro de menção para grupos (se configurado) ─────────────────────
+    if chat_type == "group" and ch.require_mention(chat_id):
+        mentions = event.get("mentions", [])
+        # Ajuste conforme o formato real do bridge. Exemplo:
+        # se o bridge envia uma lista de JIDs, verifique se o JID do Ciel está nela.
+        # Se não houver menção, ignora silenciosamente.
+        if not mentions and "@ciel" not in text.lower():
+            if on_error:
+                on_error("ignorado", f"grupo {chat_id} exige menção; mensagem ignorada")
+            return
+
+    # ── 5. prefixa nome do membro para grupos ────────────────────────────────
+    if chat_type == "group":
+        nome = ch.member_name(chat_id, sender)
+        text = f"[{nome}] {text}"
+
     if on_event:
         on_event(chat_id, sender, text)
 
-    # ── 4. registra atividade (usado pelo GC de sessão) ───────────────────────
+    # ── 6. registra atividade (usado pelo GC de sessão) ───────────────────────
     router.record_activity(chat_id)
 
-    # ── 5. carrega agente e tools ─────────────────────────────────────────────
-    agent_name = ch.bot_agent()
+    # ── 7. carrega agente e tools (agora por chat) ───────────────────────────
+    agent_name = ch.agent_for(chat_id)
     try:
         agent_info = load_agent(agent_name)
     except FileNotFoundError as e:
@@ -152,7 +168,7 @@ def _handle_message_inner(
 
     schema = tools_schema(tools)
 
-    # ── 6. roteador de comandos '/' ───────────────────────────────────────────
+    # ── 8. roteador de comandos '/' ───────────────────────────────────────────
     router_context = {
         "histories":      _histories,
         "histories_lock": _histories_lock,
@@ -172,11 +188,11 @@ def _handle_message_inner(
         _send_reply(chat_id, cmd_reply)
         return
 
-    # ── 7. recupera histórico do chat ─────────────────────────────────────────
+    # ── 9. recupera histórico do chat ─────────────────────────────────────────
     with _histories_lock:
         history = list(_histories.get(chat_id, []))
 
-    # ── 8. roda o loop agêntico ───────────────────────────────────────────────
+    # ── 10. roda o loop agêntico ──────────────────────────────────────────────
     result: AgentResult = run_agent(
         user_input  = text,
         tools       = tools,
@@ -190,19 +206,17 @@ def _handle_message_inner(
         on_error    = on_error,
     )
 
-    # ── 9. atualiza histórico ─────────────────────────────────────────────────
+    # ── 11. atualiza histórico ────────────────────────────────────────────────
     with _histories_lock:
         h = _histories.setdefault(chat_id, [])
         h.append({"role": "user",      "content": text})
         h.append({"role": "assistant", "content": result.message})
-        # mantém janela deslizante de 20 turnos (40 mensagens)
         if len(h) > 40:
             _histories[chat_id] = h[-40:]
 
-    # ── 10. envia resposta ────────────────────────────────────────────────────
+    # ── 12. envia resposta ────────────────────────────────────────────────────
     reply = result.message or "(sem resposta)"
     _send_reply(chat_id, reply)
-
 
 # ── servidor de webhook ───────────────────────────────────────────────────────
 

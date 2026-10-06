@@ -12,8 +12,13 @@ Persiste em whatsapp_channels.json na raiz do projeto:
     "agent": "general",
     "allow_from": ["+55 11 99999-9999"],
     "groups": {
-      "policy": "allowlist",
-      "allow_from": []
+      "chats": {
+        "1203...@g.us": {
+          "agent": "acompanhamento",
+          "require_mention": true,
+          "members": {"+55 11 99999-9999": "Nome", "+247...": "Outra pessoa"}
+        }
+      }
     },
     "dm_policy": "allowlist"
   },
@@ -25,7 +30,10 @@ Persiste em whatsapp_channels.json na raiz do projeto:
 Funções públicas:
   load()          → dict com a config completa (ou defaults se não existir)
   save(config)    → persiste a config no arquivo
-  is_allowed(sender, chat_type)  → bool — decide se o roteador deve processar
+  is_allowed(sender, chat_type, chat_id="")  → bool — decide se o roteador deve processar
+  agent_for(chat_id)        → str  — agente do chat (grupo com "agent" próprio, senão o do bot)
+  require_mention(chat_id)  → bool — grupo só responde quando chamarem o Ciel
+  member_name(chat_id, sender) → str — nome do membro do grupo (ou o próprio sender)
   bridge_url()    → str — URL do bridge (usada pelo bot e pelo MCP)
   bot_agent()     → str — nome do agente configurado pro modo bot
   bot_enabled()   → bool
@@ -47,8 +55,10 @@ _DEFAULTS: dict = {
         "agent": "general",
         "allow_from": [],          # fail-closed: sem allowlist = ninguém entra
         "groups": {
-            "policy": "allowlist", # "allowlist" | "mention_only"
-            "allow_from": [],
+            # grupo só entra se o JID estiver em "chats" (fail-closed):
+            # {"<jid>@g.us": {"agent": "...", "require_mention": true,
+            #                 "members": {"+55...": "Nome"}}}
+            "chats": {},
         },
         "dm_policy": "allowlist",  # "allowlist" | "pairing"
     },
@@ -103,14 +113,43 @@ def bot_allow_from() -> list[str]:
     return load().get("bot", {}).get("allow_from", [])
 
 
-def group_policy() -> str:
-    """Política de grupos: 'allowlist' ou 'mention_only'."""
-    return load().get("bot", {}).get("groups", {}).get("policy", "allowlist")
+def group_chat(chat_id: str) -> dict | None:
+    """Config do grupo (agent, members, require_mention) ou None se não autorizado."""
+    chats = load().get("bot", {}).get("groups", {}).get("chats", {})
+    chat = chats.get(chat_id) if isinstance(chats, dict) else None
+    return chat if isinstance(chat, dict) else None
 
 
-def group_allow_from() -> list[str]:
-    """Lista de JIDs de grupos permitidos."""
-    return load().get("bot", {}).get("groups", {}).get("allow_from", [])
+def _members(chat: dict | None) -> dict:
+    """members como {número: nome}; aceita também uma lista simples de números."""
+    members = (chat or {}).get("members", {})
+    if isinstance(members, dict):
+        return members
+    if isinstance(members, list):
+        return {n: n for n in members}
+    return {}
+
+
+def agent_for(chat_id: str) -> str:
+    """Agente que atende o chat: o do grupo, se tiver um próprio; senão o do bot."""
+    chat = group_chat(chat_id)
+    if chat and chat.get("agent"):
+        return chat["agent"]
+    return bot_agent()
+
+
+def require_mention(chat_id: str) -> bool:
+    """Se True (padrão), o grupo só é atendido quando chamarem o Ciel."""
+    return bool((group_chat(chat_id) or {}).get("require_mention", True))
+
+
+def member_name(chat_id: str, sender: str) -> str:
+    """Nome do membro do grupo (de members); se não houver, devolve o próprio sender."""
+    alvo = _normalize(sender)
+    for numero, nome in _members(group_chat(chat_id)).items():
+        if _normalize(numero) == alvo:
+            return str(nome)
+    return sender
 
 
 def dm_policy() -> str:
@@ -120,20 +159,21 @@ def dm_policy() -> str:
 
 # ── roteador ─────────────────────────────────────────────────────────────────
 
-def is_allowed(sender: str, chat_type: str) -> bool:
+def is_allowed(sender: str, chat_type: str, chat_id: str = "") -> bool:
     """
     Decide se uma mensagem deve ser processada pelo modo bot.
 
     sender    : número do remetente normalizado (ex: "+55 11 99999-9999")
     chat_type : "direct" | "group"
+    chat_id   : JID do chat (obrigatório para grupos)
 
     Regras:
     - Fail-closed: allowlist vazia bloqueia tudo.
     - DM "allowlist": sender deve estar em allow_from.
     - DM "pairing": qualquer sender é aceito (aprovação manual no primeiro contato).
-    - Grupo "allowlist": chat_id deve estar em groups.allow_from.
-    - Grupo "mention_only": qualquer grupo é aceito, mas o bot só responde
-      quando mencionado — essa filtragem é feita no bot.py, não aqui.
+    - Grupo: o chat_id deve estar em groups.chats E o sender em members desse
+      grupo. Quem não é membro listado é ignorado, mesmo dentro do grupo.
+      (a filtragem de menção, require_mention, é feita no bot.py)
     """
     cfg = load().get("bot", {})
 
@@ -147,13 +187,10 @@ def is_allowed(sender: str, chat_type: str) -> bool:
         return _normalize(sender) in [_normalize(n) for n in allowed]
 
     if chat_type == "group":
-        policy = cfg.get("groups", {}).get("policy", "allowlist")
-        if policy == "mention_only":
-            return True  # filtragem de menção fica no bot.py
-        allowed = cfg.get("groups", {}).get("allow_from", [])
-        if not allowed:
-            return False  # fail-closed
-        return _normalize(sender) in [_normalize(n) for n in allowed]
+        members = _members(group_chat(chat_id))
+        if not members:
+            return False  # fail-closed: grupo desconhecido ou sem membros
+        return _normalize(sender) in [_normalize(n) for n in members]
 
     return False
 
