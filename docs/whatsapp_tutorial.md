@@ -52,7 +52,7 @@ python ciel.py bot               # 3. sobe o bot e o bridge; escaneie o QR
 **Referência**
 
 - [Opções do comando bot](#opções-do-comando-bot) · [Variáveis de ambiente](#variáveis-de-ambiente-do-bridge) · [Ambientes (Windows, WSL, Docker)](#ambientes-windows-wsl-e-docker)
-- [Usando outro bridge](#usando-outro-bridge-evolution-api-etc) · [Segurança](#segurança) · [Limitações conhecidas](#limitações-conhecidas)
+- [Usando outro bridge](#usando-outro-bridge-evolution-api-etc) · [Avisos e cuidados](#avisos-e-cuidados) · [Segurança](#segurança) · [Limitações conhecidas](#limitações-conhecidas)
 
 **Deu problema?**
 
@@ -355,7 +355,7 @@ celular onde ela está logada) são descartadas de propósito e não aparecem no
 log.
 
 > **Aqui termina o caminho básico.** Antes de usar no dia a dia, leia
-> [Segurança](#segurança). O que vem a seguir é opcional.
+> [Avisos e cuidados](#avisos-e-cuidados) e [Segurança](#segurança). O que vem a seguir é opcional.
 
 ---
 
@@ -681,6 +681,72 @@ adaptador — abra uma issue se precisar de ajuda.
 Atenção: o campo `sender` precisa ser comparável com a `allow_from`. Se o
 seu bridge entrega LIDs, valem as mesmas regras do
 [Passo 4](#passo-4--primeiro-oi-e-liberar-o-lid).
+
+---
+
+## Avisos e cuidados
+
+O Ciel é um projeto de código aberto (licença MIT) e roda no seu computador.
+Quem opera o bot é quem decide o modelo, o número e quem pode falar com ele, e
+por isso responde por essas escolhas. Os pontos abaixo ajudam a decidir com
+consciência.
+
+**Licença e responsabilidade.** O Ciel é MIT: vem sem garantia, e os autores
+não respondem pelo que você fizer com ele. Se o bot conversar com outras
+pessoas, o cuidado com os dados delas (vazamento, privacidade, LGPD) é de
+quem opera. Avise quem conversa com o bot e escolha o modelo sabendo para
+onde o texto vai. Isto não é aconselhamento jurídico.
+
+**O provedor do modelo vê as conversas.** O modelo é escolha de quem opera:
+com um modelo local, o conteúdo fica na máquina; com um modelo de nuvem, o
+texto das mensagens (e o `[Nome]` dos membros, em grupo) é enviado ao
+provedor. O mascaramento de IDs não protege o que as pessoas escrevem. Se o
+bot conversa com gente além de você, avise essas pessoas e confira a política
+do provedor.
+
+**O bridge embutido não é oficial.** O Baileys se conecta como aparelho
+vinculado, e não pela API oficial. Esse tipo de uso pode violar os termos do
+WhatsApp e levar ao banimento do número. Por isso o Ciel exige um número
+**dedicado** ao bot: nunca pareie o seu número pessoal ou um número
+importante. Para uso comercial ou contínuo com terceiros, prefira a API
+oficial (WhatsApp Business Platform). O contrato HTTP descrito em
+[Usando outro bridge](#usando-outro-bridge-evolution-api-etc) permite essa
+troca, e talvez seja necessário um adaptador para o payload do webhook.
+
+**Quem está liberado fala com o agente.** Qualquer número em `allow_from` e
+qualquer membro de um grupo liberado usa as tools do agente daquele chat. O
+isolamento é feito pelas tools: o que elas alcançam no disco e na rede, quem
+está liberado também alcança. Em grupo, use um agente só com as tools
+necessárias, nunca o `general`.
+
+**Servidor compartilhado.** O webhook do bot não tem autenticação e só escuta
+em `127.0.0.1`. Num PC pessoal isso basta, mas numa máquina com outros
+usuários ou processos não confiáveis, qualquer um deles consegue enviar um
+POST forjado com um `sender` liberado. Para uso em equipe, prefira uma máquina
+ou VM dedicada ao Ciel, sem dados pessoais, e mantenha as portas `8765` e
+`8766` fora da rede.
+
+**Modo MCP.** A tool `whatsapp_send` envia mensagem para qualquer `chat_id`.
+Não a inclua nas tools de agentes de grupo: uma instrução maliciosa dentro de
+uma conversa poderia virar envio de spam ou vazamento de informação.
+
+**Menção em grupo.** Com `require_mention`, qualquer menção dispara o agente,
+inclusive a de outra pessoa (veja [Limitações conhecidas](#limitações-conhecidas)).
+Em grupos movimentados isso pode gerar respostas e gasto de tokens
+indesejados.
+
+**Custo.** Cada mensagem envia o prompt do agente e o schema das tools
+(cerca de 9 mil tokens de entrada com o `general`). Não há limite de mensagens
+por remetente. Com poucas pessoas conhecidas isso é aceitável, mas em volume
+vira custo e abre espaço para abuso.
+
+**Atendimento ao público não é suportado.** O modo bot foi pensado para
+listas de pessoas conhecidas (`allow_from` e `members`), e não para receber
+mensagens de qualquer pessoa. Não existe controle de abuso, limite de custo ou
+aprovação de remetentes. Se mesmo assim for experimentar com um número de
+teste, use um agente **sem tools** (`--safe` sozinho não basta: ele só
+desabilita `run_script` e `create_tool`), uma máquina sem seus dados e
+acompanhe o consumo de perto.
 
 ---
 
