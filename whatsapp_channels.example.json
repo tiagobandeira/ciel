@@ -1,13 +1,13 @@
 {
-  "_comentario": "Modelo do whatsapp_channels.json. Normalmente você não edita à mão: rode /criar canal whatsapp no Ciel. Se preferir manual, copie este arquivo para whatsapp_channels.json e troque os números. allow_from é a lista de quem pode falar com o bot (o SEU número, não o número do Ciel). O remetente pode chegar como LID (ex: +247000000000000); se o bot logar 'fora da allowlist', copie o valor de 'remetente' para cá.",
+  "_comentario": "Modelo do whatsapp_channels.json. Normalmente você não edita à mão: rode /criar canal whatsapp no Ciel. Se preferir manual, copie este arquivo para whatsapp_channels.json e troque os números. allow_from é a lista de quem pode falar com o bot em conversa direta (o SEU número, não o número do Ciel). O remetente pode chegar como LID (ex: +247000000000000); se o bot logar 'fora da allowlist', copie o valor de 'remetente' para cá.",
+  "_comentario_grupos": "Grupos: por padrão nenhum grupo é atendido. Para liberar um, adicione em groups.chats uma entrada com o JID do grupo (termina em @g.us): {\"agent\": \"nome_do_agente\", \"require_mention\": true, \"members\": {\"+55 11 99999-9999\": \"Nome\"}, \"commands\": [\"/help\", \"/novo\"]}. Na primeira mensagem de um grupo ainda não liberado, o log do bot mostra o JID (chat_id=...@g.us) e o remetente de cada pessoa (pode ser LID); copie esses valores para cá. Só quem está em members é atendido no grupo (allow_from vale só para conversa direta). require_mention (padrão true): o grupo só responde quando mencionarem o Ciel. commands (padrão /help e /novo): comandos liberados no grupo; /task fica de fora de propósito.",
   "bridge_url": "http://127.0.0.1:8765",
   "bot": {
     "enabled": true,
     "agent": "general",
     "allow_from": ["+55 11 99999-9999", "+247000000000000"],
     "groups": {
-      "policy": "allowlist",
-      "allow_from": []
+      "chats": {}
     },
     "dm_policy": "allowlist"
   },
