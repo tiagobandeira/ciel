@@ -53,7 +53,7 @@ def env(tmp_path, monkeypatch):
                     "enabled": True,
                     "agent": "general",
                     "allow_from": ["+55 11 99999-9999", "+247000000000000"],
-                    "groups": {"policy": "allowlist", "allow_from": []},
+                    "groups": {"chats": {}},
                     "dm_policy": "allowlist",
                 },
                 "mcp": {"enabled": False},
@@ -128,7 +128,7 @@ class TestCriacao:
         assert not env.example.exists()
         _ok(env)
         data = env.saved()
-        assert data["bot"]["groups"] == {"policy": "allowlist", "allow_from": []}
+        assert data["bot"]["groups"] == {"chats": {}}
         assert data["bot"]["dm_policy"] == "allowlist"
 
     def test_parte_do_exemplo(self, env):
@@ -329,7 +329,11 @@ class TestExistente:
                 "enabled": True,
                 "agent": "dev_helper",
                 "allow_from": ["+55 11 98888-7777"],
-                "groups": {"policy": "mention_only", "allow_from": ["123@g.us"]},
+                "groups": {
+                    "policy": "mention_only",
+                    "allow_from": ["123@g.us"],
+                    "chats": {"123@g.us": {"commands": ["/help", "/novo", "/task"]}},
+                },
                 "dm_policy": "pairing",
             },
             "mcp": {"enabled": True},
@@ -371,10 +375,10 @@ class TestExistente:
         assert data["bot"]["allow_from"] == ["+55 86 99999-9999"]
 
     def test_overwrite_preserva_groups_e_dm_policy(self, env):
-        self._preexistente(env)
+        original = self._preexistente(env)
         r = _ok(env, overwrite=True)
         data = env.saved()
-        assert data["bot"]["groups"] == {"policy": "mention_only", "allow_from": ["123@g.us"]}
+        assert data["bot"]["groups"] == original["bot"]["groups"]
         assert data["bot"]["dm_policy"] == "pairing"
         assert "groups e dm_policy" in r
 
