@@ -27,7 +27,11 @@ O bridge também deve expor:
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
+import re
+import secrets
 import sys
 import threading
 import time
@@ -57,6 +61,40 @@ WEBHOOK_PORT = 8766   # bridge_url é a URL do bridge; esta é a porta do Ciel
 # Cada entrada: lista de {"role": "user"|"assistant", "content": "..."}
 _histories: dict[str, list[dict]] = {}
 _histories_lock = threading.Lock()
+
+
+# ── ids mascarados pro modelo ────────────────────────────────────────────────
+# O session_id entra no system prompt a cada execução. Em vez do JID real,
+# o modelo recebe um apelido estável (HMAC com segredo local, não reversível).
+# A allowlist e o envio da resposta continuam usando o chat_id real.
+_SECRET_FILE   = _ROOT / "data" / "user" / ".id_secret"   # não versionar
+_secret_lock   = threading.Lock()
+_secret_cache: bytes | None = None
+
+
+def _id_secret() -> bytes:
+    global _secret_cache
+    with _secret_lock:
+        if _secret_cache is None:
+            if not _SECRET_FILE.exists():
+                _SECRET_FILE.parent.mkdir(parents=True, exist_ok=True)
+                _SECRET_FILE.write_bytes(secrets.token_bytes(32))
+            _secret_cache = _SECRET_FILE.read_bytes()
+        return _secret_cache
+
+
+def _session_id_for(chat_id: str) -> str:
+    """Apelido estável do chat pro modelo: wa_<12 hex>."""
+    h = hmac.new(_id_secret(), chat_id.encode(), hashlib.sha256).hexdigest()[:12]
+    return f"wa_{h}"
+
+
+# comandos "/" liberados por padrão nos grupos. "/task" fica de fora de propósito
+# (roda tasks do projeto); pra liberar, "commands" em groups.chats.<jid>
+_DEFAULT_GROUP_COMMANDS = ["/help", "/novo"]
+
+# menção do WhatsApp no texto: "@5586..." / "@2471..." (número ou LID)
+_MENTION_RE = re.compile(r"@\d{5,}")
 
 
 # ── callbacks de log (injetados pelo entry point) ─────────────────────────────
@@ -115,6 +153,10 @@ def _handle_message_inner(
             on_error("ignorado", f"remetente {sender!r} ({chat_type}) fora da allowlist | chat_id={chat_id}")
         return
 
+    # ── 2b. grupo: remove "@<número>" (menções) do texto ─────────────────────
+    if chat_type == "group":
+        text = _MENTION_RE.sub("", text).strip()
+
     # ── 3. ignora mensagens vazias ────────────────────────────────────────────
     if not text:
         return
@@ -131,9 +173,18 @@ def _handle_message_inner(
             return
 
     # ── 5. prefixa nome do membro para grupos ────────────────────────────────
+    cmd_text = text   # sem o prefixo [Nome]: o roteador só reconhece "/" no início
     if chat_type == "group":
         nome = ch.member_name(chat_id, sender)
         text = f"[{nome}] {text}"
+
+    # ── 5b. comandos em grupo: só os liberados na config do grupo ─────────────
+    if chat_type == "group" and cmd_text.startswith("/"):
+        cmd = cmd_text.split(None, 1)[0].lower()
+        liberados = (ch.group_chat(chat_id) or {}).get("commands", _DEFAULT_GROUP_COMMANDS)
+        if cmd not in [str(c).lower() for c in liberados]:
+            _send_reply(chat_id, f"Comando '{cmd}' não está liberado neste grupo.")
+            return
 
     if on_event:
         on_event(chat_id, sender, text)
@@ -183,7 +234,7 @@ def _handle_message_inner(
         "tools":          tools,
         "schema":         schema,
     }
-    cmd_reply = router.handle(text, chat_id, router_context)
+    cmd_reply = router.handle(cmd_text, chat_id, router_context)
     if cmd_reply is not None:
         _send_reply(chat_id, cmd_reply)
         return
@@ -200,7 +251,7 @@ def _handle_message_inner(
         model       = model,
         agent_info  = agent_info,
         history     = history,
-        session_id  = f"wa_{chat_id}",
+        session_id  = _session_id_for(chat_id),
         on_step     = on_step,
         on_done     = on_done,
         on_error    = on_error,

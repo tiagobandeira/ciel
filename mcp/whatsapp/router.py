@@ -30,6 +30,7 @@ Integração:
     agent_info      : dict
     tools           : dict
     schema          : list
+    session_base    : str                    — apelido do chat enviado ao modelo (nunca o chat_id real)
 """
 
 from __future__ import annotations
@@ -104,6 +105,7 @@ def _cmd_task_run(
     agent_info: dict,
     tools: dict,
     schema: list,
+    session_base: str | None = None,
     **_,
 ) -> str:
     """Carrega e executa uma task, despachando pro run_agent."""
@@ -143,7 +145,8 @@ def _cmd_task_run(
         model      = model,
         agent_info = agent_info,
         history    = history,
-        session_id = f"wa_{chat_id}_task_{task_path.stem}",
+        # o session_id vai pro system prompt: usa o apelido mascarado, nunca o chat_id real
+        session_id = f"{session_base or 'wa'}_task_{task_path.stem}",
         on_step    = on_step,
         on_done    = on_done,
         on_error   = on_error,
