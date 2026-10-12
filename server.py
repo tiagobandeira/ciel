@@ -54,6 +54,8 @@ from agent_loader   import load_agent, filter_tools, list_agents
 from history_store  import HistoryStore, DB_PATH
 from history_ui     import build_context_injection
 from auth           import AuthManager
+import ui_bus
+from ui_routes import bp as ui_bp
 
 # ── config ──────────────────────────────────────────────────────────────────
 DEFAULT_MODEL  = "gemma4:cloud"
@@ -81,6 +83,7 @@ app = Flask(
     static_folder=str(ROOT / "web" / "static"),
     template_folder=str(ROOT / "web" / "templates"),
 )
+app.register_blueprint(ui_bp)   # interface visual de partículas: /ui e /ui/events
 
 # ── estado de sessão (in-memory, por processo) ───────────────────────────────
 class AppState:
@@ -413,6 +416,7 @@ def api_chat():
         on_confirm_tool=None,       # create_tool bloqueado por filter_unsafe quando safe=True
         on_confirm_path=_server_confirm_path,
         on_ask_user=None,           # tools INTERACTIVE não têm UI no server
+        **ui_bus.callbacks(),
     )
 
     t_in  = result.tokens_in
@@ -527,6 +531,7 @@ def handle_command(cmd: str) -> tuple[str, bool]:
             on_confirm_tool=None,
             on_confirm_path=_server_confirm_path,
             on_ask_user=None,
+            **ui_bus.callbacks(),
         )
         state.tokens_in  += result.tokens_in
         state.tokens_out += result.tokens_out
