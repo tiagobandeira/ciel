@@ -9,15 +9,26 @@ from datetime import datetime
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
-_SHAPES = _ROOT / "data" / "user" / "shapes"
+_SHAPES = _ROOT / "data" / "user" / "shapes"                     # cache das formas geradas (dados do usuário)
+_BASE = _ROOT / "web" / "static" / "ui" / "shapes"                 # formas-base versionadas no repositório
 _PROMPT = _ROOT / "prompts" / "forma_sistema.md"
 _TIPOS = {"box", "cil", "esf", "anel", "arco", "linha", "svg"}
-_BUILTIN = {"esfera", "circulo", "carro", "casa", "solar", "sorriso", "coracao", "check"}
+_BUILTIN = {"esfera", "circulo", "carro", "casa", "solar", "sorriso", "coracao", "check",
+            "lupa", "documento", "lapis", "terminal", "rede"}
 
 
 def _slug(t: str) -> str:
     t = unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z0-9]+", "-", t).strip("-")[:40] or "forma"
+
+
+def _carrega(slug: str):
+    """Spec da forma pelo nome: biblioteca-base primeiro, depois o cache do usuário. None se não existir."""
+    for pasta in (_BASE, _SHAPES):
+        arq = pasta / f"{slug}.json"
+        if arq.exists():
+            return json.loads(arq.read_text(encoding="utf-8"))
+    return None
 
 
 def _extrai(txt: str) -> dict:
@@ -36,7 +47,7 @@ def _valida(spec: dict) -> dict:
     for p in partes:
         if not isinstance(p, dict) or p.get("tipo") not in _TIPOS:
             raise ValueError(f"tipo de parte inválido: {p}")
-    return {"nome": spec.get("nome", ""), "partes": partes}
+    return {"nome": spec.get("nome", ""), "plano": bool(spec.get("plano")), "partes": partes}
 
 
 def _gera(descricao: str) -> dict:
@@ -66,14 +77,12 @@ def run(nome: str, descricao: str = "") -> str:
     slug = _slug(nome)
     spec, origem = None, "interna"
     if slug not in _BUILTIN:
-        arq = _SHAPES / f"{slug}.json"
         try:
-            if arq.exists():
-                spec, origem = json.loads(arq.read_text(encoding="utf-8")), "cache"
-            else:
+            spec, origem = _carrega(slug), "biblioteca"
+            if spec is None:
                 spec, origem = _gera(descricao or nome), "gerada"
                 _SHAPES.mkdir(parents=True, exist_ok=True)
-                arq.write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
+                (_SHAPES / f"{slug}.json").write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
         except Exception as e:
             return f"Não foi possível mostrar a forma '{nome}': {e}"
     try:

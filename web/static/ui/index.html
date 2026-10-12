@@ -180,15 +180,20 @@ rede:{partes:[{tipo:'esf',r:.5,peso:2},...N5.map(q=>({tipo:'esf',r:.25,pos:[...q
 const TOOLS={web_search:'lupa',web_search_extended:'lupa',read_url:'lupa',http_request:'lupa',
 read_file:'documento',read_pdf:'documento',read_source:'documento',search_knowledge:'documento',list_directory:'documento',list_directory_files:'documento',
 write_file:'lapis',docx_criar:'lapis',docx_substituir_texto:'lapis',docx_comentar:'lapis',run_script:'terminal',secondary_model:'rede'};
-let tema=null,fim,faloui=false,ultC='',lerId=0,leitura=false;
+let tema=null,fim,faloui=false,ultC='',lerId=0,leitura=false,anotId=null,marcas=[],kAtual=-1,lendo=false;
 try{leitura=localStorage.getItem('ciel_leitura')==='1'}catch(e){}
 const limpa=t=>{const r=t.replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/https?:\/\/\S+/g,'').replace(/[*_`#>|~]+/g,' ').replace(/^\s*[-•]\s+/,'').replace(/\s+/g,' ').trim();return /[\p{L}\p{N}]/u.test(r)?r:''};
 const voz=()=>{const v=speechSynthesis.getVoices().filter(x=>/^pt/i.test(x.lang));return v.find(x=>/pt-BR/i.test(x.lang)&&/natural|online/i.test(x.name))||v.find(x=>/pt-BR/i.test(x.lang))||v[0]};
-const progresso=k=>{/* gancho da linha do tempo de formas (etapa 2): recebe o índice da frase em leitura */};
-function parar(){lerId++;try{speechSynthesis.cancel()}catch(e){}document.querySelectorAll('.s.lendo').forEach(x=>x.classList.remove('lendo'))}
-function ler(r){const sp=[...r.d.querySelectorAll('.s')],id=++lerId;let i=0;try{speechSynthesis.cancel()}catch(e){}go('falando',tema||'esfera');
+// linha do tempo: a cada frase lida, aplica a última marca com i <= frase atual (se a forma já chegou)
+const progresso=k=>{kAtual=k;aplica(k)};
+function aplica(k){if(!lendo||!marcas.length)return;let m=null;for(const x of marcas)if(x.i<=k)m=x;if(!m)return;
+const nm=m.nome==='coracao'?'coração':m.nome;if(!(S[nm]||LIB[nm])||tema===nm)return;tema=nm;go('falando',nm)}
+function parar(){lerId++;lendo=false;anotId=null;marcas=[];try{speechSynthesis.cancel()}catch(e){}document.querySelectorAll('.s.lendo').forEach(x=>x.classList.remove('lendo'))}
+function ler(r){const sp=[...r.d.querySelectorAll('.s')],id=++lerId;let i=0;try{speechSynthesis.cancel()}catch(e){}anotId=Date.now();marcas=[];kAtual=-1;lendo=true;
+if(r.fr.filter(Boolean).length>=6)fetch('/ui/anotar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:anotId,frases:r.fr})}).then(x=>{if(!x.ok)cap('ℹ formas por tópico indisponíveis (HTTP '+x.status+')')}).catch(()=>{});
+go('falando',tema||'esfera');
 const prox=()=>{if(id!==lerId)return;while(i<r.fr.length&&!r.fr[i])i++;
-if(i>=r.fr.length){sp.forEach(x=>x.classList.remove('lendo'));go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4);return}
+if(i>=r.fr.length){lendo=false;sp.forEach(x=>x.classList.remove('lendo'));go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4);return}
 const k=i,u=new SpeechSynthesisUtterance(r.fr[k]);u.lang='pt-BR';const v=voz();if(v)u.voice=v;
 u.onstart=()=>{if(id!==lerId)return;sp.forEach(x=>x.classList.remove('lendo'));sp[k].classList.add('lendo');sp[k].scrollIntoView({block:'nearest',behavior:'smooth'});
 $('chat').classList.remove('idle');clearTimeout(idle2);if(!pin)idle2=setTimeout(()=>$('chat').classList.add('idle'),8000);progresso(k)};
@@ -206,6 +211,8 @@ if(S[nm]||LIB[nm]){if(!TOPIC.includes(nm))TOPIC.push(nm);tema=nm;cur.sh='';go('f
 else if(m.tipo==='fala'){faloui=true;cap('');const tx=m.texto||'',lr=leitura&&tx&&!!window.speechSynthesis;
 if(tx!==ultC){const r=addMsg('c',tx,lr);if(lr)ler(r)}ultC=tx;
 if(!lr){go('falando',tema||'esfera');fim=setTimeout(()=>{go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4)},Math.min(12000,Math.max(2500,tx.length*45)))}}
+else if(m.tipo==='marcas'&&m.id===anotId){marcas=m.marcas||[];aplica(kAtual)}
+else if(m.tipo==='forma_lib'){if(m.spec){LIB[m.nome]=m.spec;delete cache[m.nome]}aplica(kAtual)}
 else if(m.tipo==='erro'){cap('⚠ '+m.texto);tema=null;go('repouso','esfera')}}
 const es=new EventSource('/ui/events');es.onmessage=e=>{try{ev(JSON.parse(e.data))}catch(x){}};
 async function send(){const t=$('msg').value.trim();if(!t)return;$('msg').value='';parar();tema=null;faloui=false;ultC='';addMsg('u',t);cap('pensando…');go('pensando','circulo');
