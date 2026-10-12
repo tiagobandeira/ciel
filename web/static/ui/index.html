@@ -9,7 +9,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #hud{position:fixed;left:14px;top:calc(env(safe-area-inset-top,0px) + 10px);opacity:.55;font-size:12px}
 #bar{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);transform:translateX(-50%);width:min(94vw,560px);box-sizing:border-box;display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:16px;background:rgba(8,20,40,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(74,168,255,.35);box-shadow:0 0 24px var(--gl),inset 0 0 12px rgba(74,168,255,.12);transition:opacity .7s}
 #bar.idle{opacity:.15}
-.row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;align-items:center}
 button,input,select{font:inherit;color:var(--fg);background:rgba(74,168,255,.1);border:1px solid rgba(74,168,255,.35);border-radius:10px;padding:6px 10px}
 button.on{background:rgba(74,168,255,.38);box-shadow:0 0 10px var(--gl)}
 input{flex:1 1 110px;min-width:0}
@@ -38,10 +38,18 @@ let N,cache,geo,pts,amp=0,T=0;
 const cur={st:'repouso',sh:'esfera',tx:'CIEL'};
 const rd=new THREE.WebGLRenderer({canvas:$('c'),alpha:true});rd.setPixelRatio(Math.min(devicePixelRatio,2));
 const sc=new THREE.Scene(),cam=new THREE.PerspectiveCamera(50,1,.1,100),grp=new THREE.Group();sc.add(grp);
-const u={uT:{value:1},uTime:{value:0},uT0:{value:0},uAmp:{value:0},uSize:{value:2.4},uPix:{value:rd.getPixelRatio()},uZ:{value:8}};
+
+// MAXL = número máximo de camadas suportadas pelo shader.
+const MAXL=16;
+const u={
+  uT:{value:1},uTime:{value:0},uT0:{value:0},uAmp:{value:0},uSize:{value:2.4},
+  uPix:{value:rd.getPixelRatio()},uZ:{value:8},
+  uMatCamada:{value:Array.from({length:MAXL},()=>new THREE.Matrix4())}
+};
 const mat=new THREE.ShaderMaterial({uniforms:u,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
-vertexShader:`attribute vec4 aFrom,aTo;attribute float aR;
-uniform float uT,uTime,uT0,uAmp,uSize,uPix,uZ;varying vec3 vC;varying float vA;
+vertexShader:`attribute vec4 aFrom,aTo;attribute float aR;attribute float aCamada;
+uniform float uT,uTime,uT0,uAmp,uSize,uPix,uZ;uniform mat4 uMatCamada[${MAXL}];
+varying vec3 vC;varying float vA;
 vec2 rot(vec2 p,float a){float c=cos(a),s=sin(a);return vec2(c*p.x-s*p.y,s*p.x+c*p.y);}
 void main(){
 vec3 a=aFrom.xyz;a.xy=rot(a.xy,uT0*aFrom.w);
@@ -50,6 +58,10 @@ float t=clamp((uT-aR*.45)/.55,0.,1.);t=t*t*(3.-2.*t);
 vec3 p=mix(a,b,t);float k=sin(3.14159*t);
 vec3 n=vec3(sin(aR*40.+uTime*1.3),cos(aR*57.+uTime*1.1),sin(aR*23.+uTime*.9));
 p+=n*k*1.8+n*.015;p*=1.+uAmp*(.7+.3*sin(aR*50.));
+int li=int(aCamada+.5);
+mat4 LM=mat4(1.0);
+for(int i=0;i<${MAXL};i++){ if(i==li) LM=uMatCamada[i]; }
+p=(LM*vec4(p,1.0)).xyz;
 vec4 mv=modelViewMatrix*vec4(p,1.);
 gl_PointSize=min(uSize*uPix*(.6+aR)*(uZ/-mv.z),48.);
 gl_Position=projectionMatrix*mv;
@@ -57,7 +69,7 @@ vC=mix(vec3(.12,.42,1.),vec3(.6,.95,1.),aR*aR)+uAmp*.6;vA=.55+.45*aR;}`,
 fragmentShader:`varying vec3 vC;varying float vA;
 void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;float f=smoothstep(.5,0.,d);gl_FragColor=vec4(vC*1.3,f*vA);}`});
 
-// amostradores: cada um adiciona exatamente n pontos [x,y,z,velocidade de giro]
+// amostradores: cada um adiciona n pontos [x,y,z,spin]
 const box=(o,n,w,h,d,cx,cy,cz)=>{const A=[w*h*2,w*d*2,h*d*2],S=A[0]+A[1]+A[2];
 for(let i=0;i<n;i++){const r=R()*S,s=R()<.5?-.5:.5,a=R()-.5,b=R()-.5;
 if(r<A[0])o.push(a*w+cx,b*h+cy,s*d+cz,0);else if(r<A[0]+A[1])o.push(a*w+cx,s*h+cy,b*d+cz,0);else o.push(s*w+cx,a*h+cy,b*d+cz,0)}};
@@ -65,8 +77,29 @@ const cyl=(o,n,r,w,cx,cy,cz)=>{for(let i=0;i<n;i++){const a=R()*6.283;let q=r,z=
 const sph=(o,n,r,cx,cy,cz,sp)=>{for(let i=0;i<n;i++){const v=R()*2-1,a=R()*6.283,s=Math.sqrt(1-v*v);o.push(cx+s*Math.cos(a)*r,cy+s*Math.sin(a)*r,cz+v*r,sp)}};
 const ring=(o,n,r,sp,j)=>{for(let i=0;i<n;i++){const a=R()*6.283,q=r+(R()-.5)*j;o.push(Math.cos(a)*q,Math.sin(a)*q,(R()-.5)*.06,sp)}};
 const tri=(o,n,r,rot,sp)=>{for(let i=0;i<n;i++){const a=rot+((R()*3)|0)*2.0944,b=a+2.0944,t=R();o.push(r*(Math.cos(a)*(1-t)+Math.cos(b)*t),r*(Math.sin(a)*(1-t)+Math.sin(b)*t),(R()-.5)*.06,sp)}};
-function mk(parts){const o=[];let used=0;parts.forEach(([f,fn],i)=>{const n=i==parts.length-1?N-used:Math.round(N*f);used+=n;fn(o,n)});
-const a=Float32Array.from(o);for(let i=N-1;i>0;i--){const j=(R()*(i+1))|0;for(let k=0;k<4;k++){const t=a[i*4+k];a[i*4+k]=a[j*4+k];a[j*4+k]=t}}return a}
+
+// mk devolve {pos: Float32Array(N*4), camada: Float32Array(N)}
+function mk(parts, camadasPorParte){
+  const o=[], ca=[];
+  let used=0;
+  parts.forEach(([f,fn],i)=>{
+    const n=i==parts.length-1?N-used:Math.round(N*f);
+    const antes=o.length/4;
+    fn(o,n);
+    const c=camadasPorParte?(+camadasPorParte[i]||0):0;
+    for(let j=antes;j<antes+n;j++) ca.push(c);
+    used+=n;
+  });
+  const a=Float32Array.from(o);
+  const c=Float32Array.from(ca);
+  for(let i=N-1;i>0;i--){
+    const j=(R()*(i+1))|0;
+    for(let k=0;k<4;k++){const t=a[i*4+k];a[i*4+k]=a[j*4+k];a[j*4+k]=t}
+    const t=c[i];c[i]=c[j];c[j]=t;
+  }
+  return {pos:a,camada:c};
+}
+
 const W=[[1.3,.9],[1.3,-.9],[-1.3,.9],[-1.3,-.9]].map(([x,z])=>[.105,(o,n)=>cyl(o,n,.45,.3,x,-.6,z)]);
 const S={
 esfera:()=>mk([[1,(o,n)=>{for(let i=0;i<n;i++){const y=1-2*(i+.5)/n,r=Math.sqrt(1-y*y),t=i*2.39996;o.push(Math.cos(t)*r*2.2,y*2.2,Math.sin(t)*r*2.2,0)}}]]),
@@ -87,28 +120,74 @@ x.font=f;x.textBaseline='middle';x.textAlign='center';x.fillStyle='#fff';x.fillT
 const d=x.getImageData(0,0,w,h).data,p=[];for(let i=3;i<d.length;i+=4)if(d[i]>128)p.push((i-3)/4);
 const k=Math.min(.012,7/w);
 return mk([[1,(o,n)=>{for(let i=0;i<n;i++){const q=p[(R()*p.length)|0]||0;o.push(((q%w)-w/2)*k,-(((q/w)|0)-h/2)*k,(R()-.5)*.15,0)}}]])}};
-// ---- formas por descrição (JSON): o modelo secundário descreve, o front amostra os pontos ----
+
+// ---- primitivas por descrição (JSON) ----
 const arc=(o,n,r,a0,a1,c,sp)=>{for(let i=0;i<n;i++){const a=(a0+R()*(a1-a0))*.017453,q=r+(R()-.5)*.08;o.push(Math.cos(a)*q+c[0],Math.sin(a)*q+c[1],(R()-.5)*.08+c[2],sp)}};
 const seg=(o,n,A,B)=>{for(let i=0;i<n;i++){const t=R();o.push(A[0]+(B[0]-A[0])*t+(R()-.5)*.1,A[1]+(B[1]-A[1])*t+(R()-.5)*.1,A[2]+(B[2]-A[2])*t+(R()-.5)*.1,0)}};
 const svg=(o,n,d,sz,c)=>{const g=document.createElement('canvas');g.width=g.height=200;const x=g.getContext('2d');x.fillStyle='#fff';try{x.fill(new Path2D(d))}catch(e){}
 const a=x.getImageData(0,0,200,200).data,p=[];for(let i=3;i<a.length;i+=4)if(a[i]>128)p.push((i-3)/4);
 for(let i=0;i<n;i++){const q=p[(R()*p.length)|0]||0;o.push(((q%200)/200-.5)*sz+c[0],-(((q/200)|0)/200-.5)*sz+c[1],(R()-.5)*.15+c[2],0)}};
 const num=(x,d,m)=>Math.max(-m,Math.min(m,isFinite(+x)?+x:d)),v3=(a,d)=>[0,1,2].map(i=>num(a&&a[i],d[i],6));
-function fromSpec(sp){const L=(sp.partes||[]).slice(0,24);if(!L.length)throw Error('sem partes');
-const tot=L.reduce((s,p)=>s+Math.max(.01,+p.peso||1),0);
-return mk(L.map(p=>{const f=Math.max(.01,+p.peso||1)/tot,c=v3(p.pos,[0,0,0]),s=v3(p.tam,[1,1,1]).map(Math.abs),r=Math.abs(num(p.r,1,6)),g=num(p.giro,0,3),A=p.a||[0,360];let fn;
-switch(p.tipo){case'box':fn=(o,n)=>box(o,n,s[0],s[1],s[2],...c);break;
-case'cil':fn=(o,n)=>{const L=Math.abs(num(p.l,.4,6));if(p.eixo==='y'){const t=[];cyl(t,n,r,L,0,0,0);for(let i=0;i<t.length;i+=4)o.push(t[i]+c[0],t[i+2]+c[1],t[i+1]+c[2],0)}else cyl(o,n,r,L,...c)};break;
-case'esf':fn=(o,n)=>sph(o,n,r,...c,g);break;
-case'anel':case'arco':fn=(o,n)=>arc(o,n,r,num(A[0],0,720),num(A[1],360,720),c,g);break;
-case'linha':fn=(o,n)=>seg(o,n,v3(p.de,[0,0,0]),v3(p.ate,[1,0,0]));break;
-case'svg':fn=(o,n)=>svg(o,n,String(p.d||''),p.tam?s[0]:4,c);break;
-default:throw Error('tipo desconhecido: '+p.tipo)}return[f,fn]}))}
+
+// fromSpec aceita nuvem de pontos (com camadas) OU lista de partes
+function fromSpec(sp){
+  if(sp.pontos&&sp.pontos.length){
+    const P=sp.pontos;
+    const pos=new Float32Array(N*4);
+    const camada=new Float32Array(N);
+    for(let i=0;i<N;i++){
+      const p=P[(R()*P.length)|0];
+      pos[i*4]   = +p[0]||0;
+      pos[i*4+1] = +p[1]||0;
+      pos[i*4+2] = +p[2]||0;
+      pos[i*4+3] = 0;
+      camada[i]  = (p.length>=4) ? (+p[3]||0) : 0;
+    }
+    return {pos, camada};
+  }
+  const L=(sp.partes||[]).slice(0,24);if(!L.length)throw Error('sem partes');
+  const tot=L.reduce((s,p)=>s+Math.max(.01,+p.peso||1),0);
+  return mk(L.map(p=>{const f=Math.max(.01,+p.peso||1)/tot,c=v3(p.pos,[0,0,0]),s=v3(p.tam,[1,1,1]).map(Math.abs),r=Math.abs(num(p.r,1,6)),g=num(p.giro,0,3),A=p.a||[0,360];let fn;
+  switch(p.tipo){case'box':fn=(o,n)=>box(o,n,s[0],s[1],s[2],...c);break;
+  case'cil':fn=(o,n)=>{const Lc=Math.abs(num(p.l,.4,6));if(p.eixo==='y'){const t=[];cyl(t,n,r,Lc,0,0,0);for(let i=0;i<t.length;i+=4)o.push(t[i]+c[0],t[i+2]+c[1],t[i+1]+c[2],0)}else cyl(o,n,r,Lc,...c)};break;
+  case'esf':fn=(o,n)=>sph(o,n,r,...c,g);break;
+  case'anel':case'arco':fn=(o,n)=>arc(o,n,r,num(A[0],0,720),num(A[1],360,720),c,g);break;
+  case'linha':fn=(o,n)=>seg(o,n,v3(p.de,[0,0,0]),v3(p.ate,[1,0,0]));break;
+  case'svg':fn=(o,n)=>svg(o,n,String(p.d||''),p.tam?s[0]:4,c);break;
+  default:throw Error('tipo desconhecido: '+p.tipo)}return[f,fn]}))
+}
 const LIB={sorriso:{partes:[{tipo:'anel',r:2.2,peso:4},{tipo:'esf',r:.22,pos:[-.8,.7,0],peso:1},{tipo:'esf',r:.22,pos:[.8,.7,0],peso:1},{tipo:'arco',r:1.3,a:[200,340],pos:[0,.1,0],peso:2.5}]},
 'coração':{partes:[{tipo:'svg',d:'M100 176 C20 110 10 50 56 30 C80 20 100 40 100 56 C100 40 120 20 144 30 C190 50 180 110 100 176Z',tam:[4.2]}]},
 check:{partes:[{tipo:'linha',de:[-1.8,0,0],ate:[-.5,-1.3,0],peso:1},{tipo:'linha',de:[-.5,-1.3,0],ate:[2,1.6,0],peso:2},{tipo:'anel',r:2.8,peso:3}]}};
 const shape=(n,t)=>n==='palavra'?S.palavra(t):S[n]?(cache[n]||(cache[n]=S[n]())):(cache[n]||(cache[n]=fromSpec(LIB[n])));
-// ---- poeira ambiente: partículas que não formam figura ----
+
+// escolhe o modo de giro do objeto: 'y' (3D), 'z' (relógio), 'none' (parado)
+const GIRO={};
+function detectaGiro(pontos){
+  if(!pontos||!pontos.length) return 'y';
+  let mnX=1e9,mxX=-1e9,mnY=1e9,mxY=-1e9,mnZ=1e9,mxZ=-1e9;
+  for(let i=0;i<pontos.length;i++){const p=pontos[i];
+    if(p[0]<mnX)mnX=p[0]; if(p[0]>mxX)mxX=p[0];
+    if(p[1]<mnY)mnY=p[1]; if(p[1]>mxY)mxY=p[1];
+    if(p[2]<mnZ)mnZ=p[2]; if(p[2]>mxZ)mxZ=p[2];
+  }
+  const w=mxX-mnX,h=mxY-mnY,d=mxZ-mnZ;
+  const fino=d < Math.max(w,h)*0.15;
+  const redondo=Math.max(w,h)>0 && Math.min(w,h)/Math.max(w,h) > 0.7;
+  return (fino && redondo) ? 'z' : 'y';
+}
+function modoGiro(n){
+  if(GIRO[n]) return GIRO[n];
+  const lib=LIB[n];
+  if(lib){
+    if(lib.giro && lib.giro!=='auto') return lib.giro;
+    if(lib.plano) return 'none'; 
+    if(lib.pontos && lib.pontos.length) return detectaGiro(lib.pontos);
+  }
+  return 'y';
+}
+
+// ---- poeira ambiente ----
 const dm=new THREE.ShaderMaterial({uniforms:u,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
 vertexShader:`attribute float aR;uniform float uTime,uPix,uZ,uAmp;varying float vA;
 void main(){vec3 p=position;float a=uTime*.03*(.5+aR),c=cos(a),s=sin(a);p.xz=vec2(c*p.x-s*p.z,s*p.x+c*p.z);p.y+=sin(uTime*.2+aR*30.)*.6;
@@ -117,23 +196,65 @@ fragmentShader:`varying float vA;void main(){float d=length(gl_PointCoord-.5);if
 {const M=2000,P=new Float32Array(M*3),Q=new Float32Array(M);for(let i=0;i<M;i++){const v=R()*2-1,a=R()*6.283,s=Math.sqrt(1-v*v),r=5+R()*11;P.set([s*Math.cos(a)*r,v*r*.7,s*Math.sin(a)*r],i*3);Q[i]=R()}
 const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(P,3));g.setAttribute('aR',new THREE.BufferAttribute(Q,1));
 const dp=new THREE.Points(g,dm);dp.frustumCulled=false;sc.add(dp)}
-// pose do grupo por forma: [inclinação, giro em Y]
+
+// pose do grupo por forma: [inclinação, giro em Y] — usado só no modo 'y' sem anim
 const POSE={esfera:[.1,.15],circulo:[-.4,0],carro:[.2,.5],casa:[.25,.4],solar:[-1.1,0],palavra:[0,0],sorriso:[0,0],'coração':[0,0],check:[0,0],lupa:[0,0],documento:[0,0],lapis:[0,0],terminal:[0,0],rede:[0,0]};
-// estados: forma padrão + envelope de amplitude (simulado; no Ciel viria do microfone/TTS)
 const ST={repouso:['esfera',t=>.04*Math.sin(t*1.2)],
 ouvindo:['esfera',t=>.05+.08*Math.abs(Math.sin(t*3.1)*Math.sin(t*1.7+1))],
 pensando:['circulo',t=>.02*Math.sin(t*2)],
 falando:['esfera',t=>.02+.18*Math.abs(Math.sin(t*7)*Math.sin(t*2.3))]};
 const TOPIC=['carro','casa','solar','sorriso','coração','check'];
 
+// composição de matrizes de animação por camada
+const _M1=new THREE.Matrix4(), _M2=new THREE.Matrix4(), _M3=new THREE.Matrix4();
+function matAnim(anims, t, pivo, out){
+  out.identity();
+  if(anims && anims.length){
+    for(let i=0;i<anims.length;i++){
+      const a=anims[i]; if(!a) continue;
+      let m=_M1.identity();
+      const fr=(a.freq==null?1:a.freq), fa=(a.fase==null?0:a.fase);
+      const fase=2*Math.PI*fr*t + fa;
+      if(a.tipo==='rot'||a.tipo==='osc'){
+        const ang=(a.tipo==='rot')?(a.vel||0)*t:(a.amp||0)*Math.sin(fase);
+        if(a.eixo==='x') m.makeRotationX(ang);
+        else if(a.eixo==='y') m.makeRotationY(ang);
+        else m.makeRotationZ(ang);
+      } else if(a.tipo==='flutuar'){
+        const d=(a.amp||0)*Math.sin(fase);
+        if(a.eixo==='x') m.makeTranslation(d,0,0);
+        else if(a.eixo==='y') m.makeTranslation(0,d,0);
+        else m.makeTranslation(0,0,d);
+      } else if(a.tipo==='pulso'){
+        const s=1+(a.amp||0)*Math.sin(fase);
+        m.makeScale(s,s,s);
+      } else continue;
+      out.premultiply(m);
+    }
+  }
+  const px=(pivo&&pivo[0])||0, py=(pivo&&pivo[1])||0, pz=(pivo&&pivo[2])||0;
+  if(px||py||pz){
+    _M2.makeTranslation(px,py,pz);
+    _M2.multiply(out);
+    _M3.makeTranslation(-px,-py,-pz);
+    _M2.multiply(_M3);
+    out.copy(_M2);
+  }
+}
+const MAT_GLOBAL=new THREE.Matrix4();
+
 function build(){N=+$('q').value;cache={};if(pts){grp.remove(pts);geo.dispose()}
 geo=new THREE.BufferGeometry();const s=shape(cur.sh,cur.tx),r=new Float32Array(N);for(let i=0;i<N;i++)r[i]=R();
 geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(N*3),3));
-geo.setAttribute('aFrom',new THREE.BufferAttribute(s.slice(),4));geo.setAttribute('aTo',new THREE.BufferAttribute(s.slice(),4));
+geo.setAttribute('aFrom',new THREE.BufferAttribute(s.pos.slice(),4));
+geo.setAttribute('aTo',new THREE.BufferAttribute(s.pos.slice(),4));
+geo.setAttribute('aCamada',new THREE.BufferAttribute(s.camada.slice(),1));
 geo.setAttribute('aR',new THREE.BufferAttribute(r,1));
 pts=new THREE.Points(geo,mat);pts.frustumCulled=false;grp.add(pts);u.uT.value=1}
 function morph(n,t){const a=geo.attributes;a.aFrom.array.set(a.aTo.array);a.aFrom.needsUpdate=true;
-a.aTo.array.set(shape(n,t));a.aTo.needsUpdate=true;u.uT0.value=T;u.uT.value=0}
+const s=shape(n,t);a.aTo.array.set(s.pos);a.aTo.needsUpdate=true;
+if(s.camada){a.aCamada.array.set(s.camada);a.aCamada.needsUpdate=true;}
+u.uT0.value=T;u.uT.value=0}
 function go(st,sh,tx){cur.st=st;if(tx)cur.tx=tx;if(sh!==cur.sh||sh==='palavra'){cur.sh=sh;morph(sh,cur.tx)}ui()}
 function ui(){document.querySelectorAll('[data-k]').forEach(b=>b.classList.toggle('on',b.dataset.k===cur.st||b.dataset.k===cur.sh))}
 function btn(box,k,fn){const b=document.createElement('button');b.textContent=k[0].toUpperCase()+k.slice(1);b.dataset.k=k;b.onclick=fn;$(box).appendChild(b)}
@@ -149,25 +270,67 @@ $('pin').onclick=()=>{pin=!pin;$('pin').classList.toggle('on',pin);wake()};
 function fit(){const w=innerWidth,h=innerHeight;rd.setSize(w,h,false);cam.aspect=w/h;cam.position.z=u.uZ.value=Math.max(8,9/cam.aspect);cam.updateProjectionMatrix()}
 addEventListener('resize',()=>{fit();lay()});
 
+// velocidades base (rad/s) — tudo devagar; JSON pode sobrescrever com "anim"
+const VEL_Z=0.28;      // giro tipo relógio (modo 'z')
+const VEL_Y=0.55;      // giro 3D (modo 'y')
+
 let last=performance.now(),fr=0,ft=last;
 function loop(now){const dt=Math.min((now-last)/1000,.05);last=now;T+=dt;u.uTime.value=T;
 if(u.uT.value<1)u.uT.value=Math.min(1,u.uT.value+dt/1.8);
 const topic=cur.sh!=='esfera'&&cur.sh!=='circulo',tg=ST[cur.st][1](T)*(topic?.4:1);
 amp+=(tg-amp)*.15;u.uAmp.value=amp;
-const p=POSE[cur.sh]||[.1,.3];grp.position.y+=(gy-grp.position.y)*.05;grp.rotation.x+=(p[0]-grp.rotation.x)*.04;
-grp.rotation.y=p[1]?grp.rotation.y+dt*p[1]*2:grp.rotation.y*.95;
+
+// matrizes das camadas (anim por camada + anim global por cima)
+const lib=LIB[cur.sh]||{};
+const camadas=lib.camadas||[];
+const nCam=Math.min(camadas.length,MAXL);
+const temAnim=!!(lib.anim && lib.anim.length) || camadas.some(c=>c.anim&&c.anim.length);
+matAnim(lib.anim||[], T, [0,0,0], MAT_GLOBAL);
+for(let i=0;i<MAXL;i++){
+  if(i<nCam){
+    matAnim(camadas[i].anim||[], T, camadas[i].pivo||[0,0,0], u.uMatCamada.value[i]);
+    u.uMatCamada.value[i].premultiply(MAT_GLOBAL);
+  } else {
+    u.uMatCamada.value[i].copy(MAT_GLOBAL);
+  }
+}
+
+// giro do grupo: respeita o modo e não duplica quando o JSON já anima
+const modo=modoGiro(cur.sh);
+const p=POSE[cur.sh]||[.1,.3];
+if(temAnim){
+  grp.rotation.x+=(p[0]-grp.rotation.x)*.04;
+  grp.rotation.y*=.95;
+  grp.rotation.z*=.95;
+} else if(modo==='z'){
+  grp.rotation.x+=(0-grp.rotation.x)*.04;
+  grp.rotation.y*=.95;
+  grp.rotation.z+=dt*VEL_Z;
+} else if(modo==='none'){
+  grp.rotation.x+=(p[0]-grp.rotation.x)*.04;
+  grp.rotation.y*=.95;
+  grp.rotation.z*=.95;
+} else {
+  grp.rotation.x+=(p[0]-grp.rotation.x)*.04;
+  grp.rotation.y=p[1]?grp.rotation.y+dt*p[1]*VEL_Y:grp.rotation.y*.95;
+  grp.rotation.z*=.95;
+}
+
+grp.position.y+=(gy-grp.position.y)*.05;
 rd.render(sc,cam);fr++;
 if(now-ft>500){$('hud').textContent=cur.st+' · '+cur.sh+' · '+N/1000+'k · '+Math.round(fr*1000/(now-ft))+' fps';fr=0;ft=now}
 requestAnimationFrame(loop)}
 $('js').value='{"partes":[{"tipo":"box","tam":[.5,1.6,.5],"pos":[0,-1.4,0],"peso":1},{"tipo":"esf","r":1.3,"pos":[0,.4,0],"peso":3},{"tipo":"esf","r":.9,"pos":[.8,-.2,.3],"peso":1.5},{"tipo":"esf","r":.9,"pos":[-.8,-.2,-.3],"peso":1.5}]}';
 const clean=s=>s.replace(/```(?:json)?/g,'').replace(/([\[,:\s-])\.(\d)/g,(m,a,b)=>a+'0.'+b).trim();
-$('pj').onclick=()=>{try{const sp=JSON.parse(clean($('js').value));delete cache.custom;LIB.custom=sp;shape('custom');cur.sh='';go('falando','custom')}catch(e){$('hud').textContent='JSON inválido: '+e.message}};
+$('pj').onclick=()=>{try{const sp=JSON.parse(clean($('js').value));delete cache.custom;LIB.custom=sp;
+const g=sp.giro;
+GIRO.custom=(g==='none'||g==='y'||g==='z')?g:(sp.pontos&&sp.pontos.length?detectaGiro(sp.pontos):'y');
+shape('custom');cur.sh='';go('falando','custom')}catch(e){$('hud').textContent='JSON inválido: '+e.message}};
 if(new URLSearchParams(location.search).has('debug'))document.body.classList.add('debug');
 const cap=t=>{$('cap').textContent=String(t||'').slice(0,400)};
 let gy=0,tf=null,ftool=true;
 function lay(){gy=(innerWidth<=900&&!$('chat').classList.contains('vazio'))?.19*cam.position.z:0}
 const md=t=>t.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`([^`\n]+)`/g,'<code>$1</code>').replace(/^[-*] /gm,'• ');
-// formas das tools (planas, feitas à mão); tool sem forma fica no círculo mágico
 const Ln=(a,b,p)=>({tipo:'linha',de:[...a,0],ate:[...b,0],peso:p||Math.hypot(b[0]-a[0],b[1]-a[1])});
 const rect=(w,h)=>[Ln([-w,h],[w,h]),Ln([w,h],[w,-h]),Ln([w,-h],[-w,-h]),Ln([-w,-h],[-w,h])];
 const N5=[[0,2.2],[-2.09,.68],[-1.29,-1.78],[1.29,-1.78],[2.09,.68]];
@@ -184,7 +347,6 @@ let tema=null,fim,faloui=false,ultC='',lerId=0,leitura=false,anotId=null,marcas=
 try{leitura=localStorage.getItem('ciel_leitura')==='1'}catch(e){}
 const limpa=t=>{const r=t.replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/https?:\/\/\S+/g,'').replace(/[*_`#>|~]+/g,' ').replace(/^\s*[-•]\s+/,'').replace(/\s+/g,' ').trim();return /[\p{L}\p{N}]/u.test(r)?r:''};
 const voz=()=>{const v=speechSynthesis.getVoices().filter(x=>/^pt/i.test(x.lang));return v.find(x=>/pt-BR/i.test(x.lang)&&/natural|online/i.test(x.name))||v.find(x=>/pt-BR/i.test(x.lang))||v[0]};
-// linha do tempo: a cada frase lida, aplica a última marca com i <= frase atual (se a forma já chegou)
 const progresso=k=>{kAtual=k;aplica(k)};
 function aplica(k){if(!lendo||!marcas.length)return;let m=null;for(const x of marcas)if(x.i<=k)m=x;if(!m)return;
 const nm=m.nome==='coracao'?'coração':m.nome;if(!(S[nm]||LIB[nm])||tema===nm)return;tema=nm;go('falando',nm)}
@@ -210,7 +372,7 @@ else if(m.tipo==='forma'){const nm=m.nome==='coracao'?'coração':m.nome;if(m.sp
 if(S[nm]||LIB[nm]){if(!TOPIC.includes(nm))TOPIC.push(nm);tema=nm;cur.sh='';go('falando',nm)}}
 else if(m.tipo==='fala'){faloui=true;cap('');const tx=m.texto||'',lr=leitura&&tx&&!!window.speechSynthesis;
 if(tx!==ultC){const r=addMsg('c',tx,lr);if(lr)ler(r)}ultC=tx;
-if(!lr){go('falando',tema||'esfera');fim=setTimeout(()=>{go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4)},Math.min(12000,Math.max(2500,tx.length*45)))}}
+if(!lr){go('falando',tema||'esfera');fim=setTimeout(()=>{go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4)},Math.min(12000,Math.max(2500,tx.length*45)))}} 
 else if(m.tipo==='marcas'&&m.id===anotId){marcas=m.marcas||[];aplica(kAtual)}
 else if(m.tipo==='forma_lib'){if(m.spec){LIB[m.nome]=m.spec;delete cache[m.nome]}aplica(kAtual)}
 else if(m.tipo==='erro'){cap('⚠ '+m.texto);tema=null;go('repouso','esfera')}}
