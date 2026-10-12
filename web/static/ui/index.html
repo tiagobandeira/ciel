@@ -23,13 +23,14 @@ input{flex:1 1 110px;min-width:0}
 @media(max-width:1300px){#chat{bottom:calc(env(safe-area-inset-bottom,0px) + 150px)}}
 @media(max-width:900px){#chat{left:10px;right:10px;width:auto;top:auto;max-height:34vh}}
 .m code{background:rgba(74,168,255,.18);padding:0 4px;border-radius:4px}
+.s{transition:background .3s}.s.lendo{background:rgba(74,168,255,.3);border-radius:4px;box-shadow:0 0 0 3px rgba(74,168,255,.3)}
 </style></head><body>
 <canvas id="c"></canvas><div id="hud"></div><div id="cap"></div><div id="chat" class="vazio"><div id="msgs"></div></div>
 <div id="bar"><div class="row"><input id="msg" placeholder="Fale com o Ciel" autocomplete="off"><button id="send">Enviar</button></div><div class="row dbg" id="st"></div><div class="row dbg" id="sh"></div>
 <div class="row dbg"><input id="js" placeholder="colar JSON de forma"><button id="pj">Forma JSON</button></div>
 <div class="row"><input id="tx" placeholder="palavra" maxlength="14"><button id="pw">Palavra</button>
 <select id="q"><option value="15000">Leve</option><option value="30000" selected>Média</option><option value="60000">Alta</option></select>
-<button id="ft" class="on">Formas de tool</button><button id="pin">Fixar</button></div></div>
+<button id="rd">Leitura</button><button id="ft" class="on">Formas de tool</button><button id="pin">Fixar</button></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const R=Math.random,$=id=>document.getElementById(id);
@@ -179,22 +180,40 @@ rede:{partes:[{tipo:'esf',r:.5,peso:2},...N5.map(q=>({tipo:'esf',r:.25,pos:[...q
 const TOOLS={web_search:'lupa',web_search_extended:'lupa',read_url:'lupa',http_request:'lupa',
 read_file:'documento',read_pdf:'documento',read_source:'documento',search_knowledge:'documento',list_directory:'documento',list_directory_files:'documento',
 write_file:'lapis',docx_criar:'lapis',docx_substituir_texto:'lapis',docx_comentar:'lapis',run_script:'terminal',secondary_model:'rede'};
-let tema=null,fim,faloui=false,ultC='';
-function addMsg(k,t){const d=document.createElement('div');d.className='m '+k;if(k==='c')d.innerHTML=md(t);else d.textContent=t;$('msgs').appendChild(d);$('chat').classList.remove('vazio');$('msgs').scrollTop=1e9;lay();wake()}
+let tema=null,fim,faloui=false,ultC='',lerId=0,leitura=false;
+try{leitura=localStorage.getItem('ciel_leitura')==='1'}catch(e){}
+const limpa=t=>{const r=t.replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/https?:\/\/\S+/g,'').replace(/[*_`#>|~]+/g,' ').replace(/^\s*[-•]\s+/,'').replace(/\s+/g,' ').trim();return /[\p{L}\p{N}]/u.test(r)?r:''};
+const voz=()=>{const v=speechSynthesis.getVoices().filter(x=>/^pt/i.test(x.lang));return v.find(x=>/pt-BR/i.test(x.lang)&&/natural|online/i.test(x.name))||v.find(x=>/pt-BR/i.test(x.lang))||v[0]};
+const progresso=k=>{/* gancho da linha do tempo de formas (etapa 2): recebe o índice da frase em leitura */};
+function parar(){lerId++;try{speechSynthesis.cancel()}catch(e){}document.querySelectorAll('.s.lendo').forEach(x=>x.classList.remove('lendo'))}
+function ler(r){const sp=[...r.d.querySelectorAll('.s')],id=++lerId;let i=0;try{speechSynthesis.cancel()}catch(e){}go('falando',tema||'esfera');
+const prox=()=>{if(id!==lerId)return;while(i<r.fr.length&&!r.fr[i])i++;
+if(i>=r.fr.length){sp.forEach(x=>x.classList.remove('lendo'));go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4);return}
+const k=i,u=new SpeechSynthesisUtterance(r.fr[k]);u.lang='pt-BR';const v=voz();if(v)u.voice=v;
+u.onstart=()=>{if(id!==lerId)return;sp.forEach(x=>x.classList.remove('lendo'));sp[k].classList.add('lendo');sp[k].scrollIntoView({block:'nearest',behavior:'smooth'});
+$('chat').classList.remove('idle');clearTimeout(idle2);if(!pin)idle2=setTimeout(()=>$('chat').classList.add('idle'),8000);progresso(k)};
+u.onend=u.onerror=()=>{if(id!==lerId)return;i=k+1;prox()};speechSynthesis.speak(u)};
+setTimeout(prox,80)}
+function addMsg(k,t,lr){const d=document.createElement('div'),fr=[];d.className='m '+k;
+if(k!=='c')d.textContent=t;else if(!lr)d.innerHTML=md(t);
+else d.innerHTML=t.split(/(\n+|(?<=[.!?…])[ \t]+)/).map((p,j)=>{if(j%2||!p.trim())return p;fr.push(limpa(p));return '<span class="s">'+md(p)+'</span>'}).join('');
+$('msgs').appendChild(d);$('chat').classList.remove('vazio');$('msgs').scrollTop=1e9;lay();wake();return{d,fr}}
 function ev(m){clearTimeout(fim);if(m.tipo!=='tool')tf=null;
 if(m.tipo==='estado'){go(m.valor,ST[m.valor]?ST[m.valor][0]:'esfera');if(m.valor==='pensando')cap('pensando…')}
 else if(m.tipo==='tool'){go('pensando','circulo');cap('⚙ '+m.nome);const f=TOOLS[m.nome];if(ftool&&f){const n=m.nome;tf=n;setTimeout(()=>{if(tf===n)go('pensando',f)},700)}}
 else if(m.tipo==='forma'){const nm=m.nome==='coracao'?'coração':m.nome;if(m.spec){LIB[nm]=m.spec;delete cache[nm]}
 if(S[nm]||LIB[nm]){if(!TOPIC.includes(nm))TOPIC.push(nm);tema=nm;cur.sh='';go('falando',nm)}}
-else if(m.tipo==='fala'){faloui=true;cap('');const tx=m.texto||'';if(tx!==ultC)addMsg('c',tx);ultC=tx;go('falando',tema||'esfera');
-fim=setTimeout(()=>{go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4)},Math.min(12000,Math.max(2500,tx.length*45)))}
+else if(m.tipo==='fala'){faloui=true;cap('');const tx=m.texto||'',lr=leitura&&tx&&!!window.speechSynthesis;
+if(tx!==ultC){const r=addMsg('c',tx,lr);if(lr)ler(r)}ultC=tx;
+if(!lr){go('falando',tema||'esfera');fim=setTimeout(()=>{go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4)},Math.min(12000,Math.max(2500,tx.length*45)))}}
 else if(m.tipo==='erro'){cap('⚠ '+m.texto);tema=null;go('repouso','esfera')}}
 const es=new EventSource('/ui/events');es.onmessage=e=>{try{ev(JSON.parse(e.data))}catch(x){}};
-async function send(){const t=$('msg').value.trim();if(!t)return;$('msg').value='';tema=null;faloui=false;ultC='';addMsg('u',t);cap('pensando…');go('pensando','circulo');
+async function send(){const t=$('msg').value.trim();if(!t)return;$('msg').value='';parar();tema=null;faloui=false;ultC='';addMsg('u',t);cap('pensando…');go('pensando','circulo');
 try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:t})});
 if(!r.ok)throw Error('HTTP '+r.status);const d=await r.json();
 if(!faloui&&(t[0]==='/'||d.status!=='done'))ev({tipo:'fala',texto:d.reply||''})}
 catch(e){ev({tipo:'erro',texto:'falha ao enviar: '+e.message})}}
-$('ft').onclick=()=>{ftool=!ftool;$('ft').classList.toggle('on',ftool)};$('send').onclick=send;$('msg').onkeydown=e=>{if(e.key==='Enter')send()};
+$('ft').onclick=()=>{ftool=!ftool;$('ft').classList.toggle('on',ftool)};
+$('rd').classList.toggle('on',leitura);$('rd').onclick=()=>{leitura=!leitura;$('rd').classList.toggle('on',leitura);try{localStorage.setItem('ciel_leitura',leitura?'1':'0')}catch(e){}if(!leitura){parar();go('repouso',tema||'esfera')}};$('send').onclick=send;$('msg').onkeydown=e=>{if(e.key==='Enter')send()};
 fit();build();ui();wake();requestAnimationFrame(loop);
 </script></body></html>
