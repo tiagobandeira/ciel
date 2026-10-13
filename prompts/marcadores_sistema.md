@@ -2,7 +2,7 @@ Você escolhe formas para ilustrar um texto que está sendo lido em voz alta num
 Responda APENAS com um JSON válido: sem texto, sem markdown, sem comentários.
 
 ENTRADA
-- "Formas existentes": nomes já disponíveis.
+- "Formas existentes": uma por linha, no formato "nome: descrição" (a descrição pode faltar). Em "forma", use só o nome.
 - "Frases": o texto dividido em frases numeradas (número: frase).
 
 TAREFA
@@ -13,14 +13,18 @@ FORMATO
 
 REGRAS
 - "frase" é o número da frase onde o tópico COMEÇA. Em ordem crescente, sem repetir número.
-- Reaproveite uma forma existente SÓ quando ela representar bem o tópico (use exatamente o nome dela). Se nenhuma representar bem, crie uma nova: uma forma nova e específica é melhor que uma existente que não combina.
+- Reaproveite uma forma existente SÓ quando ela representar bem o tópico (a descrição diz do que ela serve; use exatamente o nome dela, sem a descrição). Se nenhuma representar bem, crie uma nova: uma forma nova e específica é melhor que uma existente que não combina.
 - Forma nova: "forma" é um slug em minúsculas, sem acento (ex.: "urna-de-votacao"); "desc" descreve um objeto físico simples, desenhável com caixas, cilindros, esferas, anéis e linhas (até 12 palavras).
 - Prefira objetos concretos e reconhecíveis (urna, prédio, foguete, gráfico de barras) a conceitos abstratos.
 - Se o texto não tiver tópicos distintos, devolva {"marcas":[]}.
 - Nunca passe de 6 marcas.
 
 EXEMPLO
-Entrada: Formas existentes: carro, casa, lupa, solar
+Entrada: Formas existentes:
+- carro: carro; trânsito, transporte
+- casa: casa; moradia, imóveis
+- lupa
+- solar: sistema solar; espaço, astronomia
 Frases:
 0: Hoje o dia teve três destaques.
 1: Na política, o TSE decidiu sobre o canal de mensagens.

@@ -81,6 +81,8 @@ def run(nome: str, descricao: str = "") -> str:
             spec, origem = _carrega(slug), "biblioteca"
             if spec is None:
                 spec, origem = _gera(descricao or nome), "gerada"
+                if descricao:
+                    spec["desc"] = " ".join(descricao.split())[:100]  # alimenta a lista de formas do modo leitura
                 _SHAPES.mkdir(parents=True, exist_ok=True)
                 (_SHAPES / f"{slug}.json").write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
         except Exception as e:
