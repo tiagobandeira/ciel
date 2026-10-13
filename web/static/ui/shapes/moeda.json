@@ -1,1 +1,1 @@
-{"nome":"moeda","plano":false,"partes":[{"tipo":"cil","r":2.0,"l":0.35,"pos":[0,0,0],"peso":17.72},{"tipo":"anel","r":1.5,"pos":[0,0,0.19],"peso":14.14},{"tipo":"anel","r":1.5,"pos":[0,0,-0.19],"peso":14.14}]}
+{"nome": "moeda", "plano": false, "partes": [{"tipo": "cil", "r": 2.0, "l": 0.35, "pos": [0, 0, 0], "peso": 17.72}, {"tipo": "anel", "r": 1.5, "pos": [0, 0, 0.19], "peso": 14.14}, {"tipo": "anel", "r": 1.5, "pos": [0, 0, -0.19], "peso": 14.14}], "desc": "moeda; economia, finanças"}
