@@ -20,15 +20,17 @@
   "_ui_anotar": "Modo leitura (/ui): criar_formas=false escolhe só entre as formas do repositório (mais rápido).",
   "ui_anotar": { "criar_formas": false },
 
-  "_ui_voz": "Entrada por voz (/ui): Whisper local. modelo menor = menos latência e menos precisão.",
+  "_ui_voz": "Voz (/ui), Whisper local. 'base' é ~3x mais rápido que 'small' com um pouco menos de precisão; beam_size 3-5 melhora números/acentos. pasta_modelos vazio usa o cache padrão; use data/models se o cache do usuário der acesso negado.",
   "ui_voz": {
-    "modelo": "small",
+    "modelo": "base",
     "idioma": "pt",
     "device": "auto",
     "compute_type": "int8",
     "cpu_threads": 0,
+    "pasta_modelos": "",
     "preload": true,
     "sem_timestamps": true,
+    "beam_size": 3,
     "prompt_inicial": ""
   }
 }

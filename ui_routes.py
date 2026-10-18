@@ -11,6 +11,11 @@ from flask import Blueprint, Response, jsonify, request, send_from_directory
 import ui_anotar
 import ui_bus
 
+# O backend "xet" do HuggingFace grava log em %USERPROFILE%\.cache\huggingface\xet; em
+# ambiente restrito (ou sem permissão nessa pasta) isso vira "acesso negado" no log, mesmo
+# com o download funcionando. O download por HTTP normal resolve e evita o ruído.
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
+
 _UI_DIR = Path(__file__).resolve().parent / "web" / "static" / "ui"
 bp = Blueprint("ui", __name__)
 
@@ -38,8 +43,10 @@ def _cfg_voz() -> dict:
     Chaves aceitas (todas opcionais):
       modelo, idioma, device, compute_type — como antes;
       cpu_threads   — threads do CTranslate2 (0 = automático);
+      pasta_modelos — onde guardar o modelo (vazio = cache padrão do HuggingFace);
       preload       — carrega o modelo quando a página /ui abre (padrão true);
       sem_timestamps— transcreve sem timestamps por segmento (padrão true, mais rápido);
+      beam_size     — 1 = mais rápido; 5 melhora números/acentos em troca de tempo;
       prompt_inicial— texto de contexto para o Whisper (padrão "").
     """
     try:
@@ -50,14 +57,20 @@ def _cfg_voz() -> dict:
         threads = max(0, int(cfg.get("cpu_threads") or 0))
     except (TypeError, ValueError):
         threads = 0
+    try:
+        beam = max(1, min(10, int(cfg.get("beam_size") or 1)))
+    except (TypeError, ValueError):
+        beam = 1
     return {
         "modelo": cfg.get("modelo", "small"),
         "idioma": cfg.get("idioma", "pt"),
         "device": cfg.get("device", "auto"),
         "compute_type": cfg.get("compute_type", "int8"),
         "cpu_threads": threads,
+        "pasta_modelos": str(cfg.get("pasta_modelos") or "").strip(),
         "preload": bool(cfg.get("preload", True)),
         "sem_timestamps": bool(cfg.get("sem_timestamps", True)),
+        "beam_size": beam,
         "prompt_inicial": str(cfg.get("prompt_inicial") or ""),
     }
 
@@ -73,7 +86,17 @@ def _carrega_modelo(cfg: dict) -> tuple:
     if _whisper["modelo"] is not None and _whisper["chave"] == chave:
         return _whisper["modelo"], 0
     t0 = time.monotonic()
-    extras = {"cpu_threads": cfg["cpu_threads"]} if cfg["cpu_threads"] else {}
+    extras = {}
+    if cfg["cpu_threads"]:
+        extras["cpu_threads"] = cfg["cpu_threads"]
+    if cfg["pasta_modelos"]:
+        # cache do modelo dentro do projeto: evita o acesso negado em %USERPROFILE%\.cache
+        # quando o servidor roda em sandbox/ambiente restrito
+        pasta = Path(cfg["pasta_modelos"])
+        if not pasta.is_absolute():
+            pasta = _ROOT / pasta
+        pasta.mkdir(parents=True, exist_ok=True)
+        extras["download_root"] = str(pasta)
     _whisper["modelo"] = WhisperModel(
         cfg["modelo"], device=cfg["device"], compute_type=cfg["compute_type"], num_workers=1, **extras)
     _whisper["chave"] = chave
@@ -112,7 +135,7 @@ def _transcrever(dados: bytes, sufixo: str) -> dict:
             segmentos, info = modelo.transcribe(
                 caminho,
                 language=cfg["idioma"] or None,
-                beam_size=1,
+                beam_size=cfg["beam_size"],
                 best_of=1,
                 vad_filter=True,
                 without_timestamps=cfg["sem_timestamps"],
