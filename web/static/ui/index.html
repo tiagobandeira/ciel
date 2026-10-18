@@ -466,13 +466,23 @@ if(tx!==ultC){const r=addMsg('c',tx,lr);if(lr)ler(r)}ultC=tx;
 if(!lr){go('falando',tema||'esfera');fim=setTimeout(()=>{go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4)},Math.min(12000,Math.max(2500,tx.length*45)))}} 
 else if(m.tipo==='marcas'&&m.id===anotId){marcas=m.marcas||[];aplica(kAtual)}
 else if(m.tipo==='forma_lib'){if(m.spec){LIB[m.nome]=m.spec;delete cache[m.nome]}aplica(kAtual)}
+else if(m.tipo==='painel'){
+  if(modoPesquisa){
+    const p=m.painel||{},id=m.id||p.id;
+    if(m.acao==='abrir'||m.acao==='atualizar'){if(p&&p.id){abrirPainel(p);if(m.focar)focarPainel(p.id)}}
+    else if(m.acao==='fechar'&&id)fecharPainel(id);
+    else if(m.acao==='focar'&&id)focarPainel(id);
+    else if(m.acao==='palco'&&id)abrirPalcoPorId(id);
+    else if(m.acao==='fechar_palco')fecharPalco();
+  }
+}
 else if(m.tipo==='painel_foco'){focarPainel(m.id)}
 else if(m.tipo==='erro'){cap('⚠ '+m.texto);tema=null;go('repouso','esfera')}}
 const es=new EventSource('/ui/events');es.onmessage=e=>{try{ev(JSON.parse(e.data))}catch(x){}};
 async function send(deVoz){const t=$('msg').value.trim();if(!t)return;aquecerAudio();$('msg').value='';parar();tema=null;faloui=false;ultC='';
 if(deVoz===true&&vz)vz.envio=performance.now();else vz=null;
 addMsg('u',t);cap('pensando…');go('pensando','circulo');
-try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:t})});
+try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:t,tela:resumoTela(),modo_pesquisa:modoPesquisa,palco:palcoAtual||'',foco:painelFoco||''})});
 if(!r.ok)throw Error('HTTP '+r.status);const d=await r.json();
 if(deVoz===true&&vz){vz.chato=performance.now();vzPublica()}
 if(!faloui&&(t[0]==='/'||d.status!=='done'))ev({tipo:'fala',texto:d.reply||''})}
@@ -669,8 +679,7 @@ async function mic(){
 // Por enquanto a política é só exibida; nenhum painel é lido em voz alta sozinho.
 const PAINEIS_PADRAO=[
   {id:'relogio',tipo:'relogio',titulo:'Data e hora',nomes:['relógio','hora','data','calendário'],slot:'top-left',fala:'nunca',resumo:'Relógio com data e calendário do mês atual.',acoes:[]},
-  {id:'clima',tipo:'clima',titulo:'Clima',nomes:['clima','previsão','temperatura'],slot:'bottom-left',fala:'resumo',resumo:'Clima atual e máximas/mínimas do dia na localização do usuário.',acoes:[{id:'atualizar',rotulo:'Atualizar'}]},
-  {id:'imagens',tipo:'imagens',titulo:'Imagens',nomes:['imagens','fotos','galeria','carrossel','foguetes','lua','espaço','artemis'],apresentacao:'central',slot:'bottom-left',fala:'nunca',resumo:'Carrossel de imagens do tema.',acoes:[],dados:{itens:[]}}
+  {id:'clima',tipo:'clima',titulo:'Clima',nomes:['clima','previsão','temperatura'],slot:'bottom-left',fala:'resumo',resumo:'Clima atual e máximas/mínimas do dia na localização do usuário.',acoes:[{id:'atualizar',rotulo:'Atualizar'}]}
 ];
 const PAINEIS_RENDER={
   relogio:(corpo)=>{
@@ -822,6 +831,11 @@ function abrirPalco(p){
   try{palcoCleanup=render.palco(corpo,p)||null}catch(e){corpo.textContent='Falha ao abrir o painel.'}
   $('palco').classList.add('aberto');$('palco').setAttribute('aria-hidden','false');
 }
+function abrirPalcoPorId(id){
+  if(!id||palcoAtual===id)return;
+  const s=paineisAbertos.get(id);
+  if(s&&s.p)abrirPalco(s.p);
+}
 function fecharPalco(){
   if(!palcoAtual)return;
   palcoAtual=null;
@@ -873,6 +887,14 @@ function abrirPainel(p){
   let cleanup=null;
   try{cleanup=PAINEIS_RENDER[p.tipo](corpo,p)}catch(e){corpo.textContent='Falha ao montar o painel.'}
   paineisAbertos.set(p.id,{el,cleanup,p});
+}
+function resumoTela(){
+  if(!modoPesquisa)return [];
+  return [...paineisAbertos.values()].slice(0,12).map(s=>{
+    const p=s.p||{};
+    return {id:p.id||'',titulo:p.titulo||'',tipo:p.tipo||'',
+            resumo:(p.resumo||'').slice(0,180),fala:p.fala||'nunca'};
+  });
 }
 async function carregarPaineisPesquisa(){
   for(const base of PAINEIS_PADRAO){
