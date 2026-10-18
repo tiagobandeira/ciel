@@ -40,6 +40,21 @@ def _extrai(txt: str) -> dict:
     return json.loads(txt[i:j + 1])
 
 
+def _num(x, lo=None, hi=None):
+    """Converte para float finito, com limites opcionais. None se inválido (string, NaN, ±inf)."""
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return None
+    if v != v or v in (float("inf"), float("-inf")):  # NaN / ±inf
+        return None
+    if lo is not None:
+        v = max(lo, v)
+    if hi is not None:
+        v = min(hi, v)
+    return v
+
+
 def _valida(spec: dict) -> dict:
     partes = spec.get("partes")
     if not isinstance(partes, list) or not 1 <= len(partes) <= 24:
@@ -47,7 +62,33 @@ def _valida(spec: dict) -> dict:
     for p in partes:
         if not isinstance(p, dict) or p.get("tipo") not in _TIPOS:
             raise ValueError(f"tipo de parte inválido: {p}")
-    return {"nome": spec.get("nome", ""), "plano": bool(spec.get("plano")), "partes": partes}
+        # "giro" numérico por parte (esf/anel/arco): órbita em torno da origem.
+        # Inválido/vazio -> removido (o JS usa 0 por padrão).
+        if "giro" in p:
+            g = _num(p["giro"], lo=-3.0, hi=3.0)
+            if g is None:
+                p.pop("giro", None)
+            else:
+                p["giro"] = g
+    nome = spec.get("nome")
+    out = {
+        "nome": nome if isinstance(nome, str) else "",
+        "plano": bool(spec.get("plano")),
+        "partes": partes,
+    }
+    # "pose":[inclinacao_x, giro_y_base] — inclina o conjunto e fixa a rotação base em Y.
+    # Só aceita lista de exatamente 2 números; parcial é pior que nenhum.
+    pose = spec.get("pose")
+    if isinstance(pose, list) and len(pose) == 2:
+        px = _num(pose[0], lo=-1.5, hi=1.5)
+        py = _num(pose[1], lo=-2.0, hi=2.0)
+        if px is not None and py is not None:
+            out["pose"] = [px, py]
+    # "giro" do objeto (topo): modo de rotação global do grupo.
+    giro = spec.get("giro")
+    if giro in ("y", "z", "none"):
+        out["giro"] = giro
+    return out
 
 
 def _gera(descricao: str) -> dict:
