@@ -25,13 +25,70 @@ input{flex:1 1 110px;min-width:0}
 .m code{background:rgba(74,168,255,.18);padding:0 4px;border-radius:4px}
 .s{transition:background .3s}.s.lendo{background:rgba(74,168,255,.3);border-radius:4px;box-shadow:0 0 0 3px rgba(74,168,255,.3)}
 #vz{font-size:11px;opacity:.85}
+#tela{position:fixed;left:14px;top:calc(env(safe-area-inset-top,0px) + 40px);bottom:calc(env(safe-area-inset-bottom,0px) + 150px);width:min(440px,48vw);pointer-events:none}
+#paineis{height:100%;display:flex;flex-direction:column;gap:10px;overflow-y:auto;overflow-x:hidden;padding:4px 22px 10px 10px;box-sizing:border-box;pointer-events:none;scroll-behavior:smooth;scroll-snap-type:y proximity;scroll-padding-top:8px;scrollbar-width:none;-ms-overflow-style:none;mask-image:linear-gradient(to bottom,transparent 0,#000 12px,#000 calc(100% - 12px),transparent 100%);-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 12px,#000 calc(100% - 12px),transparent 100%)}
+#paineis::-webkit-scrollbar{width:0;height:0;display:none}
+.painel{position:relative;flex:0 0 auto;width:min(320px,100%);max-height:60vh;overflow:auto;box-sizing:border-box;pointer-events:auto;padding:10px 12px;border-radius:16px;background:rgba(8,20,40,.62);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(74,168,255,.35);box-shadow:0 0 24px var(--gl),inset 0 0 12px rgba(74,168,255,.12);animation:painelIn .45s ease-out both;transition:width .55s cubic-bezier(.22,1,.36,1),max-height .55s cubic-bezier(.22,1,.36,1),transform .5s cubic-bezier(.22,1,.36,1),opacity .4s ease,box-shadow .6s ease,border-color .5s ease;scrollbar-width:none;-ms-overflow-style:none;transform-origin:left center;will-change:transform,width;scroll-snap-align:start;scroll-margin-top:10px}
+.painel::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(120% 90% at 15% 0,rgba(120,200,255,.20),transparent 65%);opacity:0;transition:opacity .55s ease}
+.painel.foco::before{opacity:1}
+.painel::-webkit-scrollbar{width:0;height:0;display:none}
+#tela.temfoco .painel:not(.foco){opacity:.42;transform:translateX(-4px) scale(.975)}
+.painel.foco{width:100%;max-height:78vh;border-color:rgba(140,210,255,.7);box-shadow:0 0 26px var(--gl),0 0 0 1px rgba(140,210,255,.35),inset 0 0 18px rgba(74,168,255,.18);transform:translateX(6px) scale(1.015)}
+.painel.pulso{box-shadow:0 0 0 2px rgba(140,210,255,.6),0 0 28px rgba(74,168,255,.65),inset 0 0 20px rgba(74,168,255,.22);border-color:rgba(160,220,255,.95)}
+.painel-h{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.85;cursor:pointer;user-select:none}
+.painel-h b{font-weight:600;flex:1}
+.painel-tag{font-size:9px;opacity:.5;letter-spacing:0;text-transform:none}
+.painel-x{background:none;border:0;color:var(--fg);opacity:.6;font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
+.painel-x:hover{opacity:1}
+.painel .hora{font-size:34px;line-height:1;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.painel .data{font-size:12px;opacity:.8;margin:2px 0 8px}
+.painel .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:10px;text-align:center}
+.painel .cal .dow{opacity:.5}
+.painel .cal .hoje{background:rgba(74,168,255,.35);border-radius:50%;box-shadow:0 0 8px var(--gl)}
+.painel .clima-top{display:flex;align-items:center;gap:10px}
+.painel .clima-ico{font-size:30px;line-height:1}
+.painel .clima-temp{font-size:28px;line-height:1;font-variant-numeric:tabular-nums}
+.painel .clima-cond{font-size:12px;opacity:.85}
+.painel .clima-sub{font-size:10px;opacity:.65;margin-top:6px;line-height:1.5}
+.painel .clima-local{font-size:10px;opacity:.55;margin-top:4px}
+.painel .clima-acao{margin-top:8px;font-size:11px;padding:3px 8px}
+#palco{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;padding:24px;box-sizing:border-box}
+#palco.aberto{display:flex}
+#palco .palco-fundo{position:absolute;inset:0;background:rgba(2,5,13,.18);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+#palco .palco-card{position:relative;width:min(820px,86vw);max-height:84vh;overflow:auto;box-sizing:border-box;padding:14px 16px;border-radius:20px;background:rgba(8,20,40,.42);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(74,168,255,.4);box-shadow:0 0 44px var(--gl),inset 0 0 20px rgba(74,168,255,.12);animation:palcoIn .4s cubic-bezier(.2,.7,.2,1) both;scrollbar-width:none;-ms-overflow-style:none}
+#palco .palco-card::-webkit-scrollbar{width:0;height:0;display:none}
+@keyframes palcoIn{from{opacity:0;transform:translateY(18px) scale(.94)}to{opacity:1;transform:none}}
+#palco .palco-h{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.85}
+#palco .palco-h b{flex:1}
+.img-preview{height:84px;border-radius:10px;overflow:hidden;background:rgba(0,0,0,.3);transition:height .35s ease}
+.painel[data-tipo="imagens"].foco .img-preview{height:min(34vh,240px)}
+.img-preview img{width:100%;height:100%;object-fit:cover;display:block}
+.img-painel .img-tela{position:relative;height:150px;border-radius:12px;overflow:hidden;background:rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center}
+.img-painel .img-tela img{width:100%;height:100%;object-fit:cover;display:block}
+#palco .img-painel .img-tela{height:min(56vh,460px)}
+#palco .img-painel .img-tela img{object-fit:contain}
+.img-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:2;width:30px;height:30px;padding:0;border-radius:50%;background:rgba(2,5,13,.58);border:1px solid rgba(74,168,255,.45);color:var(--fg);font-size:18px;line-height:1;cursor:pointer}
+.img-nav.prev{left:8px}.img-nav.next{right:8px}
+.img-legenda{font-size:11px;opacity:.85;margin-top:6px;line-height:1.45}
+.img-legenda a{color:var(--ac);text-decoration:none}
+.img-dots{display:flex;gap:5px;justify-content:center;margin-top:8px}
+.img-dot{width:6px;height:6px;padding:0;border-radius:50%;border:0;background:rgba(74,168,255,.3);cursor:pointer}
+.img-dot.on{background:var(--ac);box-shadow:0 0 6px var(--gl)}
+.img-ampliar{margin-top:8px;font-size:11px;padding:3px 8px}
+@keyframes painelIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@media(max-width:900px){
+  #tela{left:10px;right:10px;width:auto;top:calc(env(safe-area-inset-top,0px) + 40px);bottom:calc(env(safe-area-inset-bottom,0px) + 170px)}
+  #paineis{gap:8px;padding:4px 8px 10px}
+  .painel,.painel.foco{width:100%;max-height:30vh}
+  .painel.foco{max-height:46vh}
+}
 </style></head><body>
-<canvas id="c"></canvas><div id="hud"></div><div id="cap"></div><div id="chat" class="vazio"><div id="msgs"></div></div>
+<canvas id="c"></canvas><div id="tela"><div id="paineis"></div></div><div id="palco" aria-hidden="true"><div class="palco-fundo"></div><div class="palco-card"><div class="palco-h"><b id="palco-titulo"></b><button class="painel-x" id="palco-x" type="button" title="Fechar">×</button></div><div id="palco-corpo"></div></div></div><div id="hud"></div><div id="cap"></div><div id="chat" class="vazio"><div id="msgs"></div></div>
 <div id="bar"><div class="row"><input id="msg" placeholder="Fale com o Ciel" autocomplete="off"><button id="send">Enviar</button><button id="mic">Falar</button></div><div class="row dbg" id="st"></div><div class="row dbg" id="sh"></div><div class="row dbg" id="vz"></div>
 <div class="row dbg"><input id="js" placeholder="colar JSON de forma"><button id="pj">Forma JSON</button></div>
 <div class="row"><input id="tx" placeholder="palavra" maxlength="14"><button id="pw">Palavra</button>
 <select id="q"><option value="15000">Leve</option><option value="30000" selected>Média</option><option value="60000">Alta</option></select>
-<button id="rd">Leitura</button><button id="lv" title="modo live: respostas faladas e interrupção pela fala">Live</button><button id="ft" class="on">Formas de tool</button><button id="pin">Fixar</button></div></div>
+<button id="rd">Leitura</button><button id="lv" title="modo live: respostas faladas e interrupção pela fala">Live</button><button id="pq" title="modo pesquisa: painéis de estudo ao redor da forma">Pesquisa</button><button id="ft" class="on">Formas de tool</button><button id="pin">Fixar</button></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const R=Math.random,$=id=>document.getElementById(id);
@@ -375,7 +432,7 @@ rede:{partes:[{tipo:'esf',r:.5,peso:2},...N5.map(q=>({tipo:'esf',r:.25,pos:[...q
 const TOOLS={web_search:'lupa',web_search_extended:'lupa',read_url:'lupa',http_request:'lupa',
 read_file:'documento',read_pdf:'documento',read_source:'documento',search_knowledge:'documento',list_directory:'documento',list_directory_files:'documento',
 write_file:'lapis',docx_criar:'lapis',docx_substituir_texto:'lapis',docx_comentar:'lapis',run_script:'terminal',secondary_model:'rede'};
-let tema=null,fim,faloui=false,ultC='',lerId=0,leitura=false,modoLive=false,anotId=null,marcas=[],kAtual=-1,lendo=false;
+let tema=null,fim,faloui=false,ultC='',lerId=0,leitura=false,modoLive=false,modoPesquisa=false,anotId=null,marcas=[],kAtual=-1,lendo=false;
 try{leitura=localStorage.getItem('ciel_leitura')==='1'}catch(e){}
 try{modoLive=localStorage.getItem('ciel_live')==='1'}catch(e){}
 const limpa=t=>{const r=t.replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/https?:\/\/\S+/g,'').replace(/[*_`#>|~]+/g,' ').replace(/^\s*[-•]\s+/,'').replace(/\s+/g,' ').trim();return /[\p{L}\p{N}]/u.test(r)?r:''};
@@ -391,7 +448,7 @@ go('falando',tema||'esfera');
 const prox=()=>{if(id!==lerId)return;while(i<r.fr.length&&!r.fr[i])i++;
 if(i>=r.fr.length){encerrarEscuta();lendo=false;sp.forEach(x=>x.classList.remove('lendo'));go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4);return}
 const k=i,u=new SpeechSynthesisUtterance(r.fr[k]);u.lang='pt-BR';const v=voz();if(v)u.voice=v;
-u.onstart=()=>{if(id!==lerId)return;if(modoLive)iniciarEscutaLive();if(vz&&!vz.fala){vz.fala=performance.now();vzPublica()}sp.forEach(x=>x.classList.remove('lendo'));sp[k].classList.add('lendo');sp[k].scrollIntoView({block:'nearest',behavior:'smooth'});
+u.onstart=()=>{if(id!==lerId)return;if(modoLive)iniciarEscutaLive();if(modoPesquisa)focarPorTexto(r.fr[k]);if(vz&&!vz.fala){vz.fala=performance.now();vzPublica()}sp.forEach(x=>x.classList.remove('lendo'));sp[k].classList.add('lendo');sp[k].scrollIntoView({block:'nearest',behavior:'smooth'});
 $('chat').classList.remove('idle');clearTimeout(idle2);if(!pin)idle2=setTimeout(()=>$('chat').classList.add('idle'),8000);progresso(k)};
 u.onend=u.onerror=()=>{if(id!==lerId)return;i=k+1;prox()};speechSynthesis.speak(u)};
 setTimeout(prox,80)}
@@ -409,6 +466,7 @@ if(tx!==ultC){const r=addMsg('c',tx,lr);if(lr)ler(r)}ultC=tx;
 if(!lr){go('falando',tema||'esfera');fim=setTimeout(()=>{go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4)},Math.min(12000,Math.max(2500,tx.length*45)))}} 
 else if(m.tipo==='marcas'&&m.id===anotId){marcas=m.marcas||[];aplica(kAtual)}
 else if(m.tipo==='forma_lib'){if(m.spec){LIB[m.nome]=m.spec;delete cache[m.nome]}aplica(kAtual)}
+else if(m.tipo==='painel_foco'){focarPainel(m.id)}
 else if(m.tipo==='erro'){cap('⚠ '+m.texto);tema=null;go('repouso','esfera')}}
 const es=new EventSource('/ui/events');es.onmessage=e=>{try{ev(JSON.parse(e.data))}catch(x){}};
 async function send(deVoz){const t=$('msg').value.trim();if(!t)return;aquecerAudio();$('msg').value='';parar();tema=null;faloui=false;ultC='';
@@ -606,12 +664,245 @@ async function mic(){
   $('mic').classList.add('on');$('mic').textContent='Enviar fala';
   cap(VAD.auto?'ouvindo… (clique para enviar; encerra sozinho no silêncio)':'ouvindo… (clique para enviar)');go('ouvindo','esfera');
 }
+// ── modo pesquisa: painéis (spike) ────────────────────────────────────────────
+// O manifesto tem "fala" (nunca | resumo | completo) e "resumo" para o agente ver depois.
+// Por enquanto a política é só exibida; nenhum painel é lido em voz alta sozinho.
+const PAINEIS_PADRAO=[
+  {id:'relogio',tipo:'relogio',titulo:'Data e hora',nomes:['relógio','hora','data','calendário'],slot:'top-left',fala:'nunca',resumo:'Relógio com data e calendário do mês atual.',acoes:[]},
+  {id:'clima',tipo:'clima',titulo:'Clima',nomes:['clima','previsão','temperatura'],slot:'bottom-left',fala:'resumo',resumo:'Clima atual e máximas/mínimas do dia na localização do usuário.',acoes:[{id:'atualizar',rotulo:'Atualizar'}]},
+  {id:'imagens',tipo:'imagens',titulo:'Imagens',nomes:['imagens','fotos','galeria','carrossel','foguetes','lua','espaço','artemis'],apresentacao:'central',slot:'bottom-left',fala:'nunca',resumo:'Carrossel de imagens do tema.',acoes:[],dados:{itens:[]}}
+];
+const PAINEIS_RENDER={
+  relogio:(corpo)=>{
+    corpo.innerHTML='<div class="hora"></div><div class="data"></div><div class="cal"></div>';
+    const hora=corpo.querySelector('.hora'),data=corpo.querySelector('.data'),cal=corpo.querySelector('.cal');
+    const dows=['D','S','T','Q','Q','S','S'];
+    const calendario=d=>{
+      const y=d.getFullYear(),m=d.getMonth(),primeiro=new Date(y,m,1).getDay(),dias=new Date(y,m+1,0).getDate();
+      let h=dows.map(x=>`<span class="dow">${x}</span>`).join('');
+      for(let i=0;i<primeiro;i++)h+='<span></span>';
+      for(let dia=1;dia<=dias;dia++)h+=`<span class="${dia===d.getDate()?'hoje':''}">${dia}</span>`;
+      return h;
+    };
+    let ultimoDia=-1;
+    const desenha=()=>{
+      const d=new Date();
+      hora.textContent=d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      const txt=d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+      data.textContent=txt.charAt(0).toUpperCase()+txt.slice(1);
+      if(d.getDate()!==ultimoDia){ultimoDia=d.getDate();cal.innerHTML=calendario(d)}
+    };
+    desenha();const id=setInterval(desenha,1000);
+    return ()=>clearInterval(id);
+  },
+  clima:(corpo)=>{
+    corpo.innerHTML='<div class="clima-top"><div class="clima-ico">🌡️</div><div><div class="clima-temp">--°</div><div class="clima-cond">Localizando…</div></div></div><div class="clima-sub"></div><div class="clima-local"></div><button class="clima-acao" type="button">Atualizar</button>';
+    const ico=corpo.querySelector('.clima-ico'),temp=corpo.querySelector('.clima-temp'),cond=corpo.querySelector('.clima-cond'),
+      sub=corpo.querySelector('.clima-sub'),local=corpo.querySelector('.clima-local'),btn=corpo.querySelector('.clima-acao');
+    const MAPA={
+      0:['☀️','Céu limpo'],1:['🌤️','Quase limpo'],2:['⛅','Parcialmente nublado'],3:['☁️','Nublado'],
+      45:['🌫️','Névoa'],48:['🌫️','Névoa com geada'],
+      51:['🌦️','Garoa leve'],53:['🌦️','Garoa'],55:['🌧️','Garoa forte'],
+      61:['🌧️','Chuva leve'],63:['🌧️','Chuva'],65:['🌧️','Chuva forte'],
+      66:['🌧️','Chuva congelante'],67:['🌧️','Chuva congelante forte'],
+      71:['🌨️','Neve leve'],73:['🌨️','Neve'],75:['❄️','Neve forte'],77:['🌨️','Grãos de neve'],
+      80:['🌦️','Pancadas'],81:['🌧️','Pancadas'],82:['⛈️','Pancadas fortes'],
+      85:['🌨️','Pancadas de neve'],86:['🌨️','Pancadas de neve fortes'],
+      95:['⛈️','Trovoada'],96:['⛈️','Trovoada com granizo'],99:['⛈️','Trovoada com granizo']
+    };
+    const num=v=>typeof v==='number'?Math.round(v)+'°':'--';
+    let vivo=true,abort=null;
+    const carregar=async()=>{
+      if(!vivo)return;
+      cond.textContent='Localizando…';temp.textContent='--°';sub.textContent='';local.textContent='';
+      let pos=null,origem='';
+      try{
+        if(!navigator.geolocation)throw Error('sem geolocalização');
+        pos=await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:6000,maximumAge:600000}));
+        origem='Sua localização';
+      }catch(e){
+        pos={coords:{latitude:-3.7319,longitude:-38.5267}};
+        origem='Fortaleza (localização padrão)';
+      }
+      if(!vivo)return;
+      const lat=pos.coords.latitude.toFixed(4),lon=pos.coords.longitude.toFixed(4);
+      const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1`;
+      abort=new AbortController();
+      try{
+        const r=await fetch(url,{signal:abort.signal});
+        if(!r.ok)throw Error('HTTP '+r.status);
+        const d=await r.json(),cur=d.current||{},dia=d.daily||{};
+        const info=MAPA[cur.weather_code]||['🌡️','Tempo'];
+        ico.textContent=info[0];temp.textContent=num(cur.temperature_2m);cond.textContent=info[1];
+        const tmax=num(dia.temperature_2m_max&&dia.temperature_2m_max[0]),tmin=num(dia.temperature_2m_min&&dia.temperature_2m_min[0]);
+        sub.textContent=`máx ${tmax} · mín ${tmin} · sensação ${num(cur.apparent_temperature)} · vento ${typeof cur.wind_speed_10m==='number'?Math.round(cur.wind_speed_10m):'--'} km/h`;
+        local.textContent=origem+' · Open-Meteo';
+      }catch(e){
+        if(e.name==='AbortError')return;
+        cond.textContent='Clima indisponível';sub.textContent='Não consegui consultar o Open-Meteo agora.';
+      }
+    };
+    btn.onclick=carregar;carregar();
+    return ()=>{vivo=false;if(abort)abort.abort()};
+  }
+};
+function renderImagens(corpo,p,palco){
+  const itens=(p.dados&&p.dados.itens)||[];
+  corpo.classList.add('img-painel');
+  if(!itens.length){corpo.textContent='Sem imagens neste painel.';return}
+  if(!palco){
+    corpo.innerHTML='<div class="img-preview"><img loading="lazy" decoding="async" alt=""></div><div class="img-legenda"></div><button class="img-ampliar" type="button">Abrir no centro</button>';
+    const img=corpo.querySelector('img'),leg=corpo.querySelector('.img-legenda');
+    let j=0;
+    const mostra=()=>{
+      const it=itens[j]||{};
+      img.style.opacity='';img.src=it.url||'';img.alt=it.titulo||'Imagem';
+      try{img.animate([{opacity:.25},{opacity:1}],{duration:280,easing:'ease-out'})}catch(e){}
+      leg.textContent='';
+      const b=document.createElement('b');b.textContent=it.titulo||'Imagens';leg.appendChild(b);
+      const c=document.createElement('span');c.textContent=' · '+(j+1)+'/'+itens.length+' · '+(it.credito||'Wikimedia');c.style.opacity='.6';leg.appendChild(c);
+    };
+    img.onerror=()=>{img.style.opacity='.25'};
+    const timer=setInterval(()=>{j=(j+1)%itens.length;mostra()},6000);
+    const prev=corpo.querySelector('.img-preview');
+    if(prev){prev.title='Abrir no centro';prev.style.cursor='pointer';prev.onclick=()=>abrirPalco(p)}
+    corpo.querySelector('.img-ampliar').onclick=()=>abrirPalco(p);
+    mostra();
+    return ()=>clearInterval(timer);
+  }
+  corpo.innerHTML='<div class="img-tela"><img loading="lazy" decoding="async" alt=""><button class="img-nav prev" type="button" title="Anterior">‹</button><button class="img-nav next" type="button" title="Próxima">›</button></div><div class="img-legenda"></div><div class="img-dots"></div>';
+  const img=corpo.querySelector('img'),leg=corpo.querySelector('.img-legenda'),dots=corpo.querySelector('.img-dots');
+  let usouFallback=false;
+  img.onerror=()=>{
+    if(palco&&!usouFallback){usouFallback=true;img.src=(itens[i]&&itens[i].url)||'';}
+    else{img.style.opacity='.25';img.alt='Imagem indisponível'}
+  };
+  let i=0;
+  const mostra=()=>{
+    const it=itens[i]||{};
+    usouFallback=false;
+    img.style.opacity='';
+    img.src=(palco&&it.urlGrande)||it.url||'';
+    try{img.animate([{opacity:.25},{opacity:1}],{duration:280,easing:'ease-out'})}catch(e){}
+    img.alt=it.titulo||'Imagem';
+    leg.textContent='';
+    const b=document.createElement('b');b.textContent=it.titulo||'';
+    leg.appendChild(b);
+    if(it.link){const a=document.createElement('a');a.href=it.link;a.target='_blank';a.rel='noopener noreferrer';a.textContent=' · ver na Wikipedia';leg.appendChild(a)}
+    if(it.credito){const c=document.createElement('span');c.textContent=' · '+it.credito;c.style.opacity='.55';leg.appendChild(c)}
+    dots.querySelectorAll('.img-dot').forEach((d,n)=>d.classList.toggle('on',n===i));
+  };
+  dots.innerHTML=itens.map((_,n)=>`<button class="img-dot" type="button" data-n="${n}" title="Imagem ${n+1}"></button>`).join('');
+  const avanca=()=>{i=(i+1)%itens.length;mostra()};
+  let timer=setInterval(avanca,6000);
+  const reinicia=()=>{clearInterval(timer);timer=setInterval(avanca,6000)};
+  dots.querySelectorAll('.img-dot').forEach(d=>d.onclick=()=>{i=+d.dataset.n;mostra();reinicia()});
+  corpo.querySelector('.img-nav.prev').onclick=()=>{i=(i-1+itens.length)%itens.length;mostra();reinicia()};
+  corpo.querySelector('.img-nav.next').onclick=()=>{i=(i+1)%itens.length;mostra();reinicia()};
+  mostra();
+  return ()=>clearInterval(timer);
+}
+PAINEIS_RENDER.imagens=(corpo,p)=>renderImagens(corpo,p,false);
+PAINEIS_RENDER.imagens.palco=(corpo,p)=>renderImagens(corpo,p,true);
+const paineisAbertos=new Map();
+let painelFoco=null,palcoAtual=null,palcoCleanup=null;
+function limparFoco(){
+  if(!painelFoco)return;
+  const s=paineisAbertos.get(painelFoco);
+  if(s)s.el.classList.remove('foco');
+  painelFoco=null;$('tela').classList.remove('temfoco');
+}
+function abrirPalco(p){
+  const render=p&&PAINEIS_RENDER[p.tipo];
+  if(!render||!render.palco)return;
+  if(palcoAtual===p.id){fecharPalco();return}
+  fecharPalco();
+  palcoAtual=p.id;$('palco-titulo').textContent=p.titulo||p.tipo;
+  const corpo=$('palco-corpo');corpo.innerHTML='';
+  try{palcoCleanup=render.palco(corpo,p)||null}catch(e){corpo.textContent='Falha ao abrir o painel.'}
+  $('palco').classList.add('aberto');$('palco').setAttribute('aria-hidden','false');
+}
+function fecharPalco(){
+  if(!palcoAtual)return;
+  palcoAtual=null;
+  try{if(palcoCleanup)palcoCleanup()}catch(e){}
+  palcoCleanup=null;
+  $('palco').classList.remove('aberto');$('palco').setAttribute('aria-hidden','true');
+  $('palco-corpo').innerHTML='';
+}
+function focarPainel(id,rolar=true){
+  const s=paineisAbertos.get(id);if(!s)return;
+  if(painelFoco&&painelFoco!==id){const a=paineisAbertos.get(painelFoco);if(a)a.el.classList.remove('foco')}
+  painelFoco=id;s.el.classList.add('foco');$('tela').classList.add('temfoco');
+  if(rolar)s.el.scrollIntoView({block:'nearest',behavior:'smooth'});
+  s.el.classList.remove('pulso');void s.el.offsetWidth;s.el.classList.add('pulso');
+  setTimeout(()=>s.el.classList.remove('pulso'),1200);
+}
+function alternarFoco(id){if(painelFoco===id)limparFoco();else focarPainel(id)}
+function focarPorTexto(txt){
+  if(!paineisAbertos.size)return;
+  const t=String(txt||'').toLowerCase();
+  for(const [id,s] of paineisAbertos){
+    const b=s.el.querySelector('.painel-h b'),titulo=b?b.textContent.toLowerCase():'';
+    const nomes=[titulo].concat((s.p&&s.p.nomes)||[]).map(x=>String(x).toLowerCase()).filter(n=>n.length>2);
+    if(nomes.some(n=>t.includes(n))){focarPainel(id);return}
+  }
+}
+function fecharPainel(id){
+  const s=paineisAbertos.get(id);if(!s)return;
+  if(palcoAtual===id)fecharPalco();
+  if(painelFoco===id){painelFoco=null;$('tela').classList.remove('temfoco')}
+  try{if(s.cleanup)s.cleanup()}catch(e){}
+  s.el.remove();paineisAbertos.delete(id);
+}
+function fecharTodosPaineis(){[...paineisAbertos.keys()].forEach(fecharPainel)}
+function abrirPainel(p){
+  if(!p||!p.id||!PAINEIS_RENDER[p.tipo])return;
+  fecharPainel(p.id);
+  const el=document.createElement('section');
+  el.className='painel';el.dataset.slot=p.slot||'top-left';el.dataset.id=p.id;el.dataset.tipo=p.tipo;
+  const h=document.createElement('div');h.className='painel-h';h.title='Clique para destacar';
+  const b=document.createElement('b');b.textContent=p.titulo||p.tipo;
+  const tag=document.createElement('span');tag.className='painel-tag';tag.textContent='fala: '+(p.fala||'nunca');tag.title='Política de fala deste painel';
+  const x=document.createElement('button');x.className='painel-x';x.type='button';x.textContent='×';x.title='Fechar';
+  x.onclick=(e)=>{e.stopPropagation();fecharPainel(p.id)};
+  h.onclick=(e)=>{if(e.target.closest('.painel-x'))return;alternarFoco(p.id)};
+  h.append(b,tag,x);
+  const corpo=document.createElement('div');el.append(h,corpo);
+  $('paineis').appendChild(el);
+  let cleanup=null;
+  try{cleanup=PAINEIS_RENDER[p.tipo](corpo,p)}catch(e){corpo.textContent='Falha ao montar o painel.'}
+  paineisAbertos.set(p.id,{el,cleanup,p});
+}
+async function carregarPaineisPesquisa(){
+  for(const base of PAINEIS_PADRAO){
+    if(!modoPesquisa)return;
+    let p=base;
+    try{
+      const r=await fetch('/static/ui/paineis/'+base.id+'.json',{cache:'no-store'});
+      if(r.ok)p=await r.json();
+    }catch(e){}
+    if(modoPesquisa)abrirPainel(p);
+  }
+}
+function sairPesquisa(){modoPesquisa=false;$('pq').classList.remove('on');fecharPalco();fecharTodosPaineis();cap('');go('repouso',tema||'esfera')}
+async function entrarPesquisa(){
+  if(modoPesquisa)return;
+  modoPesquisa=true;$('pq').classList.add('on');cap('modo pesquisa: painéis do Ciel');
+  await carregarPaineisPesquisa();
+}
 $('mic').onclick=mic;
 $('ft').onclick=()=>{ftool=!ftool;$('ft').classList.toggle('on',ftool)};
 $('lv').classList.toggle('on',modoLive);
 $('lv').onclick=()=>{modoLive=!modoLive;try{localStorage.setItem('ciel_live',modoLive?'1':'0')}catch(e){};$('lv').classList.toggle('on',modoLive);
   if(!modoLive){parar();go('repouso',tema||'esfera')}
   else{aquecerAudio();cap('modo live: fale normalmente; fale por cima para interromper')}};
+$('pq').classList.toggle('on',modoPesquisa);
+$('pq').onclick=()=>{if(modoPesquisa)sairPesquisa();else entrarPesquisa()};
+document.addEventListener('pointerdown',e=>{if(!e.target.closest('.painel')&&!e.target.closest('#palco'))limparFoco()});
+$('palco-x').onclick=fecharPalco;
+$('palco').addEventListener('click',e=>{if(!e.target.closest('.palco-card'))fecharPalco()});
+addEventListener('keydown',e=>{if(e.key==='Escape'){if(palcoAtual)fecharPalco();else limparFoco()}});
 $('rd').classList.toggle('on',leitura);$('rd').onclick=()=>{leitura=!leitura;$('rd').classList.toggle('on',leitura);try{localStorage.setItem('ciel_leitura',leitura?'1':'0')}catch(e){}if(!leitura){parar();go('repouso',tema||'esfera')}};$('send').onclick=send;$('msg').onkeydown=e=>{if(e.key==='Enter')send()};
 fit();build();ui();wake();requestAnimationFrame(loop);
 </script></body></html>

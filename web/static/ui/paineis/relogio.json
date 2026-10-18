@@ -1,0 +1,11 @@
+{
+  "id": "relogio",
+  "tipo": "relogio",
+  "titulo": "Data e hora",
+  "nomes": ["relógio", "hora", "data", "calendário"],
+  "slot": "top-left",
+  "tamanho": "pequeno",
+  "fala": "nunca",
+  "resumo": "Relógio com data e calendário do mês atual.",
+  "acoes": []
+}

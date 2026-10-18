@@ -1,0 +1,44 @@
+{
+  "id": "imagens",
+  "tipo": "imagens",
+  "titulo": "Imagens",
+  "nomes": ["imagens", "fotos", "galeria", "carrossel", "foguetes", "lua", "espaço", "artemis"],
+  "apresentacao": "central",
+  "slot": "bottom-left",
+  "tamanho": "grande",
+  "fala": "nunca",
+  "resumo": "Carrossel de imagens sobre foguetes e exploração espacial.",
+  "acoes": [],
+  "dados": {
+    "itens": [
+      {
+        "titulo": "Foguete espacial",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7d/Apollo_11_Saturn_V_lifting_off_on_July_16%2C_1969.jpg/330px-Apollo_11_Saturn_V_lifting_off_on_July_16%2C_1969.jpg?utm_source=pt.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+        "urlGrande": "https://upload.wikimedia.org/wikipedia/commons/7/7d/Apollo_11_Saturn_V_lifting_off_on_July_16%2C_1969.jpg",
+        "link": "https://pt.wikipedia.org/wiki/Foguete_espacial",
+        "credito": "Wikimedia Commons"
+      },
+      {
+        "titulo": "Saturno V — Apollo 4",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a6/Apollo_4_on_the_night_before_launch%2C_Kennedy_Space_Center%2C_Florida%2C_1967.jpg/330px-Apollo_4_on_the_night_before_launch%2C_Kennedy_Space_Center%2C_Florida%2C_1967.jpg?utm_source=pt.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+        "urlGrande": "https://upload.wikimedia.org/wikipedia/commons/a/a6/Apollo_4_on_the_night_before_launch%2C_Kennedy_Space_Center%2C_Florida%2C_1967.jpg",
+        "link": "https://pt.wikipedia.org/wiki/Saturno_V",
+        "credito": "Wikimedia Commons"
+      },
+      {
+        "titulo": "Veículo lunar — Apollo 17",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4d/NASA_Apollo_17_Lunar_Roving_Vehicle.jpg/330px-NASA_Apollo_17_Lunar_Roving_Vehicle.jpg?utm_source=pt.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+        "urlGrande": "https://upload.wikimedia.org/wikipedia/commons/4/4d/NASA_Apollo_17_Lunar_Roving_Vehicle.jpg",
+        "link": "https://pt.wikipedia.org/wiki/Explora%C3%A7%C3%A3o_espacial",
+        "credito": "NASA / Wikimedia Commons"
+      },
+      {
+        "titulo": "Lua",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e1/FullMoon2010.jpg/330px-FullMoon2010.jpg?utm_source=pt.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+        "urlGrande": "https://upload.wikimedia.org/wikipedia/commons/e/e1/FullMoon2010.jpg",
+        "link": "https://pt.wikipedia.org/wiki/Lua",
+        "credito": "Wikimedia Commons"
+      }
+    ]
+  }
+}
