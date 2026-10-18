@@ -7,7 +7,7 @@
 html,body{height:100%;margin:0;background:radial-gradient(ellipse at 50% 42%,#0b2b5c 0%,#051433 38%,#02050d 78%) fixed,#02050d;color:var(--fg);font:14px "Trebuchet MS",system-ui,sans-serif;overflow:hidden}
 canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #hud{position:fixed;left:14px;top:calc(env(safe-area-inset-top,0px) + 10px);opacity:.55;font-size:12px}
-#bar{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);transform:translateX(-50%);width:min(94vw,560px);box-sizing:border-box;display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:16px;background:rgba(8,20,40,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(74,168,255,.35);box-shadow:0 0 24px var(--gl),inset 0 0 12px rgba(74,168,255,.12);transition:opacity .7s}
+#bar{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);transform:translateX(-50%);width:min(94vw,560px);box-sizing:border-box;display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:16px;background:rgba(8,20,40,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(74,168,255,.35);box-shadow:0 0 24px var(--gl),inset 0 0 12px rgba(74,168,255,.12);transition:opacity .7s;z-index:50}
 #bar.idle{opacity:.15}
 .row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;align-items:center}
 button,input,select{font:inherit;color:var(--fg);background:rgba(74,168,255,.1);border:1px solid rgba(74,168,255,.35);border-radius:10px;padding:6px 10px}
@@ -15,12 +15,13 @@ button.on{background:rgba(74,168,255,.38);box-shadow:0 0 10px var(--gl)}
 input{flex:1 1 110px;min-width:0}
 .dbg,#tx,#pw{display:none}body.debug .dbg{display:flex}body.debug #tx,body.debug #pw{display:inline-block}
 #cap{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 34px);width:min(92vw,640px);text-align:center;font-size:16px;line-height:1.4;text-shadow:0 0 12px var(--gl);pointer-events:none}
-#chat{position:fixed;right:14px;top:calc(env(safe-area-inset-top,0px) + 110px);bottom:calc(env(safe-area-inset-bottom,0px) + 14px);width:min(340px,28vw);box-sizing:border-box;display:flex;flex-direction:column;padding:10px;border-radius:16px;background:rgba(8,20,40,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(74,168,255,.35);box-shadow:0 0 24px var(--gl),inset 0 0 12px rgba(74,168,255,.12);transition:opacity .7s}
+#chat{position:fixed;right:14px;top:calc(env(safe-area-inset-top,0px) + 110px);bottom:calc(env(safe-area-inset-bottom,0px) + 14px);width:min(340px,28vw);box-sizing:border-box;display:flex;flex-direction:column;padding:10px;border-radius:16px;background:rgba(8,20,40,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(74,168,255,.35);box-shadow:0 0 24px var(--gl),inset 0 0 12px rgba(74,168,255,.12);transition:opacity .7s;z-index:50}
 #chat.idle{opacity:.15}#chat.vazio{display:none}
 #msgs{overflow-y:auto;display:flex;flex-direction:column;gap:8px;scrollbar-width:thin}
 .m{padding:8px 11px;border-radius:12px;max-width:92%;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}
 .m.u{align-self:flex-end;background:rgba(74,168,255,.25)}.m.c{align-self:flex-start;background:rgba(255,255,255,.06)}
 @media(max-width:1300px){#chat{bottom:calc(env(safe-area-inset-bottom,0px) + 150px)}}
+@media(max-width:1200px){#palco{padding:24px 24px calc(24px + 150px)}}
 @media(max-width:900px){#chat{left:10px;right:10px;width:auto;top:auto;max-height:34vh}}
 .m code{background:rgba(74,168,255,.18);padding:0 4px;border-radius:4px}
 .s{transition:background .3s}.s.lendo{background:rgba(74,168,255,.3);border-radius:4px;box-shadow:0 0 0 3px rgba(74,168,255,.3)}
@@ -44,6 +45,23 @@ input{flex:1 1 110px;min-width:0}
 .painel-acoes button{font-size:10px;padding:3px 8px;border-radius:8px;background:rgba(74,168,255,.12);border:1px solid rgba(74,168,255,.3);color:var(--fg);cursor:pointer}
 .painel-acoes button:hover{background:rgba(74,168,255,.22);border-color:rgba(140,210,255,.55)}
 .painel-acoes button:disabled{opacity:.45;cursor:wait}
+.tarefas-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.tarefas-top span{font-size:10px;opacity:.65;min-width:34px;font-variant-numeric:tabular-nums}
+.tarefas-barra{flex:1;height:3px;border-radius:2px;background:rgba(74,168,255,.18);overflow:hidden}
+.tarefas-barra i{display:block;height:100%;background:var(--ac);box-shadow:0 0 8px var(--gl);transition:width .25s ease}
+.tarefa{display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid rgba(74,168,255,.14)}
+.tarefa:last-of-type{border-bottom:0}
+.tarefa input{accent-color:var(--ac);width:14px;height:14px;flex:0 0 auto;cursor:pointer}
+.tarefa span{flex:1;font-size:11px;line-height:1.4;word-break:break-word}
+.tarefa.feita span{opacity:.4;text-decoration:line-through}
+.tarefa-x{background:none;border:0;color:var(--fg);opacity:.35;font-size:14px;line-height:1;cursor:pointer;padding:0 2px}
+.tarefa-x:hover{opacity:.9}
+.tarefa-add{display:flex;gap:6px;margin-top:8px}
+.tarefa-add input{flex:1;min-width:0;background:rgba(0,0,0,.22);border:1px solid rgba(74,168,255,.25);border-radius:8px;color:var(--fg);font-size:11px;padding:4px 7px;outline:none}
+.tarefa-add input:focus{border-color:rgba(140,210,255,.6)}
+.tarefa-add button{font-size:12px;padding:3px 9px;border-radius:8px;background:rgba(74,168,255,.15);border:1px solid rgba(74,168,255,.35);color:var(--fg);cursor:pointer}
+.acoes-painel{font-size:11px;line-height:1.55;opacity:.72}
+.tarefas-vazio{font-size:10px;opacity:.45;padding:6px 0}
 .painel .hora{font-size:34px;line-height:1;letter-spacing:.02em;font-variant-numeric:tabular-nums}
 .painel .data{font-size:12px;opacity:.8;margin:2px 0 8px}
 .painel .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:10px;text-align:center}
@@ -56,10 +74,10 @@ input{flex:1 1 110px;min-width:0}
 .painel .clima-sub{font-size:10px;opacity:.65;margin-top:6px;line-height:1.5}
 .painel .clima-local{font-size:10px;opacity:.55;margin-top:4px}
 .painel .clima-acao{margin-top:8px;font-size:11px;padding:3px 8px}
-#palco{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;padding:24px;box-sizing:border-box}
+#palco{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;padding:24px 370px calc(24px + 150px) 460px;box-sizing:border-box}
 #palco.aberto{display:flex}
 #palco .palco-fundo{position:absolute;inset:0;background:rgba(2,5,13,.18);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
-#palco .palco-card{position:relative;width:min(820px,86vw);max-height:84vh;overflow:auto;box-sizing:border-box;padding:14px 16px;border-radius:20px;background:rgba(8,20,40,.42);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(74,168,255,.4);box-shadow:0 0 44px var(--gl),inset 0 0 20px rgba(74,168,255,.12);animation:palcoIn .4s cubic-bezier(.2,.7,.2,1) both;scrollbar-width:none;-ms-overflow-style:none}
+#palco .palco-card{position:relative;width:min(820px,100%);max-height:84vh;overflow:auto;box-sizing:border-box;padding:14px 16px;border-radius:20px;background:rgba(8,20,40,.42);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(74,168,255,.4);box-shadow:0 0 44px var(--gl),inset 0 0 20px rgba(74,168,255,.12);animation:palcoIn .4s cubic-bezier(.2,.7,.2,1) both;scrollbar-width:none;-ms-overflow-style:none}
 #palco .palco-card::-webkit-scrollbar{width:0;height:0;display:none}
 @keyframes palcoIn{from{opacity:0;transform:translateY(18px) scale(.94)}to{opacity:1;transform:none}}
 #palco .palco-h{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.85}
@@ -109,7 +127,7 @@ input{flex:1 1 110px;min-width:0}
   .painel.foco{max-height:46vh}
 }
 </style></head><body>
-<canvas id="c"></canvas><div id="tela"><div id="paineis"></div></div><div id="palco" aria-hidden="true"><div class="palco-fundo"></div><div class="palco-card"><div class="palco-h"><b id="palco-titulo"></b><button class="painel-x" id="palco-x" type="button" title="Fechar">×</button></div><div id="palco-corpo"></div></div></div><div id="hud"></div><div id="cap"></div><div id="chat" class="vazio"><div id="msgs"></div></div>
+<canvas id="c"></canvas><div id="tela"><div id="paineis"></div></div><div id="palco" aria-hidden="true"><div class="palco-fundo"></div><div class="palco-card"><div class="palco-h"><b id="palco-titulo"></b><button class="painel-x" id="palco-min" type="button" title="Minimizar para a lateral">↘</button><button class="painel-x" id="palco-x" type="button" title="Fechar">×</button></div><div id="palco-corpo"></div></div></div><div id="hud"></div><div id="cap"></div><div id="chat" class="vazio"><div id="msgs"></div></div>
 <div id="bar"><div class="row"><input id="msg" placeholder="Fale com o Ciel" autocomplete="off"><button id="send">Enviar</button><button id="mic">Falar</button></div><div class="row dbg" id="st"></div><div class="row dbg" id="sh"></div><div class="row dbg" id="vz"></div>
 <div class="row dbg"><input id="js" placeholder="colar JSON de forma"><button id="pj">Forma JSON</button></div>
 <div class="row"><input id="tx" placeholder="palavra" maxlength="14"><button id="pw">Palavra</button>
@@ -938,6 +956,55 @@ function renderNoticias(corpo,p){
   corpo.appendChild(f);
 }
 PAINEIS_RENDER.noticias=renderNoticias;
+function chaveTarefas(id){return 'ciel:tarefas:'+id}
+function salvarTarefas(id,itens){try{localStorage.setItem(chaveTarefas(id),JSON.stringify(itens))}catch(e){}}
+function renderTarefas(corpo,p){
+  corpo.classList.add('tarefas-painel');
+  let itens=[];
+  try{const salvo=localStorage.getItem(chaveTarefas(p.id));if(salvo!==null)itens=JSON.parse(salvo)}catch(e){}
+  if(!Array.isArray(itens))itens=(p.dados&&p.dados.itens)||[];
+  itens=itens.map(x=>typeof x==='string'?{texto:x,feito:false}:{texto:String((x&&x.texto)||''),feito:!!(x&&x.feito)})
+             .filter(x=>x.texto).map(x=>({texto:x.texto.slice(0,160),feito:x.feito}));
+  salvarTarefas(p.id,itens);
+  const top=document.createElement('div');top.className='tarefas-top';
+  const conta=document.createElement('span');const barra=document.createElement('div');barra.className='tarefas-barra';
+  const fill=document.createElement('i');barra.appendChild(fill);top.append(conta,barra);corpo.appendChild(top);
+  const lista=document.createElement('div');lista.className='tarefas-lista';corpo.appendChild(lista);
+  const form=document.createElement('form');form.className='tarefa-add';
+  const inp=document.createElement('input');inp.type='text';inp.placeholder='Nova tarefa';inp.maxLength=160;
+  const add=document.createElement('button');add.type='submit';add.textContent='+';form.append(inp,add);corpo.appendChild(form);
+  const atualiza=()=>{
+    const feitos=itens.filter(x=>x.feito).length;
+    conta.textContent=feitos+'/'+itens.length;
+    fill.style.width=(itens.length?100*feitos/itens.length:0)+'%';
+    p.resumo=`${feitos}/${itens.length} tarefas concluídas.`;
+  };
+  const desenha=()=>{
+    lista.innerHTML='';
+    if(!itens.length){const v=document.createElement('div');v.className='tarefas-vazio';v.textContent='Nenhuma tarefa.';lista.appendChild(v)}
+    itens.forEach((it,idx)=>{
+      const label=document.createElement('label');label.className='tarefa'+(it.feito?' feita':'');
+      const cb=document.createElement('input');cb.type='checkbox';cb.checked=it.feito;
+      cb.onchange=()=>{it.feito=cb.checked;salvarTarefas(p.id,itens);label.classList.toggle('feita',it.feito);atualiza()};
+      const txt=document.createElement('span');txt.textContent=it.texto;
+      const rm=document.createElement('button');rm.type='button';rm.className='tarefa-x';rm.textContent='×';rm.title='Remover';
+      rm.onclick=()=>{itens.splice(idx,1);salvarTarefas(p.id,itens);desenha()};
+      label.append(cb,txt,rm);lista.appendChild(label);
+    });
+    atualiza();
+  };
+  form.onsubmit=(e)=>{
+    e.preventDefault();const t=inp.value.trim();if(!t)return;
+    itens.push({texto:t.slice(0,160),feito:false});salvarTarefas(p.id,itens);inp.value='';desenha();inp.focus();
+  };
+  desenha();
+}
+function renderAcoesPainel(corpo,p){
+  corpo.classList.add('acoes-painel');
+  corpo.textContent=p.resumo||'Ações rápidas.';
+}
+PAINEIS_RENDER.tarefas=renderTarefas;
+PAINEIS_RENDER.acoes=renderAcoesPainel;
 function renderVideo(corpo,p,palco){
   const d=p.dados||{},embed=String(d.embed||''),provedor=String(d.provedor||'');
   corpo.classList.add('video-painel');
@@ -1065,7 +1132,7 @@ async function executarAcao(p,a,btn){
   const rotulo=btn.textContent;
   if(a.tipo==='front'){
     if(a.acao==='copiar'){
-      const texto=String((p.dados&&p.dados.texto)||p.resumo||'').trim();
+      const texto=String(a.texto||(p.dados&&p.dados.texto)||p.resumo||'').trim();
       if(!texto){cap('nada para copiar');return}
       return copiarPainel(texto,btn);
     }
@@ -1077,6 +1144,11 @@ async function executarAcao(p,a,btn){
     if(a.acao==='focar'){focarPainel(p.id);return}
     if(a.acao==='palco'){abrirPalco(p);return}
     if(a.acao==='fechar'){fecharPainel(p.id);return}
+    if(a.acao==='limpar_concluidas'){
+      let itens=[];try{itens=JSON.parse(localStorage.getItem(chaveTarefas(p.id))||'[]')}catch(e){}
+      salvarTarefas(p.id,(Array.isArray(itens)?itens:[]).filter(x=>!x.feito));
+      abrirPainel(p);return;
+    }
     cap('ação desconhecida');return;
   }
   if(a.tipo==='tool'){
@@ -1158,6 +1230,7 @@ $('pq').classList.toggle('on',modoPesquisa);
 $('pq').onclick=()=>{if(modoPesquisa)sairPesquisa();else entrarPesquisa()};
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('.painel')&&!e.target.closest('#palco'))limparFoco()});
 $('palco-x').onclick=fecharPalco;
+$('palco-min').onclick=()=>{const id=palcoAtual;fecharPalco();if(id)focarPainel(id)};
 $('palco').addEventListener('click',e=>{if(!e.target.closest('.palco-card'))fecharPalco()});
 addEventListener('keydown',e=>{if(e.key==='Escape'){if(palcoAtual)fecharPalco();else limparFoco()}});
 $('rd').classList.toggle('on',leitura);$('rd').onclick=()=>{leitura=!leitura;$('rd').classList.toggle('on',leitura);try{localStorage.setItem('ciel_leitura',leitura?'1':'0')}catch(e){}if(!leitura){parar();go('repouso',tema||'esfera')}};$('send').onclick=send;$('msg').onkeydown=e=>{if(e.key==='Enter')send()};
