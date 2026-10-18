@@ -341,7 +341,7 @@ def api_auth_change_password():
 
 # ── helpers do agente ────────────────────────────────────────────────────────
 PANEL_TOOLS = {"mostrar_imagens", "focar_painel", "fechar_painel",
-               "mostrar_palco", "fechar_palco"}
+               "mostrar_palco", "fechar_palco", "mostrar_texto", "mostrar_noticias"}
 
 
 def _contexto_tela(tela, ativo: bool, palco: str = "", foco: str = ""):
@@ -380,6 +380,10 @@ def _contexto_tela(tela, ativo: bool, palco: str = "", foco: str = ""):
         f"Painel em foco na lateral: {foco or 'nenhum'}.",
         "Tools de painel disponíveis:",
         "- mostrar_imagens(tema): abre um painel de imagens sobre o tema quando isso ajudar.",
+        "- mostrar_texto(titulo, texto): abre um painel com um resumo/anotação; use quando o "
+        "usuário pedir para deixar uma síntese ou lista na tela. Não substitui a resposta do chat.",
+        "- mostrar_noticias(tema): abre um painel com notícias recentes (Google Notícias); use "
+        "quando o usuário pedir notícias ou informação atual.",
         "- focar_painel(id) e fechar_painel(id): destacam ou fecham um painel aberto.",
         "- mostrar_palco(id): abre um painel de imagens no card central (palco).",
         "- fechar_palco(): fecha o card central.",
