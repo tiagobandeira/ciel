@@ -34,10 +34,19 @@ def _carrega(slug: str):
 def _extrai(txt: str) -> dict:
     txt = re.sub(r"```(?:json)?", "", txt)
     txt = re.sub(r"(?<![\w.])\.(\d)", r"0.\1", txt)  # .5 -> 0.5
-    i, j = txt.find("{"), txt.rfind("}")
-    if i < 0 or j <= i:
+    i = txt.find("{")
+    if i < 0:
         raise ValueError("resposta sem JSON")
-    return json.loads(txt[i:j + 1])
+    # raw_decode para no fim do primeiro objeto: modelos às vezes mandam uma chave a mais
+    # no final (ex.: {...}}) ou texto depois do JSON.
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(txt[i:])
+        return obj
+    except json.JSONDecodeError:
+        j = txt.rfind("}")
+        if j <= i:
+            raise ValueError("resposta sem JSON")
+        return json.loads(txt[i:j + 1])
 
 
 def _num(x, lo=None, hi=None):

@@ -385,7 +385,8 @@ function aplica(k){if(!lendo||!marcas.length)return;let m=null;for(const x of ma
 const nm=m.nome==='coracao'?'coração':m.nome;if(!(S[nm]||LIB[nm])||tema===nm)return;tema=nm;go('falando',nm)}
 function parar(){encerrarEscuta();lerId++;lendo=false;anotId=null;marcas=[];try{speechSynthesis.cancel()}catch(e){}document.querySelectorAll('.s.lendo').forEach(x=>x.classList.remove('lendo'))}
 function ler(r){const sp=[...r.d.querySelectorAll('.s')],id=++lerId;let i=0;try{speechSynthesis.cancel()}catch(e){}anotId=Date.now();marcas=[];kAtual=-1;lendo=true;
-if(r.fr.filter(Boolean).length>=6)fetch('/ui/anotar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:anotId,frases:r.fr})}).then(x=>{if(!x.ok)cap('ℹ formas por tópico indisponíveis (HTTP '+x.status+')')}).catch(()=>{});
+const nFr=r.fr.filter(Boolean).length,txtAnot=r.fr.join(' ').trim();
+if(nFr>=6||(modoLive&&txtAnot.length>=40))fetch('/ui/anotar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:anotId,frases:r.fr,live:modoLive})}).then(x=>{if(!x.ok)cap('ℹ formas por tópico indisponíveis (HTTP '+x.status+')')}).catch(()=>{});
 go('falando',tema||'esfera');
 const prox=()=>{if(id!==lerId)return;while(i<r.fr.length&&!r.fr[i])i++;
 if(i>=r.fr.length){encerrarEscuta();lendo=false;sp.forEach(x=>x.classList.remove('lendo'));go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4);return}

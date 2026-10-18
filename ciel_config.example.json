@@ -17,8 +17,12 @@
     "openai":     { "base_url": "https://api.openai.com/v1",         "model": "gpt-4o"                                  }
   },
 
-  "_ui_anotar": "Modo leitura (/ui): criar_formas=false escolhe só entre as formas do repositório (mais rápido).",
-  "ui_anotar": { "criar_formas": false },
+  "_ui_anotar": "Leitura e live (/ui): criar_formas=false escolhe só entre as formas do repositório; live=false desliga as formas automáticas no live; live_motor=heuristica (rápido, local) ou secundario (mais preciso, gasta cota).",
+  "ui_anotar": {
+    "criar_formas": false,
+    "live": true,
+    "live_motor": "heuristica"
+  },
 
   "_ui_voz": "Voz (/ui), Whisper local. 'base' é ~3x mais rápido que 'small' com um pouco menos de precisão; beam_size 3-5 melhora números/acentos. pasta_modelos vazio usa o cache padrão; use data/models se o cache do usuário der acesso negado.",
   "ui_voz": {

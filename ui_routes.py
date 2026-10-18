@@ -197,10 +197,11 @@ def ui_anotar_rota():
     _ultimo_pedido["t"] = agora
     d = request.get_json(silent=True) or {}
     frases, aid = d.get("frases"), d.get("id")
+    live = bool(d.get("live", False))
     if (not isinstance(frases, list) or not 1 <= len(frases) <= 400
             or not all(isinstance(f, str) for f in frases) or not isinstance(aid, (int, str))):
         return jsonify(ok=False, erro="payload inválido"), 400
-    ui_anotar.iniciar(aid, [f[:300] for f in frases])
+    ui_anotar.iniciar(aid, [f[:300] for f in frases], live)
     return jsonify(ok=True)
 
 
