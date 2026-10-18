@@ -406,6 +406,8 @@ def _contexto_tela(tela, ativo: bool, palco: str = "", foco: str = ""):
         "usuário pedir para deixar uma síntese ou lista na tela. Não substitui a resposta do chat.",
         "- ui_painel_noticias(tema): abre um painel com notícias recentes (Google Notícias); use "
         "quando o usuário pedir notícias ou informação atual.",
+        "- ui_painel_video(tema, url=\"\"): abre um vídeo no palco central. Se tiver uma URL "
+        "de YouTube/Vimeo/vídeo direto, passe em url; senão busca no Wikimedia Commons.",
         "- ui_painel_focar(id) e ui_painel_fechar(id): destacam ou fecham um painel aberto.",
         "- ui_palco_mostrar(id): abre um painel de imagens no card central (palco).",
         "- ui_palco_fechar(): fecha o card central.",
@@ -413,6 +415,7 @@ def _contexto_tela(tela, ativo: bool, palco: str = "", foco: str = ""):
         "O palco central é opt-in: use ui_palco_mostrar(id) quando o usuário pedir para ampliar/"
         "destacar no centro ou quando a imagem for o foco da resposta. Use ui_palco_fechar() "
         "quando ele pedir para voltar/fechar. Não abra o palco por padrão.",
+        "A exceção é ui_painel_video: vídeo já abre no palco central.",
         "Se o usuário pedir para fechar/ocultar um painel ou o palco, use ui_painel_fechar(id)/"
         "ui_palco_fechar() e não abra novas imagens nessa resposta.",
         "Se aprofundar o assunto, pode abrir um novo painel com um tema mais específico; "
