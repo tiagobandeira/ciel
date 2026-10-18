@@ -26,7 +26,7 @@ input{flex:1 1 110px;min-width:0}
 .s{transition:background .3s}.s.lendo{background:rgba(74,168,255,.3);border-radius:4px;box-shadow:0 0 0 3px rgba(74,168,255,.3)}
 </style></head><body>
 <canvas id="c"></canvas><div id="hud"></div><div id="cap"></div><div id="chat" class="vazio"><div id="msgs"></div></div>
-<div id="bar"><div class="row"><input id="msg" placeholder="Fale com o Ciel" autocomplete="off"><button id="send">Enviar</button></div><div class="row dbg" id="st"></div><div class="row dbg" id="sh"></div>
+<div id="bar"><div class="row"><input id="msg" placeholder="Fale com o Ciel" autocomplete="off"><button id="send">Enviar</button><button id="mic">Falar</button></div><div class="row dbg" id="st"></div><div class="row dbg" id="sh"></div>
 <div class="row dbg"><input id="js" placeholder="colar JSON de forma"><button id="pj">Forma JSON</button></div>
 <div class="row"><input id="tx" placeholder="palavra" maxlength="14"><button id="pw">Palavra</button>
 <select id="q"><option value="15000">Leve</option><option value="30000" selected>Média</option><option value="60000">Alta</option></select>
@@ -411,6 +411,29 @@ try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'appl
 if(!r.ok)throw Error('HTTP '+r.status);const d=await r.json();
 if(!faloui&&(t[0]==='/'||d.status!=='done'))ev({tipo:'fala',texto:d.reply||''})}
 catch(e){ev({tipo:'erro',texto:'falha ao enviar: '+e.message})}}
+// microfone: grava (clique inicia, outro clique envia) -> /ui/voz (Whisper local) -> texto vai para o chat
+let gravando=null;
+async function mic(){
+  if(gravando){gravando.stop();return}
+  if(!navigator.mediaDevices||!window.MediaRecorder){cap('⚠ microfone indisponível (precisa de localhost ou HTTPS)');return}
+  parar();  // interrompe a leitura em andamento
+  let stream;try{stream=await navigator.mediaDevices.getUserMedia({audio:true})}catch(e){cap('⚠ sem acesso ao microfone');return}
+  const tipo=['audio/webm;codecs=opus','audio/webm','audio/mp4'].find(t=>MediaRecorder.isTypeSupported(t))||'';
+  const rec=new MediaRecorder(stream,tipo?{mimeType:tipo}:undefined),partes=[];
+  const lim=setTimeout(()=>{if(rec.state==='recording')rec.stop()},30000);
+  rec.ondataavailable=e=>{if(e.data.size)partes.push(e.data)};
+  rec.onstop=async()=>{clearTimeout(lim);gravando=null;stream.getTracks().forEach(t=>t.stop());$('mic').classList.remove('on');$('mic').textContent='Falar';
+    const blob=new Blob(partes,{type:rec.mimeType||tipo||'audio/webm'});
+    if(blob.size<2000){cap('');go('repouso',tema||'esfera');return}
+    cap('transcrevendo…');go('pensando','circulo');
+    try{const r=await fetch('/ui/voz',{method:'POST',headers:{'Content-Type':blob.type},body:blob});const d=await r.json();
+      if(!r.ok||!d.ok)throw Error(d.erro||('HTTP '+r.status));
+      if(!d.texto){cap('não entendi, tente de novo');go('repouso',tema||'esfera');return}
+      $('msg').value=d.texto;send()}
+    catch(e){ev({tipo:'erro',texto:e.message})}};
+  gravando=rec;rec.start();$('mic').classList.add('on');$('mic').textContent='Enviar fala';cap('ouvindo…');go('ouvindo','esfera');
+}
+$('mic').onclick=mic;
 $('ft').onclick=()=>{ftool=!ftool;$('ft').classList.toggle('on',ftool)};
 $('rd').classList.toggle('on',leitura);$('rd').onclick=()=>{leitura=!leitura;$('rd').classList.toggle('on',leitura);try{localStorage.setItem('ciel_leitura',leitura?'1':'0')}catch(e){}if(!leitura){parar();go('repouso',tema||'esfera')}};$('send').onclick=send;$('msg').onkeydown=e=>{if(e.key==='Enter')send()};
 fit();build();ui();wake();requestAnimationFrame(loop);
