@@ -118,8 +118,12 @@ def precarregar() -> None:
         pass
 
 
-def _transcrever(dados: bytes, sufixo: str) -> dict:
+def _transcrever(dados: bytes, sufixo: str, inicio: float = 0.0) -> dict:
     """Motor de voz de entrada. Para trocar por outro motor (API, outro modelo), reescreva só esta função.
+
+    `inicio` (segundos) corta o começo do áudio. O modo live usa isso quando o usuário fala por
+    cima do Ciel: a gravação começa junto com o TTS, mas só a parte depois da interrupção entra
+    na transcrição (menos 0,3 s de pré-roll para não perder a primeira sílaba).
 
     Devolve {"texto", "ms_carga", "ms_transcricao", "audio_s"}.
     """
@@ -132,8 +136,7 @@ def _transcrever(dados: bytes, sufixo: str) -> dict:
         try:
             with os.fdopen(fd, "wb") as f:
                 f.write(dados)
-            segmentos, info = modelo.transcribe(
-                caminho,
+            opcoes = dict(
                 language=cfg["idioma"] or None,
                 beam_size=cfg["beam_size"],
                 best_of=1,
@@ -142,13 +145,25 @@ def _transcrever(dados: bytes, sufixo: str) -> dict:
                 condition_on_previous_text=False,
                 initial_prompt=cfg["prompt_inicial"] or None,
             )
+            if inicio > 0.05:
+                from faster_whisper.audio import decode_audio
+                audio = decode_audio(caminho, sampling_rate=16000)
+                audio = audio[max(0, int((inicio - 0.3) * 16000)):]
+                duracao = len(audio) / 16000.0
+                if audio.size:
+                    segmentos, _ = modelo.transcribe(audio, **opcoes)
+                else:
+                    segmentos = []
+            else:
+                segmentos, info = modelo.transcribe(caminho, **opcoes)
+                duracao = float(getattr(info, "duration", 0) or 0)
             texto = " ".join(seg.text.strip() for seg in segmentos).strip()
             return {
                 "texto": texto,
                 "ms_carga": ms_carga,
                 "ms_transcricao": int((time.monotonic() - t_tx) * 1000),
                 "ms_total": int((time.monotonic() - t_total) * 1000),
-                "audio_s": round(float(getattr(info, "duration", 0) or 0), 2),
+                "audio_s": round(duracao, 2),
             }
         finally:
             try:
@@ -203,7 +218,11 @@ def ui_voz():
         return jsonify(ok=False, erro="áudio vazio"), 400
     tipo = (request.content_type or "").split(";")[0].split("/")[-1].strip().lower()
     try:
-        r = _transcrever(dados, _SUFIXOS.get(tipo, ".webm"))
+        inicio = max(0.0, min(600.0, float(request.args.get("inicio") or 0)))
+    except (TypeError, ValueError):
+        inicio = 0.0
+    try:
+        r = _transcrever(dados, _SUFIXOS.get(tipo, ".webm"), inicio)
     except ImportError:
         return jsonify(ok=False, erro="faster-whisper não instalado (pip install faster-whisper)"), 501
     except Exception as e:
@@ -213,5 +232,6 @@ def ui_voz():
         ok=True,
         texto=r["texto"],
         audio_s=r["audio_s"],
+        inicio=inicio,
         ms={"carga": r["ms_carga"], "transcricao": r["ms_transcricao"], "total": r["ms_total"]},
     )

@@ -31,7 +31,7 @@ input{flex:1 1 110px;min-width:0}
 <div class="row dbg"><input id="js" placeholder="colar JSON de forma"><button id="pj">Forma JSON</button></div>
 <div class="row"><input id="tx" placeholder="palavra" maxlength="14"><button id="pw">Palavra</button>
 <select id="q"><option value="15000">Leve</option><option value="30000" selected>Média</option><option value="60000">Alta</option></select>
-<button id="rd">Leitura</button><button id="ft" class="on">Formas de tool</button><button id="pin">Fixar</button></div></div>
+<button id="rd">Leitura</button><button id="lv" title="modo live: respostas faladas e interrupção pela fala">Live</button><button id="ft" class="on">Formas de tool</button><button id="pin">Fixar</button></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const R=Math.random,$=id=>document.getElementById(id);
@@ -375,21 +375,22 @@ rede:{partes:[{tipo:'esf',r:.5,peso:2},...N5.map(q=>({tipo:'esf',r:.25,pos:[...q
 const TOOLS={web_search:'lupa',web_search_extended:'lupa',read_url:'lupa',http_request:'lupa',
 read_file:'documento',read_pdf:'documento',read_source:'documento',search_knowledge:'documento',list_directory:'documento',list_directory_files:'documento',
 write_file:'lapis',docx_criar:'lapis',docx_substituir_texto:'lapis',docx_comentar:'lapis',run_script:'terminal',secondary_model:'rede'};
-let tema=null,fim,faloui=false,ultC='',lerId=0,leitura=false,anotId=null,marcas=[],kAtual=-1,lendo=false;
+let tema=null,fim,faloui=false,ultC='',lerId=0,leitura=false,modoLive=false,anotId=null,marcas=[],kAtual=-1,lendo=false;
 try{leitura=localStorage.getItem('ciel_leitura')==='1'}catch(e){}
+try{modoLive=localStorage.getItem('ciel_live')==='1'}catch(e){}
 const limpa=t=>{const r=t.replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/https?:\/\/\S+/g,'').replace(/[*_`#>|~]+/g,' ').replace(/^\s*[-•]\s+/,'').replace(/\s+/g,' ').trim();return /[\p{L}\p{N}]/u.test(r)?r:''};
 const voz=()=>{const v=speechSynthesis.getVoices().filter(x=>/^pt/i.test(x.lang));return v.find(x=>/pt-BR/i.test(x.lang)&&/natural|online/i.test(x.name))||v.find(x=>/pt-BR/i.test(x.lang))||v[0]};
 const progresso=k=>{kAtual=k;aplica(k)};
 function aplica(k){if(!lendo||!marcas.length)return;let m=null;for(const x of marcas)if(x.i<=k)m=x;if(!m)return;
 const nm=m.nome==='coracao'?'coração':m.nome;if(!(S[nm]||LIB[nm])||tema===nm)return;tema=nm;go('falando',nm)}
-function parar(){lerId++;lendo=false;anotId=null;marcas=[];try{speechSynthesis.cancel()}catch(e){}document.querySelectorAll('.s.lendo').forEach(x=>x.classList.remove('lendo'))}
+function parar(){encerrarEscuta();lerId++;lendo=false;anotId=null;marcas=[];try{speechSynthesis.cancel()}catch(e){}document.querySelectorAll('.s.lendo').forEach(x=>x.classList.remove('lendo'))}
 function ler(r){const sp=[...r.d.querySelectorAll('.s')],id=++lerId;let i=0;try{speechSynthesis.cancel()}catch(e){}anotId=Date.now();marcas=[];kAtual=-1;lendo=true;
 if(r.fr.filter(Boolean).length>=6)fetch('/ui/anotar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:anotId,frases:r.fr})}).then(x=>{if(!x.ok)cap('ℹ formas por tópico indisponíveis (HTTP '+x.status+')')}).catch(()=>{});
 go('falando',tema||'esfera');
 const prox=()=>{if(id!==lerId)return;while(i<r.fr.length&&!r.fr[i])i++;
-if(i>=r.fr.length){lendo=false;sp.forEach(x=>x.classList.remove('lendo'));go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4);return}
+if(i>=r.fr.length){encerrarEscuta();lendo=false;sp.forEach(x=>x.classList.remove('lendo'));go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4);return}
 const k=i,u=new SpeechSynthesisUtterance(r.fr[k]);u.lang='pt-BR';const v=voz();if(v)u.voice=v;
-u.onstart=()=>{if(id!==lerId)return;if(vz&&!vz.fala){vz.fala=performance.now();vzPublica()}sp.forEach(x=>x.classList.remove('lendo'));sp[k].classList.add('lendo');sp[k].scrollIntoView({block:'nearest',behavior:'smooth'});
+u.onstart=()=>{if(id!==lerId)return;if(modoLive)iniciarEscutaLive();if(vz&&!vz.fala){vz.fala=performance.now();vzPublica()}sp.forEach(x=>x.classList.remove('lendo'));sp[k].classList.add('lendo');sp[k].scrollIntoView({block:'nearest',behavior:'smooth'});
 $('chat').classList.remove('idle');clearTimeout(idle2);if(!pin)idle2=setTimeout(()=>$('chat').classList.add('idle'),8000);progresso(k)};
 u.onend=u.onerror=()=>{if(id!==lerId)return;i=k+1;prox()};speechSynthesis.speak(u)};
 setTimeout(prox,80)}
@@ -402,14 +403,14 @@ if(m.tipo==='estado'){go(m.valor,ST[m.valor]?ST[m.valor][0]:'esfera');if(m.valor
 else if(m.tipo==='tool'){go('pensando','circulo');cap('⚙ '+m.nome);const f=TOOLS[m.nome];if(ftool&&f){const n=m.nome;tf=n;setTimeout(()=>{if(tf===n)go('pensando',f)},700)}}
 else if(m.tipo==='forma'){const nm=m.nome==='coracao'?'coração':m.nome;if(m.spec){LIB[nm]=m.spec;delete cache[nm]}
 if(S[nm]||LIB[nm]){if(!TOPIC.includes(nm))TOPIC.push(nm);tema=nm;cur.sh='';go('falando',nm)}}
-else if(m.tipo==='fala'){faloui=true;cap('');const tx=m.texto||'',lr=leitura&&tx&&!!window.speechSynthesis;
+else if(m.tipo==='fala'){faloui=true;cap('');const tx=m.texto||'',lr=(modoLive||leitura)&&tx&&!!window.speechSynthesis;
 if(tx!==ultC){const r=addMsg('c',tx,lr);if(lr)ler(r)}ultC=tx;
 if(!lr){go('falando',tema||'esfera');fim=setTimeout(()=>{go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4)},Math.min(12000,Math.max(2500,tx.length*45)))}} 
 else if(m.tipo==='marcas'&&m.id===anotId){marcas=m.marcas||[];aplica(kAtual)}
 else if(m.tipo==='forma_lib'){if(m.spec){LIB[m.nome]=m.spec;delete cache[m.nome]}aplica(kAtual)}
 else if(m.tipo==='erro'){cap('⚠ '+m.texto);tema=null;go('repouso','esfera')}}
 const es=new EventSource('/ui/events');es.onmessage=e=>{try{ev(JSON.parse(e.data))}catch(x){}};
-async function send(deVoz){const t=$('msg').value.trim();if(!t)return;$('msg').value='';parar();tema=null;faloui=false;ultC='';
+async function send(deVoz){const t=$('msg').value.trim();if(!t)return;aquecerAudio();$('msg').value='';parar();tema=null;faloui=false;ultC='';
 if(deVoz===true&&vz)vz.envio=performance.now();else vz=null;
 addMsg('u',t);cap('pensando…');go('pensando','circulo');
 try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:t})});
@@ -422,14 +423,20 @@ catch(e){ev({tipo:'erro',texto:'falha ao enviar: '+e.message})}}
 // (PAUSA_FALA_MS, no topo do script; ?pausa=3000 testa outro valor sem editar o código).
 // O nível do microfone move as partículas.
 const _qs=new URLSearchParams(location.search);
+const _n=(v,d,lo,hi)=>{const n=+v;return Math.min(hi,Math.max(lo,isFinite(n)&&n>0?n:d))};
 const VAD={
   silencio:Math.min(10000,Math.max(400,+_qs.get('pausa')||PAUSA_FALA_MS)),
   minFala:300,       // som mínimo para contar como fala
   minLimiar:.012,    // piso absoluto de ruído
   fator:2.5,         // limiar = ruído do ambiente x fator
   semFala:5000,      // microfone aberto sem ninguém falar: encerra
+  confirma:400,      // fala contínua necessária para o barge-in (ms)
+  // modo live: mais conservador, porque o mic fica aberto enquanto o TTS toca.
+  // ?bargec=900 (confirmação), ?bargef=6 (exigir voz mais alta), ?bargel=.04 (piso), ?bargei=800 (ignora início)
+  live:{confirma:_n(_qs.get('bargec'),600,200,3000),fator:_n(_qs.get('bargef'),4,1.5,12),
+        minLimiar:_n(_qs.get('bargel'),.025,.002,.2),ignora:_n(_qs.get('bargei'),600,0,3000)},
   auto:!_qs.has('semvad')};   // ?semvad desliga o encerramento automático
-let gravando=null,soltaVad=null,nivel=0,audioCtx=null,transcrevendo=false;
+let gravando=null,soltaVad=null,escuta=null,nivel=0,audioCtx=null,transcrevendo=false;
 let vz=null;  // tempos da última rodada de voz: console + linha de debug (#vz)
 function vzPublica(){
   if(!vz)return;
@@ -443,7 +450,7 @@ function vzPublica(){
   if($('vz'))$('vz').textContent=t+txt;
   console.log('[voz] '+t+txt);
 }
-function vigiaVoz(stream,encerra){
+function vigiaVoz(stream,encerra,aoFalar,semFala=true,live=false){
   const Ctx=window.AudioContext||window.webkitAudioContext;
   if(!Ctx)return ()=>{};
   let src,an,mudo;
@@ -456,7 +463,11 @@ function vigiaVoz(stream,encerra){
     src.connect(an);an.connect(mudo);mudo.connect(audioCtx.destination);
   }catch(e){return ()=>{}}
   const buf=new Uint8Array(an.fftSize),inicio=performance.now();
-  let ultima=inicio,primeira=0,ruido=0,n=0,parado=false,raf=0;
+  const confirma=live?VAD.live.confirma:VAD.confirma;
+  const fator=live?VAD.live.fator:VAD.fator;
+  const limiarMin=live?VAD.live.minLimiar:VAD.minLimiar;
+  const ignora=live?VAD.live.ignora:0;
+  let ultima=inicio,primeira=0,ruido=0,n=0,parado=false,raf=0,avisou=false,ultimoLog=0;
   const tick=()=>{
     if(parado)return;
     an.getByteTimeDomainData(buf);
@@ -464,18 +475,105 @@ function vigiaVoz(stream,encerra){
     const rms=Math.sqrt(s/buf.length);
     nivel=Math.min(1,rms*9);
     const agora=performance.now();
+    // no modo live, o começo da captura coincide com o TTS: ignora esse transiente
+    if(agora-inicio<ignora){raf=requestAnimationFrame(tick);return}
     if(n<12)ruido=(ruido*n+rms)/++n;else if(!primeira)ruido=ruido*.98+rms*.02;  // piso de ruído acompanha o ambiente
-    if(rms>Math.max(VAD.minLimiar,ruido*VAD.fator)){
+    const limiar=Math.max(limiarMin,ruido*fator);
+    if(live&&agora-ultimoLog>700&&document.body.classList.contains('debug')){
+      ultimoLog=agora;console.log('[live] rms='+rms.toFixed(3)+' ruído='+ruido.toFixed(3)+' limiar='+limiar.toFixed(3));
+    }
+    if(rms>limiar){
       if(!primeira)primeira=agora;
       ultima=agora;
     }
+    // modo live: fala contínua por `confirma` interrompe o TTS (uma vez só)
+    if(aoFalar&&!avisou&&primeira&&agora-primeira>=confirma){
+      if(aoFalar({rms,ruido,limiar})!==false)avisou=true;
+    }
     // encerra quando já houve fala suficiente e o silêncio passou do limite
     if(VAD.auto&&primeira&&agora-ultima>VAD.silencio&&ultima-primeira>=VAD.minFala){parado=true;nivel=0;encerra('silencio');return}
-    if(VAD.auto&&!primeira&&agora-inicio>VAD.semFala){parado=true;nivel=0;encerra('sem fala');return}  // microfone aberto sem ninguém falar
+    if(VAD.auto&&semFala&&!primeira&&agora-inicio>VAD.semFala){parado=true;nivel=0;encerra('sem fala');return}  // microfone aberto sem ninguém falar
     raf=requestAnimationFrame(tick);
   };
   raf=requestAnimationFrame(tick);
   return ()=>{parado=true;nivel=0;cancelAnimationFrame(raf);try{src.disconnect()}catch(e){}try{mudo.disconnect()}catch(e){}};
+}
+// ── modo live: escuta durante o TTS e barge-in ────────────────────────────────
+function aquecerAudio(){
+  try{
+    const Ctx=window.AudioContext||window.webkitAudioContext;
+    if(!Ctx)return;
+    audioCtx=audioCtx||new Ctx();
+    if(audioCtx.state==='suspended')audioCtx.resume();
+  }catch(e){}
+}
+function encerrarEscuta(){
+  if(!escuta)return;
+  const s=escuta;escuta=null;s.descartar=true;
+  if(s.soltaVad){s.soltaVad();s.soltaVad=null}
+  try{if(s.rec.state==='recording')s.rec.stop()}catch(e){}
+  s.stream.getTracks().forEach(t=>t.stop());
+  if(gravando===s.rec)gravando=null;
+  $('mic').classList.remove('on');$('mic').textContent='Falar';
+}
+function bargeIn(s,info){
+  if(!s||s.triggered||s.descartar||!modoLive||!lendo)return false;
+  s.triggered=true;
+  s.inicio=Math.max(0,(performance.now()-s.t0)/1000);
+  if(escuta===s)escuta=null;   // desanexa: parar() não pode descartar a gravação
+  gravando=s.rec;
+  vz={inicio:performance.now(),motivo:'barge-in'};if($('vz'))$('vz').textContent='';
+  console.log('[live] barge-in em '+s.inicio.toFixed(2)+' s'+(info?' (rms '+info.rms.toFixed(3)+', ruído '+info.ruido.toFixed(3)+', limiar '+info.limiar.toFixed(3)+')':''));
+  parar();  // cancela o TTS; a gravação continua como o turno do usuário
+  $('mic').classList.add('on');$('mic').textContent='Enviar fala';
+  cap('ouvindo… (falou por cima; clique para enviar)');go('ouvindo','esfera');
+  return true;
+}
+async function iniciarEscutaLive(){
+  if(_qs.has('nobarge'))return;   // diagnóstico: Live só falando, sem escutar por cima
+  if(!modoLive||escuta||gravando||transcrevendo)return;
+  if(!navigator.mediaDevices||!window.MediaRecorder)return;
+  let stream;
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:{
+    channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:false,
+    googEchoCancellation:true,googAutoGainControl:false,googNoiseSuppression:true,googHighpassFilter:true
+  }})}catch(e){console.log('[live] sem microfone para barge-in:',e.message);return}
+  if(!modoLive||!lendo||escuta||gravando||transcrevendo){stream.getTracks().forEach(t=>t.stop());return}
+  const tipo=['audio/webm;codecs=opus','audio/webm','audio/mp4'].find(t=>MediaRecorder.isTypeSupported(t))||'';
+  let rec;
+  try{rec=new MediaRecorder(stream,tipo?{mimeType:tipo}:undefined)}catch(e){stream.getTracks().forEach(t=>t.stop());return}
+  const partes=[];
+  const s={stream,rec,t0:0,inicio:0,triggered:false,descartar:false,soltaVad:null};
+  const lim=setTimeout(()=>{if(rec.state==='recording')rec.stop()},600000);
+  rec.ondataavailable=e=>{if(e.data.size)partes.push(e.data)};
+  rec.onstop=async()=>{
+    clearTimeout(lim);
+    if(s.soltaVad){s.soltaVad();s.soltaVad=null}
+    stream.getTracks().forEach(t=>t.stop());
+    if(escuta===s)escuta=null;
+    if(gravando===rec)gravando=null;
+    $('mic').classList.remove('on');$('mic').textContent='Falar';
+    if(s.descartar||!s.triggered)return;
+    if(vz){vz.fim=performance.now();vzPublica()}
+    const blob=new Blob(partes,{type:rec.mimeType||tipo||'audio/webm'});
+    if(blob.size<1200){cap('não entendi, tente de novo');go('repouso',tema||'esfera');vz=null;return}
+    cap('transcrevendo…');go('pensando','circulo');transcrevendo=true;
+    const t0=performance.now(),tick=setInterval(()=>cap('transcrevendo… '+((performance.now()-t0)/1000).toFixed(1)+' s'),200);
+    try{
+      const r=await fetch('/ui/voz?inicio='+s.inicio.toFixed(2),{method:'POST',headers:{'Content-Type':blob.type},body:blob});
+      const d=await r.json();
+      if(!r.ok||!d.ok)throw Error(d.erro||('HTTP '+r.status));
+      if(vz){vz.txt=performance.now();vz.srv=d.ms||null;vz.audio_s=d.audio_s;vzPublica()}
+      if(!d.texto){cap('não entendi, tente de novo');go('repouso',tema||'esfera');vz=null;return}
+      $('msg').value=d.texto;send(true);
+    }catch(e){vz=null;ev({tipo:'erro',texto:e.message})}
+    finally{transcrevendo=false;clearInterval(tick)}
+  };
+  escuta=s;
+  try{rec.start()}catch(e){escuta=null;stream.getTracks().forEach(t=>t.stop());return}
+  s.t0=performance.now();
+  console.log('[live] escuta iniciada');
+  s.soltaVad=vigiaVoz(stream,()=>{if(rec.state==='recording')rec.stop()},()=>bargeIn(s),false,true);
 }
 async function mic(){
   if(gravando){if(gravando.state==='recording')gravando.stop();return}
@@ -509,6 +607,10 @@ async function mic(){
 }
 $('mic').onclick=mic;
 $('ft').onclick=()=>{ftool=!ftool;$('ft').classList.toggle('on',ftool)};
+$('lv').classList.toggle('on',modoLive);
+$('lv').onclick=()=>{modoLive=!modoLive;try{localStorage.setItem('ciel_live',modoLive?'1':'0')}catch(e){};$('lv').classList.toggle('on',modoLive);
+  if(!modoLive){parar();go('repouso',tema||'esfera')}
+  else{aquecerAudio();cap('modo live: fale normalmente; fale por cima para interromper')}};
 $('rd').classList.toggle('on',leitura);$('rd').onclick=()=>{leitura=!leitura;$('rd').classList.toggle('on',leitura);try{localStorage.setItem('ciel_leitura',leitura?'1':'0')}catch(e){}if(!leitura){parar();go('repouso',tema||'esfera')}};$('send').onclick=send;$('msg').onkeydown=e=>{if(e.key==='Enter')send()};
 fit();build();ui();wake();requestAnimationFrame(loop);
 </script></body></html>
