@@ -40,6 +40,10 @@ input{flex:1 1 110px;min-width:0}
 .painel-tag{font-size:9px;opacity:.5;letter-spacing:0;text-transform:none}
 .painel-x{background:none;border:0;color:var(--fg);opacity:.6;font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
 .painel-x:hover{opacity:1}
+.painel-acoes{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:7px;border-top:1px solid rgba(74,168,255,.18)}
+.painel-acoes button{font-size:10px;padding:3px 8px;border-radius:8px;background:rgba(74,168,255,.12);border:1px solid rgba(74,168,255,.3);color:var(--fg);cursor:pointer}
+.painel-acoes button:hover{background:rgba(74,168,255,.22);border-color:rgba(140,210,255,.55)}
+.painel-acoes button:disabled{opacity:.45;cursor:wait}
 .painel .hora{font-size:34px;line-height:1;letter-spacing:.02em;font-variant-numeric:tabular-nums}
 .painel .data{font-size:12px;opacity:.8;margin:2px 0 8px}
 .painel .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:10px;text-align:center}
@@ -988,6 +992,61 @@ function fecharPainel(id){
   s.el.remove();paineisAbertos.delete(id);
 }
 function fecharTodosPaineis(){[...paineisAbertos.keys()].forEach(fecharPainel)}
+async function copiarPainel(texto,btn){
+  const rotulo=btn.textContent;
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(texto)}
+    else{
+      const ta=document.createElement('textarea');ta.value=texto;ta.style.position='fixed';ta.style.opacity='0';
+      document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    }
+    btn.textContent='Copiado';cap('texto copiado');
+    setTimeout(()=>{if(btn.isConnected)btn.textContent=rotulo},1200);
+  }catch(e){cap('⚠ não foi possível copiar')}
+}
+async function executarAcao(p,a,btn){
+  if(!p||!a||!btn)return;
+  const rotulo=btn.textContent;
+  if(a.tipo==='front'){
+    if(a.acao==='copiar'){
+      const texto=String((p.dados&&p.dados.texto)||p.resumo||'').trim();
+      if(!texto){cap('nada para copiar');return}
+      return copiarPainel(texto,btn);
+    }
+    if(a.acao==='abrir'){
+      const link=String(a.url||(p.dados&&p.dados.link)||'');
+      if(!link.startsWith('http')){cap('link inválido');return}
+      window.open(link,'_blank','noopener,noreferrer');return;
+    }
+    if(a.acao==='focar'){focarPainel(p.id);return}
+    if(a.acao==='palco'){abrirPalco(p);return}
+    if(a.acao==='fechar'){fecharPainel(p.id);return}
+    cap('ação desconhecida');return;
+  }
+  if(a.tipo==='tool'){
+    btn.disabled=true;btn.textContent='…';
+    try{
+      const r=await fetch('/api/painel_acao',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({acao:a.acao,id:p.id,tipo:p.tipo,
+          tema:(p.dados||{}).tema,limite:(p.dados||{}).limite})});
+      const d=await r.json();
+      if(!r.ok||!d.ok)throw Error(d.error||d.message||'falha');
+      cap(d.message||'painel atualizado');
+    }catch(e){cap('⚠ '+e.message)}
+    finally{if(btn.isConnected){btn.disabled=false;btn.textContent=rotulo}}
+  }
+}
+function montarAcoes(el,p){
+  const acoes=(Array.isArray(p.acoes)?p.acoes:[]).filter(a=>a&&a.tipo&&a.acao);
+  if(!acoes.length)return;
+  const row=document.createElement('div');row.className='painel-acoes';
+  acoes.forEach(a=>{
+    const btn=document.createElement('button');btn.type='button';btn.textContent=a.rotulo||a.acao;
+    btn.onclick=(e)=>{e.stopPropagation();executarAcao(p,a,btn)};
+    row.appendChild(btn);
+  });
+  el.appendChild(row);
+}
 function abrirPainel(p){
   if(!p||!p.id||!PAINEIS_RENDER[p.tipo])return;
   fecharPainel(p.id);
@@ -1004,6 +1063,7 @@ function abrirPainel(p){
   $('paineis').appendChild(el);
   let cleanup=null;
   try{cleanup=PAINEIS_RENDER[p.tipo](corpo,p)}catch(e){corpo.textContent='Falha ao montar o painel.'}
+  montarAcoes(el,p);
   paineisAbertos.set(p.id,{el,cleanup,p});
 }
 function resumoTela(){
@@ -1011,7 +1071,8 @@ function resumoTela(){
   return [...paineisAbertos.values()].slice(0,12).map(s=>{
     const p=s.p||{};
     return {id:p.id||'',titulo:p.titulo||'',tipo:p.tipo||'',
-            resumo:(p.resumo||'').slice(0,180),fala:p.fala||'nunca'};
+            resumo:(p.resumo||'').slice(0,180),fala:p.fala||'nunca',
+            acoes:(p.acoes||[]).filter(a=>a&&a.id).map(a=>a.id).slice(0,6)};
   });
 }
 async function carregarPaineisPesquisa(){

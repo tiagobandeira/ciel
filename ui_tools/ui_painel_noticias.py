@@ -74,11 +74,14 @@ def run(tema: str, limite: int = 5) -> str:
             "fala_texto": ("Notícias sobre " + tema + ": " +
                            "; ".join(i["titulo"] for i in itens[:3]) + ".")[:900],
             "resumo": f"{len(itens)} notícias recentes sobre {tema}.",
-            "acoes": [],
+            "acoes": [{"id": "atualizar", "rotulo": "Atualizar",
+                       "tipo": "tool", "acao": "atualizar_noticias"}],
             "dados": {
                 "itens": itens,
                 "fonte": "Google Notícias",
                 "atualizado": datetime.now().strftime("%d/%m %H:%M"),
+                "tema": tema,
+                "limite": n,
             },
         }
         import ui_bus

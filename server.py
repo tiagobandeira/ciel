@@ -55,6 +55,7 @@ from history_store  import HistoryStore, DB_PATH
 from history_ui     import build_context_injection
 from auth           import AuthManager
 import ui_bus
+from panel_actions import executar as executar_acao_painel
 from ui_routes import bp as ui_bp
 
 # ── config ──────────────────────────────────────────────────────────────────
@@ -385,7 +386,12 @@ def _contexto_tela(tela, ativo: bool, palco: str = "", foco: str = ""):
         tipo = "".join(c for c in str(p.get("tipo", ""))[:24] if c.isalnum() or c in "-_")
         resumo = " ".join(str(p.get("resumo", ""))[:180].split())
         fala = " ".join(str(p.get("fala", ""))[:12].split())
-        abertos.append(f"- id={pid} | tipo={tipo} | {titulo} | fala={fala} | {resumo}")
+        acoes = ",".join(
+            str(a.get("id", ""))[:24] for a in (p.get("acoes") or [])
+            if isinstance(a, dict) and a.get("id")
+        )[:120]
+        abertos.append(f"- id={pid} | tipo={tipo} | {titulo} | fala={fala} | "
+                       f"ações={acoes or '-'} | {resumo}")
     if abertos:
         linhas.append("Painéis abertos:")
         linhas.extend(abertos)
@@ -421,6 +427,14 @@ def _server_confirm_path(raw_path: str, need_write: bool) -> bool:
 
 
 # ── /api/chat ─────────────────────────────────────────────────────────────────
+@app.route("/api/painel_acao", methods=["POST"])
+def api_painel_acao():
+    """Executa uma ação de painel permitida (allowlist em panel_actions)."""
+    data = request.get_json(force=True) or {}
+    ok, mensagem = executar_acao_painel(data.get("acao", ""), data)
+    return jsonify({"ok": ok, "message": mensagem, "error": None if ok else mensagem}), (200 if ok else 400)
+
+
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
     # garante que as tools refletem o estado de auth desta request

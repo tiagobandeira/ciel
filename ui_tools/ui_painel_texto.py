@@ -29,6 +29,9 @@ def run(titulo: str, texto: str, fonte: str = "", link: str = "") -> str:
     fala_texto = re.sub(r"(?m)^\s*[-*]\s+", "", texto)
     fala_texto = re.sub(r"[#*_`>|~]+", " ", fala_texto)
     fala_texto = " ".join(fala_texto.split())[:800]
+    acoes = [{"id": "copiar", "rotulo": "Copiar", "tipo": "front", "acao": "copiar"}]
+    if link:
+        acoes.append({"id": "abrir_fonte", "rotulo": "Abrir fonte", "tipo": "front", "acao": "abrir"})
     painel = {
         "id": "texto-" + _slug(titulo),
         "tipo": "texto",
@@ -38,7 +41,7 @@ def run(titulo: str, texto: str, fonte: str = "", link: str = "") -> str:
         "fala": "resumo",
         "fala_texto": fala_texto,
         "resumo": " ".join(texto.split())[:180],
-        "acoes": [],
+        "acoes": acoes,
         "dados": {"texto": texto, "fonte": fonte, "link": link},
     }
     import ui_bus
