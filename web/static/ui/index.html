@@ -24,9 +24,10 @@ input{flex:1 1 110px;min-width:0}
 @media(max-width:900px){#chat{left:10px;right:10px;width:auto;top:auto;max-height:34vh}}
 .m code{background:rgba(74,168,255,.18);padding:0 4px;border-radius:4px}
 .s{transition:background .3s}.s.lendo{background:rgba(74,168,255,.3);border-radius:4px;box-shadow:0 0 0 3px rgba(74,168,255,.3)}
+#vz{font-size:11px;opacity:.85}
 </style></head><body>
 <canvas id="c"></canvas><div id="hud"></div><div id="cap"></div><div id="chat" class="vazio"><div id="msgs"></div></div>
-<div id="bar"><div class="row"><input id="msg" placeholder="Fale com o Ciel" autocomplete="off"><button id="send">Enviar</button><button id="mic">Falar</button></div><div class="row dbg" id="st"></div><div class="row dbg" id="sh"></div>
+<div id="bar"><div class="row"><input id="msg" placeholder="Fale com o Ciel" autocomplete="off"><button id="send">Enviar</button><button id="mic">Falar</button></div><div class="row dbg" id="st"></div><div class="row dbg" id="sh"></div><div class="row dbg" id="vz"></div>
 <div class="row dbg"><input id="js" placeholder="colar JSON de forma"><button id="pj">Forma JSON</button></div>
 <div class="row"><input id="tx" placeholder="palavra" maxlength="14"><button id="pw">Palavra</button>
 <select id="q"><option value="15000">Leve</option><option value="30000" selected>Média</option><option value="60000">Alta</option></select>
@@ -34,6 +35,8 @@ input{flex:1 1 110px;min-width:0}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const R=Math.random,$=id=>document.getElementById(id);
+// Ajustes de voz. Por enquanto no código; se virar config, o lugar é "ui_voz" no ciel_config.json.
+const PAUSA_FALA_MS=2000;   // silêncio (ms) que encerra a gravação; ?pausa=1500 testa outro valor
 let N,cache,geo,pts,amp=0,T=0;
 const cur={st:'repouso',sh:'esfera',tx:'CIEL'};
 const rd=new THREE.WebGLRenderer({canvas:$('c'),alpha:true});rd.setPixelRatio(Math.min(devicePixelRatio,2));
@@ -293,7 +296,7 @@ const VEL_Y=0.55;      // giro 3D (modo 'y')
 let last=performance.now(),fr=0,ft=last;
 function loop(now){const dt=Math.min((now-last)/1000,.05);last=now;T+=dt;u.uTime.value=T;
 if(u.uT.value<1)u.uT.value=Math.min(1,u.uT.value+dt/1.8);
-const topic=cur.sh!=='esfera'&&cur.sh!=='circulo',tg=ST[cur.st][1](T)*(topic?.4:1);
+const topic=cur.sh!=='esfera'&&cur.sh!=='circulo',tg=ST[cur.st][1](T)*(topic?.4:1)+(gravando?nivel*.25:0);
 amp+=(tg-amp)*.15;u.uAmp.value=amp;
 
 // matrizes das camadas (anim por camada + anim global por cima)
@@ -386,7 +389,7 @@ go('falando',tema||'esfera');
 const prox=()=>{if(id!==lerId)return;while(i<r.fr.length&&!r.fr[i])i++;
 if(i>=r.fr.length){lendo=false;sp.forEach(x=>x.classList.remove('lendo'));go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4);return}
 const k=i,u=new SpeechSynthesisUtterance(r.fr[k]);u.lang='pt-BR';const v=voz();if(v)u.voice=v;
-u.onstart=()=>{if(id!==lerId)return;sp.forEach(x=>x.classList.remove('lendo'));sp[k].classList.add('lendo');sp[k].scrollIntoView({block:'nearest',behavior:'smooth'});
+u.onstart=()=>{if(id!==lerId)return;if(vz&&!vz.fala){vz.fala=performance.now();vzPublica()}sp.forEach(x=>x.classList.remove('lendo'));sp[k].classList.add('lendo');sp[k].scrollIntoView({block:'nearest',behavior:'smooth'});
 $('chat').classList.remove('idle');clearTimeout(idle2);if(!pin)idle2=setTimeout(()=>$('chat').classList.add('idle'),8000);progresso(k)};
 u.onend=u.onerror=()=>{if(id!==lerId)return;i=k+1;prox()};speechSynthesis.speak(u)};
 setTimeout(prox,80)}
@@ -406,32 +409,103 @@ else if(m.tipo==='marcas'&&m.id===anotId){marcas=m.marcas||[];aplica(kAtual)}
 else if(m.tipo==='forma_lib'){if(m.spec){LIB[m.nome]=m.spec;delete cache[m.nome]}aplica(kAtual)}
 else if(m.tipo==='erro'){cap('⚠ '+m.texto);tema=null;go('repouso','esfera')}}
 const es=new EventSource('/ui/events');es.onmessage=e=>{try{ev(JSON.parse(e.data))}catch(x){}};
-async function send(){const t=$('msg').value.trim();if(!t)return;$('msg').value='';parar();tema=null;faloui=false;ultC='';addMsg('u',t);cap('pensando…');go('pensando','circulo');
+async function send(deVoz){const t=$('msg').value.trim();if(!t)return;$('msg').value='';parar();tema=null;faloui=false;ultC='';
+if(deVoz===true&&vz)vz.envio=performance.now();else vz=null;
+addMsg('u',t);cap('pensando…');go('pensando','circulo');
 try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:t})});
 if(!r.ok)throw Error('HTTP '+r.status);const d=await r.json();
+if(deVoz===true&&vz){vz.chato=performance.now();vzPublica()}
 if(!faloui&&(t[0]==='/'||d.status!=='done'))ev({tipo:'fala',texto:d.reply||''})}
 catch(e){ev({tipo:'erro',texto:'falha ao enviar: '+e.message})}}
-// microfone: grava (clique inicia, outro clique envia) -> /ui/voz (Whisper local) -> texto vai para o chat
-let gravando=null;
+// ── voz: microfone + detecção de voz ──────────────────────────────────────────
+// Falar grava; a gravação termina no clique ou sozinha depois do silêncio configurado
+// (PAUSA_FALA_MS, no topo do script; ?pausa=3000 testa outro valor sem editar o código).
+// O nível do microfone move as partículas.
+const _qs=new URLSearchParams(location.search);
+const VAD={
+  silencio:Math.min(10000,Math.max(400,+_qs.get('pausa')||PAUSA_FALA_MS)),
+  minFala:300,       // som mínimo para contar como fala
+  minLimiar:.012,    // piso absoluto de ruído
+  fator:2.5,         // limiar = ruído do ambiente x fator
+  semFala:5000,      // microfone aberto sem ninguém falar: encerra
+  auto:!_qs.has('semvad')};   // ?semvad desliga o encerramento automático
+let gravando=null,soltaVad=null,nivel=0,audioCtx=null,transcrevendo=false;
+let vz=null;  // tempos da última rodada de voz: console + linha de debug (#vz)
+function vzPublica(){
+  if(!vz)return;
+  const p=[];
+  if(vz.fim)p.push('gravação '+Math.round(vz.fim-vz.inicio)+' ms ('+(vz.motivo||'clique')+')');
+  if(vz.txt)p.push('transcrição '+Math.round(vz.txt-vz.fim)+' ms'+(vz.srv&&vz.srv.transcricao!=null?' (servidor '+vz.srv.transcricao+' ms)':''));
+  if(vz.chato)p.push('chat '+Math.round(vz.chato-vz.envio)+' ms');
+  if(vz.fala)p.push('até falar '+Math.round(vz.fala-vz.inicio)+' ms');
+  if(!p.length)return;
+  const t=p.join(' · '),txt=vz.audio_s?' · '+vz.audio_s+' s de áudio':'';
+  if($('vz'))$('vz').textContent=t+txt;
+  console.log('[voz] '+t+txt);
+}
+function vigiaVoz(stream,encerra){
+  const Ctx=window.AudioContext||window.webkitAudioContext;
+  if(!Ctx)return ()=>{};
+  let src,an,mudo;
+  try{
+    audioCtx=audioCtx||new Ctx();
+    if(audioCtx.state==='suspended')audioCtx.resume();
+    src=audioCtx.createMediaStreamSource(stream);
+    an=audioCtx.createAnalyser();an.fftSize=1024;an.smoothingTimeConstant=.5;
+    mudo=audioCtx.createGain();mudo.gain.value=0;   // deixa o grafo rodando sem tocar o mic nos alto-falantes
+    src.connect(an);an.connect(mudo);mudo.connect(audioCtx.destination);
+  }catch(e){return ()=>{}}
+  const buf=new Uint8Array(an.fftSize),inicio=performance.now();
+  let ultima=inicio,primeira=0,ruido=0,n=0,parado=false,raf=0;
+  const tick=()=>{
+    if(parado)return;
+    an.getByteTimeDomainData(buf);
+    let s=0;for(let i=0;i<buf.length;i++){const v=(buf[i]-128)/128;s+=v*v}
+    const rms=Math.sqrt(s/buf.length);
+    nivel=Math.min(1,rms*9);
+    const agora=performance.now();
+    if(n<12)ruido=(ruido*n+rms)/++n;else if(!primeira)ruido=ruido*.98+rms*.02;  // piso de ruído acompanha o ambiente
+    if(rms>Math.max(VAD.minLimiar,ruido*VAD.fator)){
+      if(!primeira)primeira=agora;
+      ultima=agora;
+    }
+    // encerra quando já houve fala suficiente e o silêncio passou do limite
+    if(VAD.auto&&primeira&&agora-ultima>VAD.silencio&&ultima-primeira>=VAD.minFala){parado=true;nivel=0;encerra('silencio');return}
+    if(VAD.auto&&!primeira&&agora-inicio>VAD.semFala){parado=true;nivel=0;encerra('sem fala');return}  // microfone aberto sem ninguém falar
+    raf=requestAnimationFrame(tick);
+  };
+  raf=requestAnimationFrame(tick);
+  return ()=>{parado=true;nivel=0;cancelAnimationFrame(raf);try{src.disconnect()}catch(e){}try{mudo.disconnect()}catch(e){}};
+}
 async function mic(){
-  if(gravando){gravando.stop();return}
+  if(gravando){if(gravando.state==='recording')gravando.stop();return}
+  if(transcrevendo){cap('aguarde a transcrição…');return}
   if(!navigator.mediaDevices||!window.MediaRecorder){cap('⚠ microfone indisponível (precisa de localhost ou HTTPS)');return}
   parar();  // interrompe a leitura em andamento
-  let stream;try{stream=await navigator.mediaDevices.getUserMedia({audio:true})}catch(e){cap('⚠ sem acesso ao microfone');return}
+  let stream;try{stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}})}catch(e){cap('⚠ sem acesso ao microfone');return}
   const tipo=['audio/webm;codecs=opus','audio/webm','audio/mp4'].find(t=>MediaRecorder.isTypeSupported(t))||'';
   const rec=new MediaRecorder(stream,tipo?{mimeType:tipo}:undefined),partes=[];
   const lim=setTimeout(()=>{if(rec.state==='recording')rec.stop()},30000);
+  vz={inicio:performance.now()};if($('vz'))$('vz').textContent='';
   rec.ondataavailable=e=>{if(e.data.size)partes.push(e.data)};
-  rec.onstop=async()=>{clearTimeout(lim);gravando=null;stream.getTracks().forEach(t=>t.stop());$('mic').classList.remove('on');$('mic').textContent='Falar';
+  rec.onstop=async()=>{clearTimeout(lim);gravando=null;soltaVad&&soltaVad();soltaVad=null;stream.getTracks().forEach(t=>t.stop());
+    $('mic').classList.remove('on');$('mic').textContent='Falar';
+    if(vz){vz.motivo=rec._motivo||'clique';vz.fim=performance.now();vzPublica()}
     const blob=new Blob(partes,{type:rec.mimeType||tipo||'audio/webm'});
-    if(blob.size<2000){cap('');go('repouso',tema||'esfera');return}
-    cap('transcrevendo…');go('pensando','circulo');
+    if(blob.size<1200){cap(rec._motivo==='sem fala'?'nada captado — tente de novo':'');go('repouso',tema||'esfera');vz=null;return}
+    cap('transcrevendo…');go('pensando','circulo');transcrevendo=true;
+    const t0=performance.now(),tick=setInterval(()=>cap('transcrevendo… '+((performance.now()-t0)/1000).toFixed(1)+' s'),200);
     try{const r=await fetch('/ui/voz',{method:'POST',headers:{'Content-Type':blob.type},body:blob});const d=await r.json();
       if(!r.ok||!d.ok)throw Error(d.erro||('HTTP '+r.status));
-      if(!d.texto){cap('não entendi, tente de novo');go('repouso',tema||'esfera');return}
-      $('msg').value=d.texto;send()}
-    catch(e){ev({tipo:'erro',texto:e.message})}};
-  gravando=rec;rec.start();$('mic').classList.add('on');$('mic').textContent='Enviar fala';cap('ouvindo…');go('ouvindo','esfera');
+      if(vz){vz.txt=performance.now();vz.srv=d.ms||null;vz.audio_s=d.audio_s;vzPublica()}
+      if(!d.texto){cap('não entendi, tente de novo');go('repouso',tema||'esfera');vz=null;return}
+      $('msg').value=d.texto;send(true)}
+    catch(e){vz=null;ev({tipo:'erro',texto:e.message})}
+    finally{transcrevendo=false;clearInterval(tick)}};
+  gravando=rec;rec.start();
+  soltaVad=vigiaVoz(stream,motivo=>{if(rec.state==='recording'){rec._motivo=motivo;rec.stop()}});
+  $('mic').classList.add('on');$('mic').textContent='Enviar fala';
+  cap(VAD.auto?'ouvindo… (clique para enviar; encerra sozinho no silêncio)':'ouvindo… (clique para enviar)');go('ouvindo','esfera');
 }
 $('mic').onclick=mic;
 $('ft').onclick=()=>{ftool=!ftool;$('ft').classList.toggle('on',ftool)};

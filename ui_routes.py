@@ -26,33 +26,107 @@ _voz_lock = threading.Lock()
 _whisper = {"modelo": None, "chave": None}
 _ultimo_voz = {"t": 0.0}
 
+# Medido na máquina de desenvolvimento (CPU, small/int8): a transcrição custa ~4 s por fala
+# independentemente da duração (1 s ou 29 s), porque o encoder do Whisper sempre trabalha na
+# janela de 30 s. Cortar silêncio ou encurtar o áudio não reduz esse custo; o que reduz é um
+# modelo menor (base/tiny), GPU ou outro motor (ex.: Vosk, que é streaming).
+
 
 def _cfg_voz() -> dict:
-    """ciel_config.json -> "ui_voz": {"modelo": "small", "idioma": "pt", "device": "auto", "compute_type": "int8"}"""
+    """ciel_config.json -> "ui_voz".
+
+    Chaves aceitas (todas opcionais):
+      modelo, idioma, device, compute_type — como antes;
+      cpu_threads   — threads do CTranslate2 (0 = automático);
+      preload       — carrega o modelo quando a página /ui abre (padrão true);
+      sem_timestamps— transcreve sem timestamps por segmento (padrão true, mais rápido);
+      prompt_inicial— texto de contexto para o Whisper (padrão "").
+    """
     try:
         cfg = json.loads((_ROOT / "ciel_config.json").read_text(encoding="utf-8")).get("ui_voz") or {}
     except Exception:
         cfg = {}
-    return {"modelo": cfg.get("modelo", "small"), "idioma": cfg.get("idioma", "pt"),
-            "device": cfg.get("device", "auto"), "compute_type": cfg.get("compute_type", "int8")}
+    try:
+        threads = max(0, int(cfg.get("cpu_threads") or 0))
+    except (TypeError, ValueError):
+        threads = 0
+    return {
+        "modelo": cfg.get("modelo", "small"),
+        "idioma": cfg.get("idioma", "pt"),
+        "device": cfg.get("device", "auto"),
+        "compute_type": cfg.get("compute_type", "int8"),
+        "cpu_threads": threads,
+        "preload": bool(cfg.get("preload", True)),
+        "sem_timestamps": bool(cfg.get("sem_timestamps", True)),
+        "prompt_inicial": str(cfg.get("prompt_inicial") or ""),
+    }
 
 
-def _transcrever(dados: bytes, sufixo: str) -> str:
-    """Motor de voz de entrada. Para trocar por outro motor (API, outro modelo), reescreva só esta função."""
+def _chave_modelo(cfg: dict) -> tuple:
+    return (cfg["modelo"], cfg["device"], cfg["compute_type"], cfg["cpu_threads"])
+
+
+def _carrega_modelo(cfg: dict) -> tuple:
+    """Carrega o modelo se a config mudou. Devolve (modelo, ms_de_carga). Exige _voz_lock."""
     from faster_whisper import WhisperModel  # import tardio: só quem usa voz precisa instalar
+    chave = _chave_modelo(cfg)
+    if _whisper["modelo"] is not None and _whisper["chave"] == chave:
+        return _whisper["modelo"], 0
+    t0 = time.monotonic()
+    extras = {"cpu_threads": cfg["cpu_threads"]} if cfg["cpu_threads"] else {}
+    _whisper["modelo"] = WhisperModel(
+        cfg["modelo"], device=cfg["device"], compute_type=cfg["compute_type"], num_workers=1, **extras)
+    _whisper["chave"] = chave
+    return _whisper["modelo"], int((time.monotonic() - t0) * 1000)
+
+
+def precarregar() -> None:
+    """Chamado quando /ui abre: deixa o modelo pronto antes de o usuário apertar Falar.
+
+    É best-effort: sem faster-whisper instalado (ou com erro de download) a página abre igual
+    e o /ui/voz devolve o erro de sempre.
+    """
+    if not _cfg_voz()["preload"]:
+        return
+    try:
+        with _voz_lock:
+            _carrega_modelo(_cfg_voz())
+    except Exception:
+        pass
+
+
+def _transcrever(dados: bytes, sufixo: str) -> dict:
+    """Motor de voz de entrada. Para trocar por outro motor (API, outro modelo), reescreva só esta função.
+
+    Devolve {"texto", "ms_carga", "ms_transcricao", "audio_s"}.
+    """
     cfg = _cfg_voz()
-    chave = (cfg["modelo"], cfg["device"], cfg["compute_type"])
+    t_total = time.monotonic()
     with _voz_lock:  # um áudio por vez; o modelo é carregado na primeira chamada
-        if _whisper["chave"] != chave:
-            _whisper["modelo"] = WhisperModel(cfg["modelo"], device=cfg["device"], compute_type=cfg["compute_type"])
-            _whisper["chave"] = chave
+        modelo, ms_carga = _carrega_modelo(cfg)
         fd, caminho = tempfile.mkstemp(suffix=sufixo)
+        t_tx = time.monotonic()
         try:
             with os.fdopen(fd, "wb") as f:
                 f.write(dados)
-            segmentos, _ = _whisper["modelo"].transcribe(
-                caminho, language=cfg["idioma"] or None, beam_size=1, vad_filter=True)
-            return " ".join(seg.text.strip() for seg in segmentos).strip()
+            segmentos, info = modelo.transcribe(
+                caminho,
+                language=cfg["idioma"] or None,
+                beam_size=1,
+                best_of=1,
+                vad_filter=True,
+                without_timestamps=cfg["sem_timestamps"],
+                condition_on_previous_text=False,
+                initial_prompt=cfg["prompt_inicial"] or None,
+            )
+            texto = " ".join(seg.text.strip() for seg in segmentos).strip()
+            return {
+                "texto": texto,
+                "ms_carga": ms_carga,
+                "ms_transcricao": int((time.monotonic() - t_tx) * 1000),
+                "ms_total": int((time.monotonic() - t_total) * 1000),
+                "audio_s": round(float(getattr(info, "duration", 0) or 0), 2),
+            }
         finally:
             try:
                 os.remove(caminho)
@@ -62,6 +136,9 @@ def _transcrever(dados: bytes, sufixo: str) -> str:
 
 @bp.route("/ui")
 def ui_index():
+    # carrega o Whisper em segundo plano enquanto a página monta: o botão Falar já encontra
+    # o modelo pronto (a carga leva vários segundos e antes caía no primeiro pedido de voz).
+    threading.Thread(target=precarregar, daemon=True).start()
     return send_from_directory(_UI_DIR, "index.html")
 
 
@@ -103,9 +180,15 @@ def ui_voz():
         return jsonify(ok=False, erro="áudio vazio"), 400
     tipo = (request.content_type or "").split(";")[0].split("/")[-1].strip().lower()
     try:
-        texto = _transcrever(dados, _SUFIXOS.get(tipo, ".webm"))
+        r = _transcrever(dados, _SUFIXOS.get(tipo, ".webm"))
     except ImportError:
         return jsonify(ok=False, erro="faster-whisper não instalado (pip install faster-whisper)"), 501
     except Exception as e:
         return jsonify(ok=False, erro=f"falha ao transcrever: {str(e)[:120]}"), 500
-    return jsonify(ok=True, texto=texto)
+    # tempos por etapa: aparecem no console (e na linha de debug) do front para medir a latência
+    return jsonify(
+        ok=True,
+        texto=r["texto"],
+        audio_s=r["audio_s"],
+        ms={"carga": r["ms_carga"], "transcricao": r["ms_transcricao"], "total": r["ms_total"]},
+    )

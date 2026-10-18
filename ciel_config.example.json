@@ -15,5 +15,20 @@
     "openrouter": { "base_url": "https://openrouter.ai/api/v1",      "model": "qwen/qwen3-235b-a22b:free"                },
     "9router":    { "base_url": "http://localhost:20128/v1",          "model": "kr/claude-sonnet-4.5"                    },
     "openai":     { "base_url": "https://api.openai.com/v1",         "model": "gpt-4o"                                  }
+  },
+
+  "_ui_anotar": "Modo leitura (/ui): criar_formas=false escolhe só entre as formas do repositório (mais rápido).",
+  "ui_anotar": { "criar_formas": false },
+
+  "_ui_voz": "Entrada por voz (/ui): Whisper local. modelo menor = menos latência e menos precisão.",
+  "ui_voz": {
+    "modelo": "small",
+    "idioma": "pt",
+    "device": "auto",
+    "compute_type": "int8",
+    "cpu_threads": 0,
+    "preload": true,
+    "sem_timestamps": true,
+    "prompt_inicial": ""
   }
 }
