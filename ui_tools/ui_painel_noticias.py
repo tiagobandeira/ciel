@@ -71,6 +71,8 @@ def run(tema: str, limite: int = 5) -> str:
             "nomes": [tema, "notícias", "noticias", "news"],
             "slot": "bottom-left",
             "fala": "resumo",
+            "fala_texto": ("Notícias sobre " + tema + ": " +
+                           "; ".join(i["titulo"] for i in itens[:3]) + ".")[:900],
             "resumo": f"{len(itens)} notícias recentes sobre {tema}.",
             "acoes": [],
             "dados": {

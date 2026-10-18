@@ -448,6 +448,7 @@ const TOOLS={web_search:'lupa',web_search_extended:'lupa',read_url:'lupa',http_r
 read_file:'documento',read_pdf:'documento',read_source:'documento',search_knowledge:'documento',list_directory:'documento',list_directory_files:'documento',
 write_file:'lapis',docx_criar:'lapis',docx_substituir_texto:'lapis',docx_comentar:'lapis',run_script:'terminal',secondary_model:'rede'};
 let tema=null,fim,faloui=false,ultC='',lerId=0,leitura=false,modoLive=false,modoPesquisa=false,anotId=null,marcas=[],kAtual=-1,lendo=false;
+let turnoAtivo=false,filaFala=[],falandoPainel=false,painelLerId=0,painelFalandoId=null;
 try{leitura=localStorage.getItem('ciel_leitura')==='1'}catch(e){}
 try{modoLive=localStorage.getItem('ciel_live')==='1'}catch(e){}
 const limpa=t=>{const r=t.replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/https?:\/\/\S+/g,'').replace(/[*_`#>|~]+/g,' ').replace(/^\s*[-•]\s+/,'').replace(/\s+/g,' ').trim();return /[\p{L}\p{N}]/u.test(r)?r:''};
@@ -455,13 +456,49 @@ const voz=()=>{const v=speechSynthesis.getVoices().filter(x=>/^pt/i.test(x.lang)
 const progresso=k=>{kAtual=k;aplica(k)};
 function aplica(k){if(!lendo||!marcas.length)return;let m=null;for(const x of marcas)if(x.i<=k)m=x;if(!m)return;
 const nm=m.nome==='coracao'?'coração':m.nome;if(!(S[nm]||LIB[nm])||tema===nm)return;tema=nm;go('falando',nm)}
-function parar(){encerrarEscuta();lerId++;lendo=false;anotId=null;marcas=[];try{speechSynthesis.cancel()}catch(e){}document.querySelectorAll('.s.lendo').forEach(x=>x.classList.remove('lendo'))}
-function ler(r){const sp=[...r.d.querySelectorAll('.s')],id=++lerId;let i=0;try{speechSynthesis.cancel()}catch(e){}anotId=Date.now();marcas=[];kAtual=-1;lendo=true;
+function parar(){encerrarEscuta();lerId++;painelLerId++;lendo=false;turnoAtivo=false;filaFala=[];falandoPainel=false;painelFalandoId=null;anotId=null;marcas=[];try{speechSynthesis.cancel()}catch(e){}document.querySelectorAll('.s.lendo').forEach(x=>x.classList.remove('lendo'))}
+function enfileirarFala(p){
+  if(!p||p.fala==='nunca'||!(modoLive||leitura)||!window.speechSynthesis)return;
+  const bruto=String(p.fala_texto||'').trim();
+  if(!bruto)return;
+  const item={id:p.id||'',titulo:p.titulo||'painel',texto:bruto.slice(0,1200)};
+  const idx=filaFala.findIndex(x=>x.id===item.id);
+  if(idx>=0)filaFala[idx]=item;else filaFala.push(item);
+  if(filaFala.length>2)filaFala=filaFala.slice(-2);
+  if(!turnoAtivo&&!lendo)setTimeout(falarPainel,180);
+}
+function falarPainel(){
+  if(falandoPainel||!filaFala.length)return;
+  if(!(modoLive||leitura)||!window.speechSynthesis){filaFala=[];return}
+  const item=filaFala.shift();
+  const texto=limpa(item.texto||'');
+  if(!texto){falarPainel();return}
+  const id=++painelLerId;falandoPainel=true;painelFalandoId=item.id||null;clearTimeout(fim);
+  const u=new SpeechSynthesisUtterance(texto);u.lang='pt-BR';const v=voz();if(v)u.voice=v;
+  u.onstart=()=>{
+    if(id!==painelLerId)return;
+    go('falando',tema||'esfera');
+    cap('painel: '+item.titulo);
+    if(item.id)focarPainel(item.id);
+    if(modoLive)iniciarEscutaLive();
+  };
+  u.onend=u.onerror=()=>{
+    if(id!==painelLerId)return;
+    falandoPainel=false;painelFalandoId=null;
+    if(modoLive)encerrarEscuta();
+    cap('');
+    if(filaFala.length){setTimeout(falarPainel,160);return}
+    go('repouso',tema||'esfera');
+    fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4);
+  };
+  speechSynthesis.speak(u);
+}
+function ler(r){const sp=[...r.d.querySelectorAll('.s')],id=++lerId;let i=0;try{speechSynthesis.cancel()}catch(e){}anotId=Date.now();marcas=[];kAtual=-1;lendo=true;painelLerId++;falandoPainel=false;painelFalandoId=null;
 const nFr=r.fr.filter(Boolean).length,txtAnot=r.fr.join(' ').trim();
 if(nFr>=6||(modoLive&&txtAnot.length>=40))fetch('/ui/anotar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:anotId,frases:r.fr,live:modoLive})}).then(x=>{if(!x.ok)cap('ℹ formas por tópico indisponíveis (HTTP '+x.status+')')}).catch(()=>{});
 go('falando',tema||'esfera');
 const prox=()=>{if(id!==lerId)return;while(i<r.fr.length&&!r.fr[i])i++;
-if(i>=r.fr.length){encerrarEscuta();lendo=false;sp.forEach(x=>x.classList.remove('lendo'));go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4);return}
+if(i>=r.fr.length){encerrarEscuta();lendo=false;sp.forEach(x=>x.classList.remove('lendo'));go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4);setTimeout(falarPainel,140);return}
 const k=i,u=new SpeechSynthesisUtterance(r.fr[k]);u.lang='pt-BR';const v=voz();if(v)u.voice=v;
 u.onstart=()=>{if(id!==lerId)return;if(modoLive)iniciarEscutaLive();if(modoPesquisa)focarPorTexto(r.fr[k]);if(vz&&!vz.fala){vz.fala=performance.now();vzPublica()}sp.forEach(x=>x.classList.remove('lendo'));sp[k].classList.add('lendo');sp[k].scrollIntoView({block:'nearest',behavior:'smooth'});
 $('chat').classList.remove('idle');clearTimeout(idle2);if(!pin)idle2=setTimeout(()=>$('chat').classList.add('idle'),8000);progresso(k)};
@@ -476,15 +513,16 @@ if(m.tipo==='estado'){go(m.valor,ST[m.valor]?ST[m.valor][0]:'esfera');if(m.valor
 else if(m.tipo==='tool'){go('pensando','circulo');cap('⚙ '+m.nome);const f=TOOLS[m.nome];if(ftool&&f){const n=m.nome;tf=n;setTimeout(()=>{if(tf===n)go('pensando',f)},700)}}
 else if(m.tipo==='forma'){const nm=m.nome==='coracao'?'coração':m.nome;if(m.spec){LIB[nm]=m.spec;delete cache[nm]}
 if(S[nm]||LIB[nm]){if(!TOPIC.includes(nm))TOPIC.push(nm);tema=nm;cur.sh='';go('falando',nm)}}
-else if(m.tipo==='fala'){faloui=true;cap('');const tx=m.texto||'',lr=(modoLive||leitura)&&tx&&!!window.speechSynthesis;
+else if(m.tipo==='fala'){faloui=true;turnoAtivo=false;cap('');const tx=m.texto||'',lr=(modoLive||leitura)&&tx&&!!window.speechSynthesis;
 if(tx!==ultC){const r=addMsg('c',tx,lr);if(lr)ler(r)}ultC=tx;
-if(!lr){go('falando',tema||'esfera');fim=setTimeout(()=>{go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4)},Math.min(12000,Math.max(2500,tx.length*45)))}} 
+if(!lr){go('falando',tema||'esfera');fim=setTimeout(()=>{go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4)},Math.min(12000,Math.max(2500,tx.length*45)))}
+if(!lendo&&filaFala.length)setTimeout(falarPainel,140)}
 else if(m.tipo==='marcas'&&m.id===anotId){marcas=m.marcas||[];aplica(kAtual)}
 else if(m.tipo==='forma_lib'){if(m.spec){LIB[m.nome]=m.spec;delete cache[m.nome]}aplica(kAtual)}
 else if(m.tipo==='painel'){
   if(modoPesquisa){
     const p=m.painel||{},id=m.id||p.id;
-    if(m.acao==='abrir'||m.acao==='atualizar'){if(p&&p.id){abrirPainel(p);if(m.focar)focarPainel(p.id)}}
+    if(m.acao==='abrir'||m.acao==='atualizar'){if(p&&p.id){abrirPainel(p);if(m.focar)focarPainel(p.id);enfileirarFala(p)}}
     else if(m.acao==='fechar'&&id)fecharPainel(id);
     else if(m.acao==='focar'&&id)focarPainel(id);
     else if(m.acao==='palco'&&id)abrirPalcoPorId(id);
@@ -492,9 +530,9 @@ else if(m.tipo==='painel'){
   }
 }
 else if(m.tipo==='painel_foco'){focarPainel(m.id)}
-else if(m.tipo==='erro'){cap('⚠ '+m.texto);tema=null;go('repouso','esfera')}}
+else if(m.tipo==='erro'){turnoAtivo=false;cap('⚠ '+m.texto);tema=null;go('repouso','esfera')}}
 const es=new EventSource('/ui/events');es.onmessage=e=>{try{ev(JSON.parse(e.data))}catch(x){}};
-async function send(deVoz){const t=$('msg').value.trim();if(!t)return;aquecerAudio();$('msg').value='';parar();tema=null;faloui=false;ultC='';
+async function send(deVoz){const t=$('msg').value.trim();if(!t)return;aquecerAudio();$('msg').value='';parar();turnoAtivo=true;tema=null;faloui=false;ultC='';
 if(deVoz===true&&vz)vz.envio=performance.now();else vz=null;
 addMsg('u',t);cap('pensando…');go('pensando','circulo');
 try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:t,tela:resumoTela(),modo_pesquisa:modoPesquisa,palco:palcoAtual||'',foco:painelFoco||''})});
@@ -942,6 +980,8 @@ function focarPorTexto(txt){
 }
 function fecharPainel(id){
   const s=paineisAbertos.get(id);if(!s)return;
+  filaFala=filaFala.filter(x=>x.id!==id);
+  if(painelFalandoId===id){painelLerId++;falandoPainel=false;painelFalandoId=null;try{speechSynthesis.cancel()}catch(e){}cap('')}
   if(palcoAtual===id)fecharPalco();
   if(painelFoco===id){painelFoco=null;$('tela').classList.remove('temfoco')}
   try{if(s.cleanup)s.cleanup()}catch(e){}

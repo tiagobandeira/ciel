@@ -26,6 +26,9 @@ def run(titulo: str, texto: str, fonte: str = "", link: str = "") -> str:
         return "O painel de texto precisa de um conteúdo."
     fonte = " ".join(str(fonte or "").split())[:80]
     link = _link(link)
+    fala_texto = re.sub(r"(?m)^\s*[-*]\s+", "", texto)
+    fala_texto = re.sub(r"[#*_`>|~]+", " ", fala_texto)
+    fala_texto = " ".join(fala_texto.split())[:800]
     painel = {
         "id": "texto-" + _slug(titulo),
         "tipo": "texto",
@@ -33,6 +36,7 @@ def run(titulo: str, texto: str, fonte: str = "", link: str = "") -> str:
         "nomes": [titulo, "texto", "resumo", "anotações"],
         "slot": "bottom-left",
         "fala": "resumo",
+        "fala_texto": fala_texto,
         "resumo": " ".join(texto.split())[:180],
         "acoes": [],
         "dados": {"texto": texto, "fonte": fonte, "link": link},
