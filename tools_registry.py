@@ -1,7 +1,9 @@
 """
-Autodiscover de tools: varre /tools e /tools/temp, importa cada módulo,
-lê o docstring como descrição e run() como função.
+Autodiscover de tools: varre /tools, /tools/temp e /ui_tools, importa cada
+módulo, lê o docstring como descrição e run() como função.
 Tools em /tools/temp são marcadas com categoria 'temp'.
+Tools em /ui_tools são carregadas à parte por load_ui_tools() e só entram no
+server quando o modo pesquisa está ativo; o CLI/TUI não as carrega.
 
 Variáveis de módulo reconhecidas em cada tool:
   REQUIREMENTS = ["pkg"]   deps pip necessárias (usadas pelo orquestrador)
@@ -38,6 +40,7 @@ from pathlib import Path
 
 TOOLS_DIR      = Path(__file__).parent / "tools"
 TOOLS_TEMP_DIR = TOOLS_DIR / "temp"
+UI_TOOLS_DIR   = Path(__file__).parent / "ui_tools"
 
 # tools que falharam por ImportError — populado por load_tools()
 # cada entrada: (nome_da_tool, módulo_ausente, is_extra)
@@ -192,6 +195,15 @@ def load_tools() -> dict:
     tools.update(temp)       # primeiro, pra permanent poder sobrescrever
     tools.update(permanent)  # tools/ sempre vence em caso de nome igual
     return tools
+
+
+def load_ui_tools() -> dict:
+    """Carrega as tools exclusivas da interface (painéis e palco).
+
+    Ficam em ui_tools/ e não entram no load_tools() normal: o CLI/TUI não
+    precisa delas, e o server só as expõe quando o modo pesquisa está ativo.
+    """
+    return _load_from_dir(UI_TOOLS_DIR, categoria="ui")
 
 
 def get_shadowed_tools() -> list[str]:
