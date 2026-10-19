@@ -6,6 +6,7 @@ O resultado é o mesmo formato de painel consumido pelo front (tipo="feed").
 from __future__ import annotations
 
 import html
+import json
 import re
 import time
 import unicodedata
@@ -18,6 +19,11 @@ from urllib.parse import quote
 import requests
 
 _UA = {"User-Agent": "Mozilla/5.0 (Ciel/1.0; projeto local)"}
+_UA_YT = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/124 Safari/537.36",
+    "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
+}
 NEUTRAL = "astronomia"
 _CACHE: dict[tuple[str, int], tuple[float, dict]] = {}
 _CACHE_TTL = 600
@@ -259,13 +265,170 @@ def _commons_videos(tema: str, limite: int = 2) -> list[dict]:
     return itens
 
 
-def _videos(tema: str, limite: int = 2) -> list[dict]:
+def _yt_texto(obj) -> str:
+    if not isinstance(obj, dict):
+        return ""
+    if obj.get("simpleText"):
+        return " ".join(str(obj["simpleText"]).split())
+    return " ".join("".join(str(r.get("text", "")) for r in (obj.get("runs") or [])).split())
+
+
+def _yt_thumb(obj) -> str:
+    thumbs = ((obj or {}).get("thumbnail") or {}).get("thumbnails") or []
+    return _https((thumbs[-1] or {}).get("url", "")) if thumbs else ""
+
+
+def _segundos(texto: str) -> int:
+    partes = str(texto or "").strip().split(":")
     try:
-        videos = _commons_videos(tema, limite)
-    except Exception:
+        nums = [int(p) for p in partes]
+    except ValueError:
+        return 0
+    total = 0
+    for n in nums:
+        total = total * 60 + n
+    return total
+
+
+def _youtube_videos(tema: str, limite: int = 3) -> list[dict]:
+    resposta = requests.get(
+        "https://www.youtube.com/results",
+        params={"search_query": tema},
+        headers=_UA_YT, timeout=20,
+    )
+    resposta.raise_for_status()
+    encontrado = re.search(r"var ytInitialData = (\{.*?\});</script>", resposta.text, re.S)
+    if not encontrado:
         return []
-    itens = []
+    dados = json.loads(encontrado.group(1))
+    videos, shorts = [], []
+
+    def andar(obj):
+        if isinstance(obj, dict):
+            if "videoRenderer" in obj:
+                videos.append(obj["videoRenderer"])
+            if "shortsLockupViewModel" in obj:
+                shorts.append(obj["shortsLockupViewModel"])
+            for valor in obj.values():
+                andar(valor)
+        elif isinstance(obj, list):
+            for valor in obj:
+                andar(valor)
+
+    andar(dados)
+    itens, vistos = [], set()
+
+    for short in shorts:
+        comando = (short.get("onTap") or {}).get("innertubeCommand") or {}
+        endpoint = comando.get("reelWatchEndpoint") or {}
+        vid = str(endpoint.get("videoId") or "")
+        if not vid:
+            vid = str(short.get("entityId") or "").replace("shorts-shelf-item-", "")
+        if not vid or vid in vistos:
+            continue
+        acc = str(short.get("accessibilityText") or "")
+        titulo = re.sub(r",\s*[\d.,]+\s*(?:mil|mi|milhões|milhoes)?\s*visualizações.*$", "", acc, flags=re.I)
+        titulo = re.sub(r"\s*-\s*ver o Shorts\s*$", "", titulo, flags=re.I).strip()
+        if not titulo:
+            titulo = "Short sobre " + tema
+        thumbs = ((endpoint.get("thumbnail") or {}).get("thumbnails") or [])
+        poster = _https((thumbs[-1] or {}).get("url", "")) if thumbs else f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+        vistos.add(vid)
+        itens.append({
+            "tipo": "VÍDEO", "titulo": titulo[:160], "fonte": "YouTube Shorts",
+            "quando": "", "link": "https://www.youtube.com/shorts/" + vid,
+            "imagem": poster, "short": True,
+            "video": {"provedor": "youtube",
+                      "embed": "https://www.youtube-nocookie.com/embed/" + vid + "?rel=0"},
+            "resumo": "Short no YouTube sobre " + tema + ".",
+            "tags": _tags(tema, "youtube", "shorts", "vídeo"),
+        })
+        if len(itens) >= min(2, limite):
+            break
+
     for video in videos:
+        vid = str(video.get("videoId") or "")
+        if not vid or vid in vistos:
+            continue
+        duracao = _segundos(_yt_texto(video.get("lengthText")))
+        if duracao and duracao > 900:
+            continue
+        titulo = _yt_texto(video.get("title"))
+        if not titulo:
+            continue
+        vistos.add(vid)
+        dono = _yt_texto(video.get("ownerText"))
+        itens.append({
+            "tipo": "VÍDEO", "titulo": titulo[:160],
+            "fonte": ("YouTube · " + dono) if dono else "YouTube",
+            "quando": "", "link": "https://www.youtube.com/watch?v=" + vid,
+            "imagem": _yt_thumb(video) or f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg",
+            "video": {"provedor": "youtube",
+                      "embed": "https://www.youtube-nocookie.com/embed/" + vid + "?rel=0"},
+            "resumo": "Vídeo no YouTube sobre " + tema + ".",
+            "tags": _tags(tema, "youtube", "vídeo"),
+        })
+        if len(itens) >= limite:
+            break
+
+    return itens[:limite]
+
+
+def _dailymotion_videos(tema: str, limite: int = 2) -> list[dict]:
+    resposta = requests.get(
+        "https://api.dailymotion.com/videos",
+        params={
+            "search": tema, "limit": max(3, limite * 2),
+            "fields": "id,title,url,thumbnail_480_url,thumbnail_360_url,duration,"
+                      "owner.screenname,embed_url,allow_embed,status",
+        },
+        headers=_UA, timeout=15,
+    )
+    resposta.raise_for_status()
+    itens, vistos = [], set()
+    for video in (resposta.json().get("list") or []):
+        vid = str(video.get("id") or "")
+        titulo = " ".join(str(video.get("title") or "").split())
+        if not vid or not titulo or vid in vistos:
+            continue
+        duracao = int(video.get("duration") or 0)
+        if duracao and duracao > 900:
+            continue
+        if video.get("allow_embed") is False or video.get("status") != "published":
+            continue
+        embed = video.get("embed_url") or ("https://www.dailymotion.com/embed/video/" + vid)
+        vistos.add(vid)
+        dono = str(video.get("owner.screenname") or "")
+        itens.append({
+            "tipo": "VÍDEO", "titulo": titulo[:160],
+            "fonte": ("Dailymotion · " + dono) if dono else "Dailymotion",
+            "quando": "", "link": video.get("url") or ("https://www.dailymotion.com/video/" + vid),
+            "imagem": video.get("thumbnail_480_url") or video.get("thumbnail_360_url") or "",
+            "short": bool(duracao and duracao <= 180),
+            "video": {"provedor": "dailymotion", "embed": embed},
+            "resumo": "Vídeo no Dailymotion sobre " + tema + ".",
+            "tags": _tags(tema, "dailymotion", "vídeo"),
+        })
+        if len(itens) >= limite:
+            break
+    return itens
+
+
+def _videos(tema: str, limite: int = 6) -> list[dict]:
+    itens = []
+    for buscar in (
+        lambda: _youtube_videos(tema, min(3, limite)),
+    ):
+        try:
+            itens.extend(buscar())
+        except Exception:
+            pass
+
+    try:
+        comuns = _commons_videos(tema, max(1, limite - len(itens)))
+    except Exception:
+        comuns = []
+    for video in comuns:
         if not video.get("embed"):
             continue
         itens.append({
@@ -276,7 +439,14 @@ def _videos(tema: str, limite: int = 2) -> list[dict]:
             "resumo": "Vídeo relacionado a " + tema + ".",
             "tags": _tags(tema, "wikimedia", "vídeo"),
         })
-    return itens
+
+    vistos, unicos = set(), []
+    for item in itens:
+        chave = (item.get("link") or item.get("titulo") or "").lower()
+        if chave and chave not in vistos:
+            vistos.add(chave)
+            unicos.append(item)
+    return unicos[:limite]
 
 
 def build_feed(tema: str = "", limite: int = 4, forcar: bool = False) -> dict:
@@ -295,7 +465,7 @@ def build_feed(tema: str = "", limite: int = 4, forcar: bool = False) -> dict:
     with ThreadPoolExecutor(max_workers=3) as executor:
         f_news = executor.submit(_noticias, tema, min(5, n))
         f_imgs = executor.submit(_commons_imagens, tema, min(3, n))
-        f_video = executor.submit(_videos, tema, min(2, n))
+        f_video = executor.submit(_videos, tema, min(6, n + 2))
         def seguro(f, padrao):
             try:
                 return f.result()
@@ -311,7 +481,7 @@ def build_feed(tema: str = "", limite: int = 4, forcar: bool = False) -> dict:
     except Exception:
         posts = []
 
-    pools = [news, videos, videos, imgs, posts]
+    pools = [videos, news, videos, videos, imgs, posts]
     itens = []
     vistos = set()
     indice = 0
@@ -364,7 +534,7 @@ def build_mais(tema: str = "", limite: int = 4, excluir=None) -> dict:
     except Exception:
         posts = []
 
-    pools = [news, videos, imgs, posts]
+    pools = [videos, news, videos, imgs, posts]
     itens = []
     indice = 0
     while len(itens) < n and any(pools):

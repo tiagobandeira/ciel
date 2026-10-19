@@ -84,12 +84,15 @@ input{flex:1 1 110px;min-width:0}
 .feed-chip:hover{opacity:1;border-color:rgba(140,210,255,.5)}
 .feed-chip.on{opacity:1;border-color:rgba(140,210,255,.7);background:rgba(74,168,255,.24);color:#dff5ff}
 .feed-chip:disabled{opacity:.35;cursor:not-allowed}
+.feed-chip.carregando{opacity:1;pointer-events:none}
+.feed-chip.carregando::before{content:'';display:inline-block;width:8px;height:8px;margin-right:5px;border:2px solid rgba(140,210,255,.35);border-top-color:#bdeaff;border-radius:50%;animation:feedSpin .8s linear infinite;vertical-align:-1px}
 .feed-op-salvos{font-size:10px;opacity:.58;border-top:1px solid rgba(74,168,255,.16);padding-top:7px}
 @media(max-width:900px){.feed-layout{grid-template-columns:1fr}.feed-opcoes{position:static;flex-direction:row;flex-wrap:wrap;align-items:flex-start}.feed-op-grupo{min-width:130px}}
 .feed-lista{display:flex;flex-direction:column;gap:8px}
 .feed-card{background:rgba(4,12,28,.42);border:1px solid rgba(74,168,255,.24);border-radius:12px;overflow:hidden}
 .feed-card img{width:100%;height:132px;object-fit:cover;display:block;background:rgba(0,0,0,.25)}
 .feed-card video{width:100%;height:auto;aspect-ratio:16/9;object-fit:contain;display:block;background:#000}
+.feed-card iframe{width:100%;height:auto;aspect-ratio:16/9;display:block;border:0;background:#000}
 .feed-conteudo{padding:10px 12px 12px}
 .feed-top{display:flex;align-items:center;gap:6px;font-size:10px;opacity:.65;text-transform:uppercase;letter-spacing:.05em;flex-wrap:wrap}
 .feed-tipo{color:var(--ac)}
@@ -1324,6 +1327,7 @@ function renderFeed(corpo,p,palco){
     const row=document.createElement('div');row.className='feed-chips';
     itensChips.forEach(item=>{
       const b=document.createElement('button');b.type='button';b.className='feed-chip';b.textContent=item.label;
+      if(item.id)b.id=item.id;
       b.onclick=()=>{item.apply();sync()};row.appendChild(b);
       chips.push({el:b,active:item.active});
     });
@@ -1331,7 +1335,7 @@ function renderFeed(corpo,p,palco){
   };
   opcoes.appendChild(Object.assign(document.createElement('div'),{className:'feed-op-titulo',textContent:'Feed'}));
   grupo('Ações',[
-    {label:'Recarregar',active:()=>false,apply:()=>recarregarFeed()}
+    {label:'Recarregar',id:'feed-recarregar',active:()=>false,apply:()=>recarregarFeed()}
   ]);
   grupo('Tipo',[
     {label:'Tudo',active:()=>!filtro.tipo&&!filtro.tag&&!filtro.fonte&&!filtro.salvos,apply:()=>{filtro={tipo:'',tag:'',fonte:'',salvos:false};resetar()}},
@@ -1365,12 +1369,20 @@ function renderFeed(corpo,p,palco){
   const desenha=(it)=>{
     const card=document.createElement('article');card.className='feed-card';
     if(it.video&&it.video.embed){
-      const v=document.createElement('video');v.controls=true;v.preload='metadata';v.playsInline=true;
-      v.poster=it.imagem||it.video.poster||'';v.src=it.video.embed;card.appendChild(v);
+      const provedor=String(it.video.provedor||'');
+      if(provedor==='youtube'||provedor==='dailymotion'||provedor==='vimeo'){
+        const f=document.createElement('iframe');f.src=it.video.embed;f.loading='lazy';
+        f.allow='accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+        f.allowFullscreen=true;f.referrerPolicy='strict-origin-when-cross-origin';f.title=it.titulo||'Vídeo';
+        card.appendChild(f);
+      }else{
+        const v=document.createElement('video');v.controls=true;v.preload='metadata';v.playsInline=true;
+        v.poster=it.imagem||it.video.poster||'';v.src=it.video.embed;card.appendChild(v);
+      }
     }else if(it.imagem){const img=document.createElement('img');img.loading='lazy';img.decoding='async';img.alt='';img.src=it.imagem;img.onerror=()=>img.remove();card.appendChild(img)}
     const cont=document.createElement('div');cont.className='feed-conteudo';
     const top=document.createElement('div');top.className='feed-top';
-    const tipo=document.createElement('span');tipo.className='feed-tipo';tipo.textContent=it.tipo||'ARTIGO';
+    const tipo=document.createElement('span');tipo.className='feed-tipo';tipo.textContent=it.short?'SHORT':(it.tipo||'ARTIGO');
     const fonte=document.createElement('span');fonte.className='feed-fonte';fonte.textContent=it.fonte||'fonte';
     const quando=document.createElement('span');quando.className='feed-quando';quando.textContent=it.quando||'';
     top.append(tipo,fonte,quando);
@@ -1519,12 +1531,18 @@ async function atualizarFeedAberto(tema,forcar=false){
     lembrarTema((d.painel.dados||{}).tema||'');
   }catch(e){}finally{clearTimeout(limiteEspera)}
 }
-function recarregarFeed(){
+async function recarregarFeed(){
   const id=feedAbertoId();if(!id)return;
   const s=paineisAbertos.get(id);
   const tema=(ultimoTemaChat||temaPesquisa||(s&&s.p&&s.p.dados&&s.p.dados.tema)||'');
+  const btn=$('feed-recarregar');
+  if(btn){btn.disabled=true;btn.classList.add('carregando');btn.textContent='Recarregando…'}
   cap('recarregando feed…');
-  atualizarFeedAberto(tema,true);
+  try{await atualizarFeedAberto(tema,true)}
+  finally{
+    if(btn){btn.disabled=false;btn.classList.remove('carregando');btn.textContent='Recarregar'}
+    cap('feed atualizado');
+  }
 }
 function renderVideo(corpo,p,palco){
   const d=p.dados||{},embed=String(d.embed||''),provedor=String(d.provedor||'');
