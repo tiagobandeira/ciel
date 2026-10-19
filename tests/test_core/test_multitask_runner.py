@@ -487,6 +487,20 @@ class TestChecagensECorrecao:
         assert "checagem falhou" in task.erro
         assert "Falhas" in result.message
 
+    def test_erro_identico_para_antes_do_limite(self, store, workspace):
+        board = self._board(
+            {"tipo": "arquivo", "path": "nunca.txt"}, max_corrections=5,
+        )
+        with patch("multitask.runner.run_agent", side_effect=make_fake([done("ok")])):
+            result = run_board(board, {}, [], AGENT, store=store, workspace_root=workspace)
+
+        task = board.task("t1")
+        assert result.status == RUN_FALHOU
+        assert task.correcoes == 1
+        assert task.tentativas == 2
+        assert "mesmo erro" in task.erro
+        assert "mesmo erro" in result.message or "mesmo erro" in task.erro
+
     def test_sem_checagem_nao_marca_verificado(self, store, workspace):
         board = Board.new("sem check", run_id="run-sem-check")
         board.add_task("f", "tarefa", acoes=["a"])

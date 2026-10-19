@@ -46,6 +46,7 @@ MAX_OUTPUT_CHARS = 4000
 MAX_FILE_CHARS = 200_000
 
 _FILE_TYPES = {"arquivo", "file", "file_exists", "existe"}
+_DIR_TYPES = {"diretorio", "diretório", "directory", "dir", "pasta"}
 _CMD_TYPES = {"comando", "cmd", "command", "shell", "exit", "exec"}
 _HTTP_TYPES = {"http", "url", "http_status", "status_http"}
 _JSON_TYPES = {"json", "json_valido", "json_schema"}
@@ -240,6 +241,69 @@ def _check_arquivo(checagem: dict, root: Path) -> CheckResult:
     return _ok(
         "arquivo", f"arquivo existe: {_relative(path, root)}",
         path=_relative(path, root), size=size,
+    )
+
+
+def _check_diretorio(checagem: dict, root: Path) -> CheckResult:
+    raw_path = (
+        checagem.get("path")
+        or checagem.get("caminho")
+        or checagem.get("pasta")
+    )
+    path, error = _resolve_inside(root, raw_path)
+    if error:
+        return _fail("diretorio", error)
+
+    expect_exists = bool(checagem.get("existe", True))
+    exists = path.exists()
+
+    if expect_exists and not exists:
+        return _fail(
+            "diretorio", f"diretório não existe: {_relative(path, root)}",
+            path=_relative(path, root),
+        )
+    if not expect_exists and exists:
+        return _fail(
+            "diretorio",
+            f"diretório deveria não existir: {_relative(path, root)}",
+            path=_relative(path, root),
+        )
+    if not exists:
+        return _ok(
+            "diretorio", f"diretório ausente (esperado): {_relative(path, root)}",
+            path=_relative(path, root),
+        )
+
+    if not path.is_dir():
+        return _fail(
+            "diretorio",
+            f"esperado diretório, encontrado arquivo: {_relative(path, root)}",
+            path=_relative(path, root),
+        )
+
+    required = checagem.get("contem_arquivos") or checagem.get("arquivos") or []
+    if isinstance(required, str):
+        required = [required]
+
+    missing: list[str] = []
+    for name in required:
+        name = str(name)
+        parts = Path(name).parts
+        if Path(name).is_absolute() or ".." in parts:
+            missing.append(name)
+            continue
+        if not (path / name).exists():
+            missing.append(name)
+    if missing:
+        return _fail(
+            "diretorio",
+            f"{_relative(path, root)} não contém: {', '.join(missing)}",
+            path=_relative(path, root), missing=missing,
+        )
+
+    return _ok(
+        "diretorio", f"diretório existe: {_relative(path, root)}",
+        path=_relative(path, root),
     )
 
 
@@ -484,6 +548,15 @@ def validate_check_spec(checagem: Any) -> list[str]:
             return ["checagem arquivo sem 'path'"]
         return []
 
+    if tipo in _DIR_TYPES:
+        if not (
+            checagem.get("path")
+            or checagem.get("caminho")
+            or checagem.get("pasta")
+        ):
+            return ["checagem diretorio sem 'path'"]
+        return []
+
     if tipo in _CMD_TYPES:
         if not (
             checagem.get("cmd")
@@ -534,6 +607,8 @@ def run_check(
     try:
         if tipo in _FILE_TYPES:
             result = _check_arquivo(checagem, root)
+        elif tipo in _DIR_TYPES:
+            result = _check_diretorio(checagem, root)
         elif tipo in _CMD_TYPES:
             result = _check_comando(checagem, root)
         elif tipo in _HTTP_TYPES:

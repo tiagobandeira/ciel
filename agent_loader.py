@@ -227,7 +227,7 @@ def load_agent(agent_name: str) -> dict:
 
 # Tools sempre disponíveis em qualquer agente — não precisam ser listadas no .md
 CORE_TOOLS = {
-    "read_file", "write_file", "list_directory", "search_files",
+    "read_file", "write_file", "list_directory", "create_directory", "search_files",
     "list_sources", "search_knowledge", "read_source",
     "calculator", "get_local_datetime",
     "create_tool", "run_script", "install_tool", "http_request",

@@ -65,6 +65,15 @@ sem explicação antes ou depois.
   Se a task for subjetiva, deixe `null`.
 - `agente`: opcional; use um dos agentes listados abaixo ou `""`.
 - Saídas do usuário vão para `data/user/` (o workspace é a raiz do Ciel).
+- **Pastas:** para criar uma pasta use `create_directory` (não `write_file` com
+  `.keep`, não `run_script`). A checagem de uma pasta é
+  `{"tipo": "diretorio", "path": "..."}` — nunca `arquivo` para pasta.
+- **secondary_model:** se uma task mandar gerar o projeto pelo `secondary_model`
+  com `mode="code"`, passe `output_dir` com o caminho exato pedido
+  (`data/user/calculadora`). Sem `output_dir`, a tool cria
+  `data/user/<folder>_<timestamp>` e chamadas repetidas criam pastas novas.
+  Prefira `write_file`/`create_directory` para arquivos pequenos e tarefas
+  mecânicas; reserve o `secondary_model` para blocos grandes.
 - Não crie tasks que peçam informação ao usuário no meio da execução. Se
   faltar um dado, assuma um default razoável e registre a suposição na task.
 - Não repita a mesma ação em tasks diferentes sem necessidade.
@@ -78,6 +87,8 @@ Use JSON inline (não string) no campo `checagem`:
 ```json
 {"tipo": "arquivo", "path": "index.html"}
 {"tipo": "arquivo", "path": "index.html", "contem": "<html"}
+{"tipo": "diretorio", "path": "data/user/meu-projeto"}
+{"tipo": "diretorio", "path": "data/user/meu-projeto", "contem_arquivos": ["index.html"]}
 {"tipo": "comando", "cmd": ["python", "-c", "print('ok')"],
  "cwd": ".", "esperado": 0, "timeout": 60}
 {"tipo": "http", "url": "http://127.0.0.1:8000/", "esperado": 200}
@@ -109,6 +120,10 @@ O `como_testar` deve ser acionável (comando, caminho ou URL curta).
 
 - Tasks grandes do tipo "implementar o projeto inteiro".
 - Planos genéricos que não citam arquivos, pastas ou comandos reais.
+- Checar uma pasta com `tipo: "arquivo"` (use `diretorio`).
+- Criar pasta com `write_file` + `.keep` ou `run_script`.
+- Chamar `secondary_model mode="code"` sem `output_dir` quando a task pede um
+  caminho específico.
 - Dependências em tasks futuras, ids duplicados ou ids inventados.
 - Checagens impossíveis ou que dependem de algo que o plano não cria.
 - Texto fora do JSON.

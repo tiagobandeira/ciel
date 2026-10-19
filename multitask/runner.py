@@ -165,6 +165,11 @@ def build_task_context(board: Board, task, phase: str) -> str:
         "- Execute SOMENTE esta task. Não antecipe as tasks seguintes.",
         "- Use as tools disponíveis para inspecionar e alterar o workspace real.",
         "- Não invente caminhos de arquivo: confirme o que existe antes de agir.",
+        "- Para criar pastas use create_directory; não use write_file com .keep "
+        "nem run_script para isso.",
+        "- Se usar secondary_model com mode=\"code\", passe output_dir com o "
+        "caminho exato pedido; sem output_dir a tool cria "
+        "data/user/<folder>_<timestamp>.",
         "- Ao terminar, responda com done e uma message curta contendo: "
         "o que foi feito, arquivos criados/alterados e decisões tomadas.",
     ]
@@ -551,6 +556,13 @@ def _max_corrections(board: Board) -> int:
         return 3
 
 
+def _max_same_check_failures(board: Board) -> int:
+    try:
+        return max(1, int(board.orcamento.get("max_falhas_iguais", 2)))
+    except (TypeError, ValueError):
+        return 2
+
+
 def _execute_task(
     board: Board,
     task,
@@ -585,6 +597,9 @@ def _execute_task(
     tokens_out = 0
     corrections = 0
     max_corrections = _max_corrections(board)
+    max_same = _max_same_check_failures(board)
+    last_check_message = ""
+    same_check_failures = 0
 
     base_context = build_task_context(board, task, phase)
     context = base_context
@@ -701,12 +716,37 @@ def _execute_task(
             )
 
         # ── checagem falhou ──────────────────────────────────────────────
+        if check.mensagem == last_check_message:
+            same_check_failures += 1
+        else:
+            same_check_failures = 1
+            last_check_message = check.mensagem
+
         _emit(
             store, board, on_event, "checagem_falhou",
             task=task.id, titulo=task.titulo,
             checagem_tipo=check.tipo, erro=check.mensagem,
             correcoes=corrections,
+            falhas_iguais=same_check_failures,
         )
+
+        if same_check_failures >= max_same:
+            duration = time.monotonic() - task_clock
+            erro = (
+                f"checagem falhou {same_check_failures} vezes com o mesmo "
+                f"erro — verifique se o critério de aceite está correto: "
+                f"{check.mensagem}"
+            )
+            _finish_failed(
+                board, store, task, on_event,
+                erro=erro, tokens_in=tokens_in, tokens_out=tokens_out,
+                duracao_s=duration, correcoes=corrections,
+                checagem_ok=False, checagem_resumo=check.mensagem,
+            )
+            return _TaskOutcome(
+                "failed", tokens_in=tokens_in, tokens_out=tokens_out,
+                erro=erro, motivo=f"task {task.id}: checagem repetiu o mesmo erro",
+            )
 
         if corrections >= max_corrections:
             duration = time.monotonic() - task_clock

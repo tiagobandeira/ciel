@@ -279,6 +279,37 @@ class TestSaveCodeProject:
         finally:
             self._cleanup(sm_mod, folder_path)
 
+    def test_output_dir_exato_sem_timestamp(self, sm_mod, tmp_path):
+        destino = tmp_path / "calculadora"
+        data = {
+            "folder": "ignorado",
+            "files": [{"filename": "index.html", "content": "<html/>"}],
+        }
+        folder_path, files = sm_mod._save_code_project(
+            data, output_dir=str(destino)
+        )
+        assert files == ["index.html"]
+        assert (destino / "index.html").exists()
+        assert destino.name in folder_path
+
+    def test_output_dir_arquivo_existente_falha(self, sm_mod, tmp_path):
+        alvo = tmp_path / "arquivo.txt"
+        alvo.write_text("x", encoding="utf-8")
+        with pytest.raises(ValueError):
+            sm_mod._save_code_project(
+                {"files": []}, output_dir=str(alvo)
+            )
+
+    def test_output_dir_repetido_sobrescreve(self, sm_mod, tmp_path):
+        destino = tmp_path / "mesmo"
+        data = {"files": [{"filename": "a.txt", "content": "v1"}]}
+        sm_mod._save_code_project(data, output_dir=str(destino))
+        data["files"][0]["content"] = "v2"
+        sm_mod._save_code_project(data, output_dir=str(destino))
+        assert (destino / "a.txt").read_text(encoding="utf-8") == "v2"
+        # não cria pasta com timestamp ao lado
+        assert len(list(tmp_path.iterdir())) == 1
+
 
 # ── _inject_files ─────────────────────────────────────────────────────────────
 

@@ -39,6 +39,35 @@ DEFAULT_MAX_TOKENS = 8192
 
 _ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 _EMPTY_AGENT = {"", "none", "nenhum", "-"}
+_FOLDER_WORDS = (
+    "criar pasta", "criar a pasta", "criar diretório", "criar diretorio",
+    "mkdir", "nova pasta", "criar diretórios", "criar diretorios",
+)
+
+
+def _file_check_on_folder(check: Any, task_text: str) -> bool:
+    """Heurística: task que cria pasta usando checagem de arquivo sem extensão."""
+    text = (task_text or "").lower()
+    if not any(word in text for word in _FOLDER_WORDS):
+        return False
+
+    def visit(value: Any) -> bool:
+        if isinstance(value, list):
+            return any(visit(item) for item in value)
+        if not isinstance(value, dict):
+            return False
+        tipo = str(value.get("tipo") or value.get("type") or "").lower()
+        if tipo not in ("arquivo", "file", "file_exists", "existe"):
+            return False
+        path = str(
+            value.get("path")
+            or value.get("caminho")
+            or value.get("arquivo")
+            or ""
+        )
+        return bool(path) and Path(path).suffix == ""
+
+    return visit(check)
 
 
 class PlannerUnavailable(Exception):
@@ -357,6 +386,13 @@ def parse_plan(
                 check = task.get("check")
             for check_error in validate_check_spec(check):
                 task_errors.append(f"task {task_id}: {check_error}")
+
+            task_text = f"{title} {' '.join(actions)}"
+            if _file_check_on_folder(check, task_text):
+                task_errors.append(
+                    f"task {task_id}: task de criar pasta com checagem "
+                    f"tipo 'arquivo' — use 'diretorio' para pastas"
+                )
 
             agent = str(task.get("agente") or task.get("agent") or "").strip()
             if agent.lower() in _EMPTY_AGENT:

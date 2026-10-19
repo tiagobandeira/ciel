@@ -561,6 +561,7 @@ Ciel/
 │       └── channels.py                   ← cache local de canais
 ├── tools/
 │   ├── calculator.py
+│   ├── create_directory.py
 │   ├── create_tool.py
 │   ├── create_temp_tool.py
 │   ├── entrevista_interativa.py

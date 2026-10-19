@@ -185,6 +185,82 @@ class TestArquivo:
 
 # ── comando ───────────────────────────────────────────────────────────────
 
+class TestDiretorio:
+    def test_existe(self, ws):
+        result = run_check(
+            {"tipo": "diretorio", "path": "sub"}, workspace_root=ws
+        )
+        assert result.ok is True
+        assert "existe" in result.mensagem
+
+    def test_ausente(self, ws):
+        result = run_check(
+            {"tipo": "diretorio", "path": "nao-existe"}, workspace_root=ws
+        )
+        assert result.ok is False
+        assert "não existe" in result.mensagem
+
+    def test_arquivo_em_vez_de_diretorio(self, ws):
+        result = run_check(
+            {"tipo": "diretorio", "path": "index.html"}, workspace_root=ws
+        )
+        assert result.ok is False
+        assert "encontrado arquivo" in result.mensagem
+
+    def test_existe_false(self, ws):
+        ok = run_check(
+            {"tipo": "diretorio", "path": "nao-existe", "existe": False},
+            workspace_root=ws,
+        )
+        assert ok.ok is True
+
+        fail = run_check(
+            {"tipo": "diretorio", "path": "sub", "existe": False},
+            workspace_root=ws,
+        )
+        assert fail.ok is False
+
+    def test_contem_arquivos(self, ws):
+        ok = run_check(
+            {
+                "tipo": "diretorio",
+                "path": "sub",
+                "contem_arquivos": ["arquivo.txt"],
+            },
+            workspace_root=ws,
+        )
+        assert ok.ok is True
+
+        fail = run_check(
+            {
+                "tipo": "diretorio",
+                "path": "sub",
+                "contem_arquivos": ["index.html"],
+            },
+            workspace_root=ws,
+        )
+        assert fail.ok is False
+        assert "não contém" in fail.mensagem
+
+    def test_contem_arquivos_nao_escapa_da_pasta(self, ws):
+        result = run_check(
+            {
+                "tipo": "diretorio",
+                "path": "sub",
+                "contem_arquivos": ["../index.html"],
+            },
+            workspace_root=ws,
+        )
+        assert result.ok is False
+
+    def test_validate_spec(self):
+        assert validate_check_spec(
+            {"tipo": "diretorio", "path": "x"}
+        ) == []
+        errors = validate_check_spec({"tipo": "diretorio"})
+        assert any("path" in e for e in errors)
+
+
 class TestComando:
     def test_exit_zero(self, ws):
         result = run_check(

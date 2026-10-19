@@ -2,6 +2,10 @@
 
 REQUIREMENTS = ["requests", "rich"]
 
+# output_dir é opcional; quando informado, o projeto é salvo direto nele
+# (sem sufixo de timestamp). A checagem de workspace é feita pelo harness.
+PERMISSIONS = {"output_dir": "write"}
+
 import json
 import os
 import re
@@ -417,25 +421,41 @@ def _save_text_response(content: str) -> str:
     return str(path.relative_to(Path(__file__).parent.parent))
 
 
-def _save_code_project(data: dict) -> tuple[str, list[str]]:
+def _save_code_project(data: dict, output_dir: str = "") -> tuple[str, list[str]]:
     """
-    Salva os arquivos do projeto em data/user/<folder>/.
-    Retorna (caminho_da_pasta, lista_de_arquivos_criados).
+    Salva os arquivos do projeto.
+
+    - `output_dir` vazio: data/user/<folder>_<timestamp>/ (comportamento antigo)
+    - `output_dir` informado: salva direto nele, sem timestamp — repetir a
+      chamada sobrescreve os mesmos arquivos em vez de criar outra pasta.
     """
-    folder    = re.sub(r"[^\w\-]", "-", data.get("folder", "projeto")).strip("-")
-    ts        = datetime.now().strftime("%Y%m%d_%H%M%S")
-    proj_dir  = _RESPONSE_DIR / f"{folder}_{ts}"
-    proj_dir.mkdir(parents=True, exist_ok=True)
+    if str(output_dir or "").strip():
+        proj_dir = Path(output_dir).expanduser()
+        if not proj_dir.is_absolute():
+            proj_dir = Path.cwd() / proj_dir
+        if proj_dir.exists() and not proj_dir.is_dir():
+            raise ValueError(f"output_dir não é uma pasta: {output_dir}")
+        proj_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        folder   = re.sub(r"[^\w\-]", "-", data.get("folder", "projeto")).strip("-")
+        ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
+        proj_dir = _RESPONSE_DIR / f"{folder}_{ts}"
+        proj_dir.mkdir(parents=True, exist_ok=True)
 
     created = []
     for f in data.get("files", []):
         filename = f.get("filename", "file.txt")
         content  = f.get("content", "")
         filepath = proj_dir / filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)
         filepath.write_text(content, encoding="utf-8")
         created.append(filename)
 
-    rel_path = str(proj_dir.relative_to(Path(__file__).parent.parent))
+    root = Path(__file__).parent.parent
+    try:
+        rel_path = str(proj_dir.relative_to(root))
+    except ValueError:
+        rel_path = str(proj_dir)
     return rel_path, created
 
 
@@ -492,7 +512,13 @@ def _load_mock_responses() -> dict:
         return {}
 
 
-def _run_mock(mock_type: str, mode: str, skill: str, prompt: str = "") -> str:
+def _run_mock(
+    mock_type: str,
+    mode: str,
+    skill: str,
+    prompt: str = "",
+    output_dir: str = "",
+) -> str:
     """
     Simula a resposta do modelo secundário para testes de fluxo.
 
@@ -605,7 +631,7 @@ def _run_mock(mock_type: str, mode: str, skill: str, prompt: str = "") -> str:
     if "summary" not in mock_project:
         mock_project["summary"] = default_project["summary"]
 
-    folder_path, files = _save_code_project(mock_project)
+    folder_path, files = _save_code_project(mock_project, output_dir=output_dir)
     files_list = "\n".join(f"  - {f}" for f in files)
     return (
         f"Projeto criado em: {folder_path}\n\n"
@@ -653,6 +679,7 @@ def run(
     save_response: bool = False,
     skill: str = "",
     files: list = None,
+    output_dir: str = "",
 ) -> str:
     """
     prompt: descrição completa do problema para o modelo secundário
@@ -662,6 +689,7 @@ def run(
     save_response: se True, força salvar em arquivo mesmo que resposta seja curta (só no modo text)
     skill: nome da skill em skills/ a ser injetada no system prompt (ex: 'django-api')
     files: lista de caminhos de arquivos locais a injetar como contexto no prompt
+    output_dir: pasta de destino do projeto no modo code (vazio = data/user/<folder>_<timestamp>)
     """
     cfg = _load_config()
 
@@ -672,7 +700,7 @@ def run(
     # ── mock para testes de fluxo ─────────────────────────────────────────────
     if cfg.get("mock_secondary", False):
         mock_type = cfg.get("mock_type", "code")
-        return _run_mock(mock_type, mode, skill, prompt)
+        return _run_mock(mock_type, mode, skill, prompt, output_dir=output_dir)
 
     # ── verifica cota ─────────────────────────────────────────────────────────
     prompt_chars = len(prompt)
@@ -821,7 +849,12 @@ def run(
         # fase build — imprime arquivos com syntax highlight ou aviso de JSON cortado
         _print_build_phase(project, content, cfg)
         if project and "files" in project:
-            folder_path, files = _save_code_project(project)
+            try:
+                folder_path, files = _save_code_project(
+                    project, output_dir=output_dir
+                )
+            except Exception as exc:
+                return f"Erro ao salvar projeto em '{output_dir}': {exc}"
             summary = project.get("summary", "")
             files_list = "\n".join(f"  - {f}" for f in files)
             return (

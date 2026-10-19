@@ -88,13 +88,19 @@ tratado como objetivo livre e vai para o planejador.
    steps por task.
 6. Roda a checagem por código declarada na task (se houver).
 7. Se a checagem falhar, monta um contexto de correção com o erro e os
-   arquivos envolvidos e tenta de novo, até `max_correcoes_por_task`.
+   arquivos envolvidos e tenta de novo, até `max_correcoes_por_task`. Se o
+   mesmo erro se repetir `max_falhas_iguais` vezes (default 2), para e marca
+   a checagem como suspeita — evita queimar tokens repetindo a mesma coisa.
 8. Grava status, resumo, tokens, duração, verificação e artefatos no quadro.
 9. Repete até concluir, falhar, pausar (Ctrl+C) ou esgotar o orçamento.
 10. Gera o relatório final (`multitask/report.py`) no formato do fluxo.
 
 Artefatos são detectados pelos arquivos modificados/criados durante a task
 (ignorando `.git`, `venv`, `__pycache__`, `data/runs`, banco de histórico etc.).
+
+Ferramentas que importam aqui: `create_directory` cria pastas de verdade (não
+use `.keep`/`run_script`), e `secondary_model` aceita `output_dir` para salvar
+o projeto no caminho exato, sem a pasta com timestamp.
 
 ## Plano livre (planejador)
 
@@ -106,7 +112,8 @@ Artefatos são detectados pelos arquivos modificados/criados durante a task
 - O JSON é validado **antes de executar**: ids únicos, dependências apenas
   para tasks anteriores, `resultado_esperado` obrigatório, no máximo 6 ações
   por task, agente existente, checagem estruturalmente válida e limite de
-  tasks do orçamento.
+  tasks do orçamento. Task de criar pasta com `checagem` tipo `arquivo` é
+  rejeitada: pasta usa `diretorio`.
 - Plano inválido volta ao modelo com a lista de erros; ele tem
   `orcamento.max_replans + 1` tentativas.
 - Na aprovação, `[r]` chama o planejador de novo com o ajuste que você
@@ -120,6 +127,8 @@ modelo avaliar o próprio trabalho. Tipos:
 
 ```yaml
 checagem: {"tipo": "arquivo", "path": "index.html", "contem": "<html"}
+checagem: {"tipo": "diretorio", "path": "data/user/meu-projeto",
+           "contem_arquivos": ["index.html"]}
 checagem: {"tipo": "comando", "cmd": ["python", "-m", "pytest", "-q"],
            "cwd": ".", "esperado": 0, "timeout": 60}
 checagem: {"tipo": "http", "url": "http://127.0.0.1:8000/", "esperado": 200}
@@ -131,6 +140,7 @@ checagem: [ {"tipo": "arquivo", "path": "a.txt"},
 | Tipo | Campos principais |
 |---|---|
 | `arquivo` | `path`, `existe` (default true), `contem`, `nao_contem`, `tamanho_min` |
+| `diretorio` | `path`, `existe` (default true), `contem_arquivos` |
 | `comando` | `cmd` (lista ou string), `cwd`, `esperado` (default 0), `timeout` |
 | `http` | `url`, `esperado` (default 200), `metodo`, `corpo_contem`, `timeout` |
 | `json` | `path`, `chaves` obrigatórias |

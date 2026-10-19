@@ -121,6 +121,7 @@ def default_orcamento() -> dict:
         "max_tasks": 20,
         "max_replans": 2,
         "max_correcoes_por_task": 3,
+        "max_falhas_iguais": 2,
         "max_tokens": 0,
     }
 

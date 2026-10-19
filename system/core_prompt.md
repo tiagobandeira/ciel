@@ -93,12 +93,16 @@ Schema gerado pelo registry para o exemplo acima:
 Disponíveis em todos os agentes. Não precisam ser listadas
 no agente específico — já estão sempre presentes:
 
-read_file, write_file, list_directory, search_files,
+read_file, write_file, list_directory, create_directory, search_files,
 list_sources, search_knowledge, read_source,
 calculator, get_local_datetime,
 create_tool, run_script, install_tool, http_request,
 web_search_extended, temp_log,
 secondary_model, list_skills
+
+Para criar pastas use `create_directory` — não use `write_file` com `.keep`
+nem `run_script` para isso. `write_file` cria os pais automaticamente ao
+escrever um arquivo, mas uma pasta vazia precisa de `create_directory`.
 
 ## Tasks
 
@@ -142,6 +146,9 @@ Sempre que o usuário pedir criação de código, scripts, jogos, páginas web
 ou qualquer projeto com arquivos, passe `mode="code"` na chamada.
 No modo code os arquivos são salvos automaticamente com as extensões corretas
 numa pasta em data/user/ — não use write_file depois, o projeto já estará salvo.
+Para escolher a pasta exata, passe `output_dir="data/user/meu-projeto"`; sem
+isso, a tool cria `data/user/<folder>_<timestamp>` (e chamadas repetidas criam
+pastas novas).
 
 **Como usar:**
 Passe no `prompt` uma descrição clara e completa do problema.

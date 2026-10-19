@@ -141,6 +141,29 @@ class TestParsePlan:
         _, errors = parse_plan(plan, objetivo_usuario="x")
         assert any("checagem" in e for e in errors)
 
+    def test_pasta_com_checagem_de_arquivo(self):
+        plan = valid_plan()
+        task = plan["fases"][0]["tasks"][0]
+        task["titulo"] = "criar pasta do projeto"
+        task["acoes"] = ["criar pasta data/user/calculadora"]
+        task["checagem"] = {
+            "tipo": "arquivo", "path": "data/user/calculadora",
+        }
+        _, errors = parse_plan(plan, objetivo_usuario="x")
+        assert any("diretorio" in e for e in errors)
+
+    def test_pasta_com_checagem_de_diretorio(self):
+        plan = valid_plan()
+        task = plan["fases"][0]["tasks"][0]
+        task["titulo"] = "criar pasta do projeto"
+        task["acoes"] = ["criar pasta data/user/calculadora"]
+        task["checagem"] = {
+            "tipo": "diretorio", "path": "data/user/calculadora",
+        }
+        board, errors = parse_plan(plan, objetivo_usuario="x")
+        assert errors == []
+        assert board.task("t1").checagem["tipo"] == "diretorio"
+
     def test_acoes_demais(self):
         plan = valid_plan()
         plan["fases"][0]["tasks"][0]["acoes"] = [f"a{i}" for i in range(7)]
