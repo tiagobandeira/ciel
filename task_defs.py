@@ -29,6 +29,7 @@ Campos opcionais (preparados para o multitask — nada os usa ainda):
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 TASKS_DIR_DEFAULT = Path("tasks")
@@ -63,19 +64,13 @@ def _parse_checagem(raw: str):
     return raw
 
 
-def load_task(path: Path) -> dict | None:
+def parse_task_text(text: str) -> dict | None:
     """
-    Lê um arquivo .md de task e retorna dict com:
-      { nome, objetivo, acoes, resultado, grupo,
-        fase, agente, depende_de, checagem }
-    Retorna None se o arquivo não seguir o formato mínimo
-    (precisa de `## task:` e pelo menos uma ação).
-    """
-    path = Path(path)
-    if not path.exists():
-        return None
+    Interpreta o conteúdo de uma task (sem tocar no disco).
 
-    text = path.read_text(encoding="utf-8")
+    Usado por `load_task` e pelo parser de fluxos, que precisa dividir um
+    único arquivo em várias tasks.
+    """
     lines = text.splitlines()
 
     nome      = ""
@@ -136,6 +131,44 @@ def load_task(path: Path) -> dict | None:
     }
 
 
+def load_task(path: Path) -> dict | None:
+    """
+    Lê um arquivo .md de task e retorna dict com:
+      { nome, objetivo, acoes, resultado, grupo,
+        fase, agente, depende_de, checagem }
+    Retorna None se o arquivo não seguir o formato mínimo
+    (precisa de `## task:` e pelo menos uma ação).
+    """
+    path = Path(path)
+    if not path.exists():
+        return None
+
+    return parse_task_text(path.read_text(encoding="utf-8"))
+
+
+def load_tasks(path: Path) -> list[dict]:
+    """
+    Lê um arquivo com VÁRIAS tasks (formato de fluxo) e devolve a lista
+    na ordem em que aparecem. Arquivos com uma task só funcionam também.
+    """
+    path = Path(path)
+    if not path.exists():
+        return []
+
+    text = path.read_text(encoding="utf-8")
+    starts = [m.start() for m in re.finditer(r"(?m)^##\s+task:", text)]
+    if not starts:
+        return []
+
+    tasks: list[dict] = []
+    for index, start in enumerate(starts):
+        end = starts[index + 1] if index + 1 < len(starts) else len(text)
+        task = parse_task_text(text[start:end])
+        if task is not None:
+            tasks.append(task)
+    return tasks
+
+
 def find_tasks(query: str, tasks_dir: Path) -> list[Path]:
     """
     Busca tasks cujo nome contenha o query (case-insensitive).
@@ -188,7 +221,9 @@ def build_task_prompt(task: dict) -> str:
 __all__ = [
     "TASKS_DIR_DEFAULT",
     "TASK_KEYS",
+    "parse_task_text",
     "load_task",
+    "load_tasks",
     "find_tasks",
     "is_trusted_task_path",
     "build_task_prompt",

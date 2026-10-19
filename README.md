@@ -130,6 +130,11 @@ python server.py                           # versão server local
 | `/task` | lista todas as tasks disponíveis |
 | `/task <nome>` | executa task pelo nome (parcial ou exato) |
 | `/task <arquivo.md>` | executa task pelo caminho direto |
+| `/multitask` | lista fluxos e execuções |
+| `/multitask <fluxo> <objetivo>` | executa um fluxo em tasks com quadro e status |
+| `/multitask --fluxos` | lista fluxos disponíveis em `flows/` |
+| `/multitask --listar` | lista execuções e status |
+| `/multitask --retomar <id>` | retoma execução pausada |
 | `/skill` | lista skills disponíveis |
 | `/skill <nome>` | exibe conteúdo da skill |
 | `/skill <nome> <prompt>` | executa prompt usando a skill |
@@ -277,6 +282,58 @@ python ciel.py --cli --task tasks/noticias_do_dia.md
 ```
 
 O agente executa a task e encerra. Sem prompt, sem sessão interativa.
+
+---
+
+## Multitask (em desenvolvimento)
+
+O modo multitask executa um **fluxo** — um plano em várias tasks — com estado em
+disco, status por task e uma mensagem final formatada. Diferente de `/task`
+(que executa ações em ordem), o multitask decide a ordem pelo quadro, isola o
+contexto de cada task e pode ser retomado depois.
+
+```bash
+/multitask --fluxos                       # fluxos disponíveis em flows/
+/multitask exemplo_site                   # executa o fluxo
+/multitask exemplo_site meu objetivo      # sobrescreve o objetivo do fluxo
+/multitask --listar                       # execuções e status
+/multitask --retomar <id>                 # retoma uma execução pausada
+```
+
+Um fluxo é um `.md` em `flows/` com cabeçalho e tasks no formato nativo:
+
+```markdown
+## flow: meu_fluxo
+objetivo: criar um site estático
+formato: markdown          # markdown | resumo | whatsapp | bullets
+como_testar: abra index.html
+
+## task: estrutura
+fase: estrutura
+agente: dev_helper
+objetivo: criar os arquivos base
+ações:
+- criar index.html
+- criar style.css
+resultado esperado: os arquivos existem
+
+## task: conferir
+fase: verificação
+depende_de: estrutura
+ações:
+- listar a pasta [tool: list_directory]
+resultado esperado: a listagem contém os arquivos
+```
+
+O estado fica em `data/runs/<id>/board.json` (e os eventos em `eventos.jsonl`),
+com escrita atômica e trava por execução. O relatório final é montado a partir
+do quadro — não depende de o modelo lembrar do que fez.
+
+**Nesta fase:** o plano vem de um fluxo escrito à mão (o planejador com modelo
+secundário chega na próxima fase); checagens automáticas por código e a TUI
+dedicada também. Use `python ciel.py --cli` por enquanto.
+
+→ **[Documentação: docs/multitask.md](docs/multitask.md)**
 
 ---
 

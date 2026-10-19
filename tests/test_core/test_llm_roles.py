@@ -156,6 +156,33 @@ class TestPerfilBuild:
         roles = load_roles("m", config_path=cfg, secrets_manager=FakeSecrets())
         assert roles.perfil == "local"
 
+    def test_parametro_build_vence_config_local(self, tmp_path):
+        cfg = write_config(tmp_path, {
+            "provider_id": "nvidia",
+            "model": "deepseek-ai/deepseek-v4-flash-0731",
+            "base_url": "https://integrate.api.nvidia.com/v1",
+        })
+        roles = load_roles(
+            "gemma4:cloud", config_path=cfg, secrets_manager=NV_SECRETS,
+            perfil="build",
+        )
+        assert roles.perfil == "build"
+        assert roles.worker.provider == "nvidia"
+
+    def test_parametro_local_vence_config_build(self, tmp_path):
+        cfg = write_config(tmp_path, {
+            "perfil": "build",
+            "provider_id": "nvidia",
+            "model": "deepseek-ai/deepseek-v4-flash-0731",
+            "base_url": "https://integrate.api.nvidia.com/v1",
+        })
+        roles = load_roles(
+            "gemma4:cloud", config_path=cfg, secrets_manager=NV_SECRETS,
+            perfil="local",
+        )
+        assert roles.perfil == "local"
+        assert roles.worker.provider == "ollama"
+
 
 # ── overrides de roles ────────────────────────────────────────────────────
 

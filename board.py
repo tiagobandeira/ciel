@@ -176,6 +176,8 @@ class TaskState:
     id: str
     titulo: str
     status: str = TASK_PENDENTE
+    objetivo: str = ""
+    acoes: list[str] = field(default_factory=list)
     resultado_esperado: str = ""
     checagem: Any = None
     resumo: str = ""
@@ -196,6 +198,7 @@ class TaskState:
         self.status = str(self.status or TASK_PENDENTE)
         self.depende_de = [str(d) for d in (self.depende_de or [])]
         self.decisoes = [str(d) for d in (self.decisoes or [])]
+        self.acoes = [str(a) for a in (self.acoes or [])]
 
         normalized: list[dict] = []
         for item in self.artefatos or []:
@@ -357,6 +360,8 @@ class Board:
         fase: str,
         titulo: str,
         *,
+        objetivo: str = "",
+        acoes: list[str] | None = None,
         resultado_esperado: str = "",
         checagem: Any = None,
         agente: str = "",
@@ -380,6 +385,8 @@ class Board:
             id=task_id,
             titulo=titulo,
             status=status,
+            objetivo=objetivo,
+            acoes=list(acoes or []),
             resultado_esperado=resultado_esperado,
             checagem=checagem,
             agente=agente,

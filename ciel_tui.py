@@ -318,6 +318,8 @@ COMMANDS: list[tuple[str, str]] = [
     ("/criar task",        "cria task via entrevista guiada"),
     ("/task",              "escolhe e executa task        [F2]"),
     ("/task <nome>",       "executa task diretamente"),
+    ("/multitask",         "executa fluxo em tasks (use --cli)"),
+    ("/multitask --fluxos", "lista fluxos disponíveis"),
     ("/skill",             "ativa skill disponível        [F3]"),
     ("/agente",            "troca persona interativo      [F4]"),
     ("/agente <nome>",     "troca persona diretamente"),
@@ -3463,6 +3465,7 @@ class CielTUI(App):
                 ("/criar task",           "cria task via entrevista guiada"),
                 ("/task",                 "escolhe e executa task        [F2]"),
                 ("/task <nome>",          "executa task diretamente"),
+                ("/multitask",            "executa fluxo em tasks (CLI nesta fase)"),
                 ("/skill",                "ativa skill disponível        [F3]"),
                 ("/agente",               "troca persona interativo      [F4]"),
                 ("/agente <nome>",        "troca persona diretamente"),
@@ -3557,6 +3560,15 @@ class CielTUI(App):
                     self.push_screen(ExternalTaskModal(_resolved), _on_trust)
                 else:
                     self._run_task_by_name(name, log)
+
+        elif verb == "/multitask":
+            # Fase 1: o runner do multitask está integrado na CLI.
+            # Na TUI, o painel/status dedicado entra na fase de UI.
+            self._log_write(msg_system(
+                "multitask está disponível na CLI nesta fase — "
+                "rode `python ciel.py --cli` e use /multitask --fluxos",
+                "warn",
+            ))
 
         elif verb == "/skill":
             if len(parts) < 2:

@@ -1148,6 +1148,7 @@ def main():
     # ── prompt_toolkit: autocomplete ──────────────────────────────────────────
     CMDS = [
         "/sair", "/limpar", "/novo", "/criar", "/criar agente", "/criar task", "/criar canal whatsapp", "/task", "/tools", "/agente",
+        "/multitask", "/multitask --listar", "/multitask --fluxos", "/multitask --retomar",
         "/source", "/source --listar","/source --remover","/source --global","/source --limpar-orfas","/skill", "/limpar-temp",
         "/promover ", "/copiar", "/tokens", "/ajuda",
         "/history", "/history salvar", "/history exportar",
@@ -1164,7 +1165,12 @@ def main():
         task_names   = [f"/task {p.stem}" for p in Path("tasks").glob("*.md")] if Path("tasks").exists() else []
         skill_names    = [f"/skill {p.stem}"    for p in Path("skills").glob("*.md")] if Path("skills").exists() else []
         analisar_names = [f"/analisar {p.stem}" for p in Path("skills").glob("*.md")] if Path("skills").exists() else []
-        return WordCompleter(CMDS + tool_names + agent_names + task_names + skill_names + analisar_names, sentence=True)
+        flow_names     = [f"/multitask {p.stem}" for p in Path("flows").glob("*.md")] if Path("flows").exists() else []
+        return WordCompleter(
+            CMDS + tool_names + agent_names + task_names
+            + skill_names + analisar_names + flow_names,
+            sentence=True,
+        )
 
     completer = make_completer(tools)
 
@@ -1991,6 +1997,10 @@ def main():
                 "  [tool]/task[/tool]                    lista tasks disponíveis\n"
                 "  [tool]/task [white]<nome ou prompt>[/white][/tool]  executa task pelo nome ou busca\n"
                 "  [tool]/task [white]<arquivo.md>[/white][/tool]      executa task por caminho direto\n"
+                "  [tool]/multitask [white]<fluxo> <objetivo>[/white][/tool]  planeja/executa um fluxo em tasks\n"
+                "  [tool]/multitask --fluxos[/tool]           lista fluxos disponíveis em flows/\n"
+                "  [tool]/multitask --listar[/tool]           lista execuções e status\n"
+                "  [tool]/multitask --retomar <id>[/tool]     retoma execução pausada\n"
                 "  [tool]/tools[/tool]                   lista as tools ativas\n"
                 "  [tool]/agente[/tool]                  mostra agente e histórico atual\n"
                 "  [tool]/agente [white]<nome>[/white][/tool]         troca de agente (nova sessão)\n"
@@ -2177,6 +2187,307 @@ def main():
             if current_session_id is not None:
                 store.append_turn(current_session_id, "agent", result, ts)
             completer = make_completer(tools)  # pega o agente/task recém-criado no Tab
+            continue
+
+        # ── /multitask — execução de fluxo em tasks ───────────────────────────
+        if user_input.startswith("/multitask"):
+            from board import (
+                BoardError, BoardLocked, BoardNotFound, BoardStore,
+                RUN_CONCLUIDA, RUN_FALHOU, RUN_PAUSADA,
+                TASK_PENDENTE,
+            )
+            from llm.roles import load_roles
+            from multitask.flow import FlowError, build_board, list_flows, load_flow
+            from multitask.runner import reset_interrupted_tasks, run_board
+
+            arg      = user_input[len("/multitask"):].strip()
+            parts_mt = arg.split()
+            runs     = BoardStore()
+
+            # visão geral / listagens
+            if not arg or arg in ("--listar", "-l", "--fluxos"):
+                flows = list_flows()
+                execs = runs.list_runs() if arg != "--fluxos" else []
+
+                body = ["  [muted]fluxos em flows/[/muted]"]
+                if flows:
+                    for f in flows:
+                        body.append(
+                            f"  [user]{f['name']}[/user]  "
+                            f"[muted]{escape(str(f['objetivo'])[:64])}  "
+                            f"({f['tasks']} tasks)[/muted]"
+                        )
+                else:
+                    body.append("  [muted]nenhum fluxo ainda — crie flows/<nome>.md[/muted]")
+
+                if arg != "--fluxos":
+                    body += ["", "  [muted]execuções[/muted]"]
+                    if execs:
+                        for r in execs:
+                            body.append(
+                                f"  [white]{r['id']}[/white]  "
+                                f"[muted]{r['status']} · "
+                                f"{r['concluidas']}/{r['total']} tasks · "
+                                f"{escape(str(r['objetivo'])[:48])}[/muted]"
+                            )
+                    else:
+                        body.append("  [muted]nenhuma execução ainda[/muted]")
+
+                body += [
+                    "",
+                    "  [muted]/multitask <fluxo> <objetivo>  ·  "
+                    "/multitask --retomar <id>[/muted]",
+                ]
+                console.print(Panel(
+                    "\n".join(body),
+                    title="[tool]multitask[/tool]",
+                    border_style=CLR_BORDER,
+                    padding=(0, 1),
+                ))
+                console.print()
+                continue
+
+            # ── retomar execução existente ────────────────────────────────
+            is_resume = False
+            if parts_mt[0] == "--retomar":
+                if len(parts_mt) < 2:
+                    console.print("  [tool]uso: /multitask --retomar <id>[/tool]\n")
+                    continue
+
+                run_id = parts_mt[1]
+                try:
+                    board = runs.load(run_id)
+                except (BoardNotFound, BoardError) as exc:
+                    console.print(f"  [err]{escape(str(exc))}[/err]\n")
+                    continue
+
+                if board.status == RUN_CONCLUIDA:
+                    console.print(
+                        f"  [muted]execução '{run_id}' já está concluída.[/muted]\n"
+                    )
+                    continue
+
+                reset_interrupted_tasks(board)
+                pending = [t for t in board.tasks() if t.status == TASK_PENDENTE]
+                if not pending:
+                    console.print(
+                        f"  [muted]nada pendente em '{run_id}' "
+                        f"(status: {board.status}).[/muted]\n"
+                    )
+                    continue
+
+                if board.status == RUN_FALHOU:
+                    console.print(
+                        "  [warn]esta execução falhou antes; só as tasks "
+                        "pendentes serão tentadas.[/warn]\n"
+                    )
+                is_resume = True
+
+            # ── novo fluxo ───────────────────────────────────────────────
+            else:
+                flow_name = parts_mt[0]
+                objetivo_override = arg[len(flow_name):].strip()
+
+                try:
+                    flow = load_flow(flow_name)
+                except FlowError as exc:
+                    console.print(f"  [err]{escape(str(exc))}[/err]")
+                    console.print(
+                        "  [muted]dica: nesta fase o plano vem de um fluxo; "
+                        "use /multitask --fluxos[/muted]\n"
+                    )
+                    continue
+
+                try:
+                    board = build_board(
+                        flow, objetivo=objetivo_override or None
+                    )
+                except FlowError as exc:
+                    console.print(
+                        f"  [err]fluxo inválido: {escape(str(exc))}[/err]\n"
+                    )
+                    continue
+
+            # ── modelo: local ou provider secundário (perfil build) ──────
+            roles = load_roles(args.model, perfil=board.perfil or None)
+            effective_perfil = board.perfil or roles.perfil
+            use_cloud  = (
+                effective_perfil == "build"
+                and roles.worker is not None
+                and not roles.worker.is_local
+            )
+            model_spec = roles.worker if use_cloud else None
+            model_client = model_spec.client() if model_spec is not None else None
+            run_model    = "" if model_client is not None else args.model
+            model_label  = (
+                model_spec.label if model_spec is not None
+                else f"local · {args.model}"
+            )
+
+            # ── plano / confirmação ──────────────────────────────────────
+            progress = board.progress()
+            plan = [
+                f"  [muted]fluxo:[/muted] {board.fluxo or '(manual)'}",
+                f"  [muted]run:[/muted] {board.id}",
+                f"  [muted]objetivo:[/muted] {escape(board.objetivo)}",
+                f"  [muted]modelo:[/muted] {model_label}   "
+                f"[muted]perfil:[/muted] {effective_perfil}   "
+                f"[muted]formato:[/muted] {board.entrega.get('formato', 'markdown')}",
+                f"  [muted]tasks:[/muted] {progress['total']} "
+                f"em {len(board.fases)} fase(s)",
+                "",
+            ]
+
+            _icons = {
+                "concluida": "[ok]✓[/ok]",
+                "falhou": "[err]✗[/err]",
+                "pendente": "[muted]○[/muted]",
+                "em_andamento": "[tool]▶[/tool]",
+                "pulada": "[muted]↷[/muted]",
+            }
+            for phase in board.fases:
+                plan.append(f"  [tool]{escape(phase.nome)}[/tool]")
+                for task in phase.tasks:
+                    dep = (
+                        f"  [muted]← {', '.join(task.depende_de)}[/muted]"
+                        if task.depende_de else ""
+                    )
+                    plan.append(
+                        f"    {_icons.get(task.status, '○')} "
+                        f"{escape(task.titulo)}{dep}"
+                    )
+
+            console.print(Panel(
+                "\n".join(plan),
+                title=f"[tool]{'retomar' if is_resume else 'plano'} multitask[/tool]",
+                border_style=CLR_BORDER,
+                padding=(0, 1),
+            ))
+            console.print()
+
+            raw_confirm = Prompt.ask(
+                f"  [{CLR_WARN}]{'retomar' if is_resume else 'executar'}?[/{CLR_WARN}]",
+                choices=["s", "n"],
+                default="s",
+            ).strip().lower()
+            if raw_confirm != "s":
+                console.print("  [muted]cancelado.[/muted]\n")
+                continue
+
+            # ── sessão de histórico ──────────────────────────────────────
+            if board.sessao_id:
+                try:
+                    current_session_id = int(board.sessao_id)
+                except (TypeError, ValueError):
+                    pass
+
+            if (
+                current_session_id is not None
+                and store.get_session(current_session_id) is None
+            ):
+                current_session_id = None
+
+            if current_session_id is None:
+                current_session_id = store.new_session(
+                    agent_id=agent_info.get("id", args.agent),
+                    title=f"multitask: {board.objetivo[:60]}",
+                )
+            board.sessao_id = current_session_id
+
+            if is_resume:
+                runs.save(board)
+            else:
+                runs.create(board)
+
+            ts = datetime.now().strftime("%a %H:%M")
+            history.append({"role": "user", "content": user_input, "ts": ts})
+            if current_session_id is not None:
+                store.append_turn(current_session_id, "user", user_input, ts)
+
+            # ── execução ─────────────────────────────────────────────────
+            _callbacks = _make_run_callbacks(session_flags)
+            _callbacks.pop("_on_queue_action", None)
+
+            def on_multitask_event(event):
+                tipo = event.get("tipo")
+                if tipo == "fase_iniciada":
+                    console.print(
+                        f"\n  [tool]fase › "
+                        f"{escape(str(event.get('fase', '')))}[/tool]"
+                    )
+                elif tipo == "task_iniciada":
+                    console.print(
+                        f"  [user]task {event.get('indice')}/{event.get('total')}"
+                        f"[/user] {escape(str(event.get('titulo', '')))}"
+                    )
+                elif tipo == "task_concluida":
+                    resumo = str(event.get("resumo") or "")[:90]
+                    console.print(
+                        f"  [ok]✓[/ok] {escape(str(event.get('titulo', '')))}  "
+                        f"[muted]{escape(resumo)}[/muted]"
+                    )
+                elif tipo == "task_falhou":
+                    erro = str(event.get("erro") or "")[:120]
+                    console.print(
+                        f"  [err]✗[/err] {escape(str(event.get('titulo', '')))}  "
+                        f"[muted]{escape(erro)}[/muted]"
+                    )
+                elif tipo == "run_pausada":
+                    console.print(
+                        f"  [warn]pausada:[/warn] "
+                        f"{escape(str(event.get('motivo', '')))}"
+                    )
+
+            try:
+                mt_result = run_board(
+                    board, tools, schema, agent_info,
+                    store=runs,
+                    model=run_model,
+                    model_client=model_client,
+                    session_id=(
+                        str(current_session_id) if current_session_id else None
+                    ),
+                    max_steps_per_task=MAX_STEPS_TASK,
+                    mcp_manager=mcp_manager,
+                    callbacks=_callbacks,
+                    on_event=on_multitask_event,
+                )
+            except BoardLocked as exc:
+                console.print(f"  [err]{escape(str(exc))}[/err]\n")
+                continue
+            except KeyboardInterrupt:
+                console.print("  [warn]interrompido.[/warn]\n")
+                continue
+            except Exception as exc:
+                console.print(
+                    f"  [err]falha na execução: {escape(str(exc))}[/err]\n"
+                )
+                continue
+
+            t_in, t_out = mt_result.tokens_in, mt_result.tokens_out
+            session_tokens_in  += t_in
+            session_tokens_out += t_out
+
+            ts = datetime.now().strftime("%a %H:%M")
+            history.append({"role": "agent", "content": mt_result.message, "ts": ts})
+            print_history_entry("agent", mt_result.message, ts, t_in, t_out)
+            print_turn_separator()
+
+            if current_session_id is not None:
+                store.append_turn(current_session_id, "agent", mt_result.message, ts)
+
+            if mt_result.status == RUN_PAUSADA:
+                console.print(
+                    f"  [muted]para retomar:[/muted] "
+                    f"/multitask --retomar {mt_result.board.id}\n"
+                )
+            elif mt_result.status == RUN_FALHOU:
+                console.print(
+                    f"  [muted]execução falhou · quadro em "
+                    f"data/runs/{mt_result.board.id}/[/muted]\n"
+                )
+
+            completer = make_completer(tools)
             continue
 
         # Tasks

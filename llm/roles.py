@@ -399,9 +399,13 @@ def load_roles(
     secrets_manager=None,
     ollama_url: str | None = None,
     env: dict | None = None,
+    perfil: str | None = None,
 ) -> RoleConfig:
     """
     Resolve todos os papéis para a sessão.
+
+    `perfil` sobrescreve o `perfil` do config (usado por um fluxo que declara
+    `perfil: build` sem exigir mudar o `ciel_config.json`).
 
     Nunca levanta por config ausente/inválida: no pior caso devolve só o
     orquestrador local, que é o comportamento histórico do Ciel.
@@ -419,7 +423,8 @@ def load_roles(
     )
 
     secondary = _secondary_spec(cfg, sm, env=env)
-    perfil    = str(cfg.get("perfil") or "local").strip().lower()
+    perfil_raw = perfil if perfil is not None else cfg.get("perfil")
+    perfil = str(perfil_raw or "local").strip().lower()
     if perfil not in ("local", "build"):
         perfil = "local"
 
