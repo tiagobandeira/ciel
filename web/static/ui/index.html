@@ -7,9 +7,36 @@
 html,body{height:100%;margin:0;background:radial-gradient(ellipse at 50% 42%,#0b2b5c 0%,#051433 38%,#02050d 78%) fixed,#02050d;color:var(--fg);font:14px "Trebuchet MS",system-ui,sans-serif;overflow:hidden}
 canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #hud{position:fixed;left:14px;top:calc(env(safe-area-inset-top,0px) + 10px);opacity:.55;font-size:12px}
-#bar{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);transform:translateX(-50%);width:min(94vw,560px);box-sizing:border-box;display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:16px;background:rgba(8,20,40,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(74,168,255,.35);box-shadow:0 0 24px var(--gl),inset 0 0 12px rgba(74,168,255,.12);transition:opacity .7s;z-index:50}
-#bar.idle{opacity:.15}
-.row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;align-items:center}
+#bar{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);transform:translateX(-50%);width:min(94vw,520px);box-sizing:border-box;display:flex;flex-direction:column;align-items:center;gap:10px;transition:opacity .7s;z-index:50}
+#bar.idle:not(.aberto){opacity:.15}
+.bar-composer{align-self:stretch;display:flex;align-items:center;gap:4px;padding:5px 5px 5px 20px;border-radius:999px;background:rgba(8,20,40,.5);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(74,168,255,.22);box-shadow:0 0 28px rgba(74,168,255,.16);transition:border-color .3s,box-shadow .3s}
+.bar-composer:focus-within{border-color:rgba(140,210,255,.5);box-shadow:0 0 30px var(--gl)}
+#bar #msg{flex:1 1 auto;min-width:0;padding:8px 4px;border:0;border-radius:0;background:none;outline:none;font-size:15px}
+#bar #msg::placeholder{color:rgba(207,230,255,.45)}
+.bar-toolbar{display:flex;align-items:center;gap:2px;padding:4px;border-radius:999px;background:rgba(8,20,40,.4);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(74,168,255,.14)}
+.bar-sep{width:1px;height:16px;margin:0 4px;background:rgba(74,168,255,.22)}
+#bar .ib{position:relative;width:38px;height:38px;padding:0;display:grid;place-items:center;border:0;border-radius:50%;background:none;box-shadow:none;color:rgba(207,230,255,.6);cursor:pointer;transition:color .2s,background .2s,box-shadow .2s}
+#bar .ib:hover{color:var(--fg);background:rgba(74,168,255,.12)}
+#bar .ib.on{color:#e6f6ff;background:rgba(74,168,255,.22);box-shadow:0 0 14px var(--gl)}
+#bar .ib:disabled{opacity:.4;cursor:default}
+#bar .ib.busy svg{animation:barPulse 1s ease-in-out infinite}
+#bar #send{color:#e6f6ff;background:rgba(74,168,255,.26)}
+#bar #mic.on{animation:barPulse 1.2s ease-in-out infinite}
+.ib svg,.it svg{width:20px;height:20px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.ib svg .fl,.it svg .fl{fill:currentColor;stroke:none}
+#mic .i-stop{display:none}#mic.on .i-mic{display:none}#mic.on .i-stop{display:inline}
+[data-n="1"] .b2,[data-n="1"] .b3,[data-n="2"] .b3{opacity:.25}
+.menu-aj{position:absolute;left:0;right:0;margin:0 auto;width:max-content;bottom:calc(100% + 10px);display:none;flex-direction:column;min-width:220px;padding:6px;border-radius:18px;background:rgba(8,20,40,.78);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(74,168,255,.3);box-shadow:0 0 30px var(--gl)}
+#bar.aberto .menu-aj{display:flex;animation:painelIn .25s ease-out both}
+.menu-aj .it{display:flex;align-items:center;gap:12px;width:100%;padding:9px 12px;border:0;border-radius:12px;background:none;box-shadow:none;color:var(--fg);text-align:left;cursor:pointer}
+.menu-aj .it:hover{background:rgba(74,168,255,.12)}
+.menu-aj .it.on{background:rgba(74,168,255,.2);box-shadow:inset 0 0 0 1px rgba(74,168,255,.3)}
+.menu-aj .it .v{margin-left:auto;padding-left:16px;opacity:.6;font-size:12px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);border:0;padding:0}
+@keyframes barPulse{50%{opacity:.45}}
+@media(hover:hover){#bar [data-tip]:hover::after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);white-space:nowrap;padding:4px 9px;border-radius:8px;font-size:12px;color:var(--fg);background:rgba(2,5,13,.88);border:1px solid rgba(74,168,255,.25);pointer-events:none;z-index:2}}
+@media(prefers-reduced-motion:reduce){#bar,#bar *{animation:none!important;transition:none!important}}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid rgba(140,210,255,.75);outline-offset:2px}
 button,input,select{font:inherit;color:var(--fg);background:rgba(74,168,255,.1);border:1px solid rgba(74,168,255,.35);border-radius:10px;padding:6px 10px}
 button.on{background:rgba(74,168,255,.38);box-shadow:0 0 10px var(--gl)}
 input{flex:1 1 110px;min-width:0}
@@ -36,15 +63,62 @@ input{flex:1 1 110px;min-width:0}
 #tela.temfoco .painel:not(.foco){opacity:.42;transform:translateX(-4px) scale(.975)}
 .painel.foco{width:100%;max-height:78vh;border-color:rgba(140,210,255,.7);box-shadow:0 0 26px var(--gl),0 0 0 1px rgba(140,210,255,.35),inset 0 0 18px rgba(74,168,255,.18);transform:translateX(6px) scale(1.015)}
 .painel.pulso{box-shadow:0 0 0 2px rgba(140,210,255,.6),0 0 28px rgba(74,168,255,.65),inset 0 0 20px rgba(74,168,255,.22);border-color:rgba(160,220,255,.95)}
-.painel-h{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.85;cursor:pointer;user-select:none}
-.painel-h b{font-weight:600;flex:1}
-.painel-tag{font-size:9px;opacity:.5;letter-spacing:0;text-transform:none}
+.painel[data-tipo="relogio"],.painel[data-tipo="clima"]{align-self:flex-start;width:max-content;max-width:100%;max-height:none;overflow:visible;padding:0;background:none;border:0;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;pointer-events:auto}
+.painel[data-tipo="relogio"].foco,.painel[data-tipo="clima"].foco{width:max-content;max-height:none;background:none;border:0;box-shadow:none;transform:none}
+.painel[data-tipo="relogio"]::before,.painel[data-tipo="clima"]::before{display:none}
+.painel[data-tipo="relogio"] .painel-h,.painel[data-tipo="clima"] .painel-h{position:absolute;right:-20px;top:0;margin:0;padding:0;opacity:0;z-index:4;transition:opacity .25s}
+.painel[data-tipo="relogio"]:hover .painel-h,.painel[data-tipo="clima"]:hover .painel-h,.painel[data-tipo="relogio"] .painel-h:focus-within,.painel[data-tipo="clima"] .painel-h:focus-within{opacity:.55}
+.painel[data-tipo="relogio"] .painel-h b,.painel[data-tipo="relogio"] .painel-voz,.painel[data-tipo="clima"] .painel-h b,.painel[data-tipo="clima"] .painel-voz{display:none}
+.painel[data-tipo="relogio"] .painel-h .painel-x,.painel[data-tipo="clima"] .painel-h .painel-x{width:18px;height:18px;padding:0;display:grid;place-items:center;font-size:14px;line-height:1;border-radius:50%}
+.painel .hora{font-size:58px;font-weight:200;line-height:.9;letter-spacing:-.055em;font-variant-numeric:tabular-nums;text-shadow:0 0 26px rgba(74,168,255,.25);color:#e8f6ff}
+.data-linha{display:flex;align-items:center;gap:8px;margin-top:9px;font-size:12px;opacity:.72;cursor:pointer;user-select:none}
+.data-linha:hover{opacity:.95}
+.data-linha .seta{font-size:10px;opacity:.6;transition:transform .25s}
+.data-linha.on .seta{transform:rotate(180deg)}
+.semana{display:flex;gap:9px;margin-top:10px}
+.semana .dia{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:9px;line-height:1;opacity:.45;min-width:18px}
+.semana .dia b{font-size:11px;font-weight:400;opacity:.9}
+.semana .dia.hoje{opacity:1;color:#e8f6ff}
+.semana .dia.hoje b{font-weight:700;text-shadow:0 0 10px var(--gl)}
+.semana .dia.hoje::after{content:'';width:3px;height:3px;border-radius:50%;background:var(--ac);box-shadow:0 0 7px var(--gl)}
+.cal-mes{display:none;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:12px;font-size:9px;text-align:center;opacity:.75}
+.cal-mes.aberto{display:grid}
+.cal-mes .dow{opacity:.55}
+.cal-mes .hoje{background:rgba(74,168,255,.35);border-radius:50%;box-shadow:0 0 8px var(--gl)}
+.clima-linha{display:flex;align-items:center;gap:6px}
+.clima-resumo{display:flex;align-items:baseline;gap:8px;border:0;background:none;padding:0;cursor:pointer;text-align:left;color:var(--fg)}
+.clima-resumo:hover{background:none}
+.clima-top{display:flex;align-items:baseline;gap:8px}
+.clima-ico{font-size:28px;line-height:1}
+.clima-temp{font-size:40px;font-weight:200;line-height:.92;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.clima-cond{font-size:11px;opacity:.7;line-height:1.25;max-width:150px}
+.clima-seta{margin-left:auto;font-size:10px;opacity:.5;transition:transform .25s}
+.clima-resumo.on .clima-seta{transform:rotate(180deg)}
+.clima-detalhes{display:none;font-size:10px;opacity:.62;line-height:1.5;margin-top:8px}
+.clima-detalhes.aberto{display:block}
+.clima-refresh{flex:0 0 auto;width:20px;height:20px;min-width:0;padding:0;display:grid;place-items:center;border:0;border-radius:50%;background:none;color:var(--fg);opacity:0;cursor:pointer;transition:opacity .25s}
+.painel[data-tipo="clima"]:hover .clima-refresh,.clima-refresh:focus-visible{opacity:.45}
+.clima-refresh:hover{opacity:.95!important;background:none}
+.clima-refresh.girando svg{animation:feedSpin .8s linear infinite}
+@media(hover:none){.clima-refresh{opacity:.35}}
+.clima-refresh svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.painel-h{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;letter-spacing:0;text-transform:none;opacity:1;cursor:pointer;user-select:none}
+.painel-h b{font-weight:600;flex:1;line-height:1.35}
+.painel-voz{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;opacity:.45;flex:0 0 auto}
+.painel-voz.off{opacity:.22}
+.painel-voz svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.painel-tag{display:none}
 .painel-x{background:none;border:0;color:var(--fg);opacity:.6;font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
 .painel-x:hover{opacity:1}
 .painel-acoes{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:7px;border-top:1px solid rgba(74,168,255,.18)}
 .painel-acoes button{font-size:10px;padding:3px 8px;border-radius:8px;background:rgba(74,168,255,.12);border:1px solid rgba(74,168,255,.3);color:var(--fg);cursor:pointer}
+.painel-acoes button[data-icone]{width:28px;height:28px;padding:0;display:grid;place-items:center}
+.painel-acoes button[data-icone] svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .painel-acoes button:hover{background:rgba(74,168,255,.22);border-color:rgba(140,210,255,.55)}
 .painel-acoes button:disabled{opacity:.45;cursor:wait}
+.palco-icones{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;padding:2px 0}
+.palco-icones .feed-chip{width:36px;height:36px;padding:0;display:grid;place-items:center;border-radius:50%}
+.palco-icones .feed-chip svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
 .tarefas-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .tarefas-top span{font-size:10px;opacity:.65;min-width:34px;font-variant-numeric:tabular-nums}
 .tarefas-barra{flex:1;height:3px;border-radius:2px;background:rgba(74,168,255,.18);overflow:hidden}
@@ -62,7 +136,7 @@ input{flex:1 1 110px;min-width:0}
 .tarefa-add button{font-size:12px;padding:3px 9px;border-radius:8px;background:rgba(74,168,255,.15);border:1px solid rgba(74,168,255,.35);color:var(--fg);cursor:pointer}
 .acoes-painel{font-size:11px;line-height:1.55;opacity:.72}
 .tarefas-vazio{font-size:10px;opacity:.45;padding:6px 0}
-.feed-intro{font-size:10px;letter-spacing:.06em;text-transform:uppercase;opacity:.55;margin-bottom:7px}
+.feed-intro{font-size:11px;letter-spacing:.01em;text-transform:none;opacity:.6;margin-bottom:7px}
 .feed-contador{color:var(--ac);opacity:.9}
 #feed:disabled{opacity:.5;cursor:wait}
 #palco.modo-opcoes{padding-left:370px;padding-right:370px;padding-top:84px}
@@ -76,9 +150,9 @@ input{flex:1 1 110px;min-width:0}
 .feed-layout{display:grid;grid-template-columns:190px minmax(0,1fr);gap:14px;align-items:start}
 .feed-col{min-width:0}
 .feed-opcoes{position:sticky;top:0;display:flex;flex-direction:column;gap:10px;padding:2px 0}
-.feed-op-titulo{font-size:10px;letter-spacing:.08em;text-transform:uppercase;opacity:.62}
+.feed-op-titulo{font-size:11px;letter-spacing:0;text-transform:none;opacity:.62}
 .feed-op-grupo{display:flex;flex-direction:column;gap:5px}
-.feed-op-grupo>span{font-size:10px;letter-spacing:.06em;text-transform:uppercase;opacity:.5}
+.feed-op-grupo>span{font-size:10px;letter-spacing:0;text-transform:none;opacity:.5}
 .feed-op-grupo .feed-chips{display:flex;flex-wrap:wrap;gap:5px}
 .feed-chip{font-size:12px;padding:4px 8px;border-radius:999px;border:1px solid rgba(74,168,255,.28);background:rgba(74,168,255,.1);color:var(--fg);cursor:pointer;opacity:.84}
 .feed-chip:hover{opacity:1;border-color:rgba(140,210,255,.5)}
@@ -115,18 +189,6 @@ input{flex:1 1 110px;min-width:0}
 .feed-preview{font-size:11px;line-height:1.55;opacity:.7;margin:2px 0 6px}
 .feed-preview b{font-weight:500;color:var(--fg)}
 .feed-preview .feed-mini{opacity:.55;margin-top:4px}
-.painel .hora{font-size:34px;line-height:1;letter-spacing:.02em;font-variant-numeric:tabular-nums}
-.painel .data{font-size:12px;opacity:.8;margin:2px 0 8px}
-.painel .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:10px;text-align:center}
-.painel .cal .dow{opacity:.5}
-.painel .cal .hoje{background:rgba(74,168,255,.35);border-radius:50%;box-shadow:0 0 8px var(--gl)}
-.painel .clima-top{display:flex;align-items:center;gap:10px}
-.painel .clima-ico{font-size:30px;line-height:1}
-.painel .clima-temp{font-size:28px;line-height:1;font-variant-numeric:tabular-nums}
-.painel .clima-cond{font-size:12px;opacity:.85}
-.painel .clima-sub{font-size:10px;opacity:.65;margin-top:6px;line-height:1.5}
-.painel .clima-local{font-size:10px;opacity:.55;margin-top:4px}
-.painel .clima-acao{margin-top:8px;font-size:11px;padding:3px 8px}
 #palco{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;padding:24px 370px calc(24px + 150px) 460px;box-sizing:border-box}
 #palco.aberto{display:flex}
 #palco .palco-fundo{position:absolute;inset:0;background:rgba(2,5,13,.18);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
@@ -144,6 +206,12 @@ input{flex:1 1 110px;min-width:0}
 .img-preview img{width:100%;height:100%;object-fit:cover;display:block}
 .img-painel .img-tela{position:relative;height:150px;border-radius:12px;overflow:hidden;background:rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center}
 .img-painel .img-tela img{width:100%;height:100%;object-fit:cover;display:block}
+.palco-card .img-painel .img-tela{width:calc(100% + 32px);margin:0 -16px;height:auto;max-height:58vh;border-radius:0;background:#000;display:flex;align-items:center;justify-content:center}
+.palco-card .img-painel .img-tela img{width:auto;max-width:100%;height:auto;max-height:58vh;object-fit:contain;cursor:zoom-in}
+.palco-card .img-painel .img-tela.zoom{max-height:74vh}
+.palco-card .img-painel .img-tela.zoom img{max-height:74vh}
+.palco-card .img-painel .img-tela .img-legenda{position:absolute;left:0;right:0;bottom:0;margin:0;padding:26px 16px 12px;background:linear-gradient(transparent,rgba(2,5,13,.88));font-size:12px;line-height:1.45;pointer-events:none}
+.palco-card .img-painel .img-tela .img-legenda a{pointer-events:auto}
 #palco .img-painel .img-tela{height:min(56vh,460px)}
 #palco .img-painel .img-tela img{object-fit:contain}
 .img-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:2;width:30px;height:30px;padding:0;border-radius:50%;background:rgba(2,5,13,.58);border:1px solid rgba(74,168,255,.45);color:var(--fg);font-size:18px;line-height:1;cursor:pointer}
@@ -178,6 +246,8 @@ input{flex:1 1 110px;min-width:0}
 .video-frame iframe,.video-frame video{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;object-fit:contain}
 @keyframes painelIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
 @media(max-width:900px){
+  #bar{width:96vw}
+  .bar-sep{display:none}
   #tela{left:10px;right:10px;width:auto;top:calc(env(safe-area-inset-top,0px) + 40px);bottom:calc(env(safe-area-inset-bottom,0px) + 170px)}
   #paineis{gap:8px;padding:4px 8px 10px}
   .painel,.painel.foco{width:100%;max-height:30vh}
@@ -185,11 +255,12 @@ input{flex:1 1 110px;min-width:0}
 }
 </style></head><body>
 <canvas id="c"></canvas><div id="tela"><div id="paineis"></div></div><div id="palco" aria-hidden="true"><div class="palco-fundo"></div><div id="palco-opcoes" class="palco-opcoes" aria-hidden="true"></div><div class="palco-card"><div class="palco-h"><b id="palco-titulo"></b><button class="painel-x" id="palco-min" type="button" title="Minimizar para a lateral">↘</button><button class="painel-x" id="palco-x" type="button" title="Fechar">×</button></div><div id="palco-corpo"></div></div></div><div id="hud"></div><div id="cap"></div><div id="chat" class="vazio"><div id="msgs"></div></div>
-<div id="bar"><div class="row"><input id="msg" placeholder="Fale com o Ciel" autocomplete="off"><button id="send">Enviar</button><button id="mic">Falar</button></div><div class="row dbg" id="st"></div><div class="row dbg" id="sh"></div><div class="row dbg" id="vz"></div>
-<div class="row dbg"><input id="js" placeholder="colar JSON de forma"><button id="pj">Forma JSON</button></div>
-<div class="row"><input id="tx" placeholder="palavra" maxlength="14"><button id="pw">Palavra</button>
-<select id="q"><option value="15000">Leve</option><option value="30000" selected>Média</option><option value="60000">Alta</option></select>
-<button id="rd">Leitura</button><button id="lv" title="modo live: respostas faladas e interrupção pela fala">Live</button><button id="pq" title="modo pesquisa: painéis de estudo ao redor da forma">Pesquisa</button><button id="feed" title="feed de pesquisa: notícias, Bluesky e Wikimedia">Feed</button><button id="ft" class="on">Formas de tool</button><button id="pin">Fixar</button></div></div>
+<div id="bar"><div class="bar-composer"><input id="msg" placeholder="Fale com o Ciel" autocomplete="off" aria-label="Mensagem para o Ciel"><button id="mic" class="ib" type="button" aria-label="Falar" data-tip="Falar"><svg class="i-mic" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true"><rect class="fl" x="7" y="7" width="10" height="10" rx="2"/></svg></button><button id="send" class="ib" type="button" aria-label="Enviar" data-tip="Enviar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
+<div class="bar-toolbar" role="toolbar" aria-label="Modos do Ciel"><button id="lv" class="ib" type="button" aria-label="Live" data-tip="Live"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h2M8 8v8M12 4v16M16 8v8M20 12h-2"/></svg></button><button id="pq" class="ib" type="button" aria-label="Pesquisa" data-tip="Pesquisa"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></button><button id="feed" class="ib" type="button" aria-label="Feed" data-tip="Feed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5a14 14 0 0 1 14 14M5 11a8 8 0 0 1 8 8"/><circle class="fl" cx="6" cy="18" r="1.3"/></svg></button><span class="bar-sep" aria-hidden="true"></span><button id="mais" class="ib" type="button" aria-label="Ajustes" aria-expanded="false" aria-controls="menuAj" data-tip="Ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fl" cx="5" cy="12" r="1.5"/><circle class="fl" cx="12" cy="12" r="1.5"/><circle class="fl" cx="19" cy="12" r="1.5"/></svg></button></div>
+<div id="menuAj" class="menu-aj"><button id="rd" class="it" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/></svg><span>Leitura</span></button><button id="ft" class="it on" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"/></svg><span>Formas de tool</span></button><button id="pin" class="it" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l-1 6 3 3H7l3-3-1-6zM12 13v7"/></svg><span>Fixar</span></button><button id="qb" class="it" type="button" data-n="2"><svg viewBox="0 0 24 24" aria-hidden="true"><rect class="fl b1" x="5" y="14" width="3.5" height="6" rx="1"/><rect class="fl b2" x="10.25" y="9" width="3.5" height="11" rx="1"/><rect class="fl b3" x="15.5" y="4" width="3.5" height="16" rx="1"/></svg><span>Profundidade</span><span class="v" id="qv">Média</span></button><select id="q" class="sr" tabindex="-1" aria-hidden="true"><option value="15000">Leve</option><option value="30000" selected>Média</option><option value="60000">Alta</option></select></div>
+<div class="row dbg" id="st"></div><div class="row dbg" id="sh"></div><div class="row dbg" id="vz"></div>
+<div class="row dbg"><input id="js" placeholder="colar JSON de forma"><button id="pj" type="button">Forma JSON</button></div>
+<div class="row"><input id="tx" placeholder="palavra" maxlength="14"><button id="pw" type="button">Palavra</button></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const R=Math.random,$=id=>document.getElementById(id);
@@ -444,6 +515,15 @@ let pin=false,idle,idle2;const bar=$('bar');
 function wake(){bar.classList.remove('idle');$('chat').classList.remove('idle');clearTimeout(idle);clearTimeout(idle2);if(!pin){idle=setTimeout(()=>bar.classList.add('idle'),3000);idle2=setTimeout(()=>$('chat').classList.add('idle'),8000)}}
 ['pointermove','pointerdown','keydown'].forEach(e=>addEventListener(e,wake));
 $('pin').onclick=()=>{pin=!pin;$('pin').classList.toggle('on',pin);wake()};
+function micRot(t){const m=$('mic');m.dataset.tip=t;m.setAttribute('aria-label',t)}
+(function(){const q=$('q'),qb=$('qb'),qv=$('qv'),mb=$('mais');
+const nivel=()=>{const i=q.selectedIndex;qb.dataset.n=i+1;qv.textContent=q.options[i].text};
+qb.onclick=()=>{q.selectedIndex=(q.selectedIndex+1)%q.options.length;q.dispatchEvent(new Event('change'));nivel()};nivel();
+const abrir=v=>{bar.classList.toggle('aberto',v);mb.classList.toggle('on',v);mb.setAttribute('aria-expanded',v);wake()};
+mb.onclick=()=>abrir(!bar.classList.contains('aberto'));
+addEventListener('pointerdown',e=>{if(!bar.contains(e.target))abrir(false)});
+addEventListener('keydown',e=>{if(e.key==='Escape')abrir(false)});
+})();
 function fit(){const w=innerWidth,h=innerHeight;rd.setSize(w,h,false);cam.aspect=w/h;cam.position.z=u.uZ.value=Math.max(8,9/cam.aspect);cam.updateProjectionMatrix()}
 addEventListener('resize',()=>{fit();lay()});
 
@@ -788,7 +868,7 @@ function encerrarEscuta(){
   try{if(s.rec.state==='recording')s.rec.stop()}catch(e){}
   s.stream.getTracks().forEach(t=>t.stop());
   if(gravando===s.rec)gravando=null;
-  $('mic').classList.remove('on');$('mic').textContent='Falar';
+  $('mic').classList.remove('on');micRot('Falar');
 }
 function bargeIn(s,info){
   if(!s||s.triggered||s.descartar||!modoLive||!lendo)return false;
@@ -799,7 +879,7 @@ function bargeIn(s,info){
   vz={inicio:performance.now(),motivo:'barge-in'};if($('vz'))$('vz').textContent='';
   console.log('[live] barge-in em '+s.inicio.toFixed(2)+' s'+(info?' (rms '+info.rms.toFixed(3)+', ruído '+info.ruido.toFixed(3)+', limiar '+info.limiar.toFixed(3)+')':''));
   parar();  // cancela o TTS; a gravação continua como o turno do usuário
-  $('mic').classList.add('on');$('mic').textContent='Enviar fala';
+  $('mic').classList.add('on');micRot('Enviar fala');
   cap('ouvindo… (falou por cima; clique para enviar)');go('ouvindo','esfera');
   return true;
 }
@@ -826,7 +906,7 @@ async function iniciarEscutaLive(){
     stream.getTracks().forEach(t=>t.stop());
     if(escuta===s)escuta=null;
     if(gravando===rec)gravando=null;
-    $('mic').classList.remove('on');$('mic').textContent='Falar';
+    $('mic').classList.remove('on');micRot('Falar');
     if(s.descartar||!s.triggered)return;
     if(vz){vz.fim=performance.now();vzPublica()}
     const blob=new Blob(partes,{type:rec.mimeType||tipo||'audio/webm'});
@@ -861,7 +941,7 @@ async function mic(){
   vz={inicio:performance.now()};if($('vz'))$('vz').textContent='';
   rec.ondataavailable=e=>{if(e.data.size)partes.push(e.data)};
   rec.onstop=async()=>{clearTimeout(lim);gravando=null;soltaVad&&soltaVad();soltaVad=null;stream.getTracks().forEach(t=>t.stop());
-    $('mic').classList.remove('on');$('mic').textContent='Falar';
+    $('mic').classList.remove('on');micRot('Falar');
     if(vz){vz.motivo=rec._motivo||'clique';vz.fim=performance.now();vzPublica()}
     const blob=new Blob(partes,{type:rec.mimeType||tipo||'audio/webm'});
     if(blob.size<1200){cap(rec._motivo==='sem fala'?'nada captado — tente de novo':'');go('repouso',tema||'esfera');vz=null;return}
@@ -876,7 +956,7 @@ async function mic(){
     finally{transcrevendo=false;clearInterval(tick)}};
   gravando=rec;rec.start();
   soltaVad=vigiaVoz(stream,motivo=>{if(rec.state==='recording'){rec._motivo=motivo;rec.stop()}});
-  $('mic').classList.add('on');$('mic').textContent='Enviar fala';
+  $('mic').classList.add('on');micRot('Enviar fala');
   cap(VAD.auto?'ouvindo… (clique para enviar; encerra sozinho no silêncio)':'ouvindo… (clique para enviar)');go('ouvindo','esfera');
 }
 // ── modo pesquisa: painéis (spike) ────────────────────────────────────────────
@@ -884,16 +964,24 @@ async function mic(){
 // Por enquanto a política é só exibida; nenhum painel é lido em voz alta sozinho.
 const PAINEIS_PADRAO=[
   {id:'relogio',tipo:'relogio',titulo:'Data e hora',nomes:['relógio','hora','data','calendário'],slot:'top-left',fala:'nunca',resumo:'Relógio com data e calendário do mês atual.',acoes:[]},
-  {id:'clima',tipo:'clima',titulo:'Clima',nomes:['clima','previsão','temperatura'],slot:'bottom-left',fala:'resumo',resumo:'Clima atual e máximas/mínimas do dia na localização do usuário.',acoes:[{id:'atualizar',rotulo:'Atualizar'}]}
+  {id:'clima',tipo:'clima',titulo:'Clima',nomes:['clima','previsão','temperatura'],slot:'bottom-left',fala:'resumo',resumo:'Clima atual e máximas/mínimas do dia na localização do usuário.',acoes:[]}
 ];
 const PAINEIS_RENDER={
   relogio:(corpo)=>{
-    corpo.innerHTML='<div class="hora"></div><div class="data"></div><div class="cal"></div>';
-    const hora=corpo.querySelector('.hora'),data=corpo.querySelector('.data'),cal=corpo.querySelector('.cal');
-    const dows=['D','S','T','Q','Q','S','S'];
-    const calendario=d=>{
+    corpo.innerHTML='<div class="hora"></div><div class="data-linha" role="button" tabindex="0" aria-expanded="false"><span class="data"></span><span class="seta">⌄</span></div><div class="semana"></div><div class="cal-mes"></div>';
+    const hora=corpo.querySelector('.hora'),linha=corpo.querySelector('.data-linha'),data=corpo.querySelector('.data'),
+      semana=corpo.querySelector('.semana'),mes=corpo.querySelector('.cal-mes');
+    const DIAS=['dom','seg','ter','qua','qui','sex','sáb'];
+    const MESES=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+    const fmtData=d=>`${DIAS[d.getDay()]}, ${String(d.getDate()).padStart(2,'0')} ${MESES[d.getMonth()]}`;
+    const seteDias=d=>{
+      const base=new Date(d);base.setDate(d.getDate()-((d.getDay()+6)%7));
+      return Array.from({length:7},(_,i)=>{const x=new Date(base);x.setDate(base.getDate()+i);
+        return `<span class="dia${x.toDateString()===d.toDateString()?' hoje':''}">${DIAS[x.getDay()]}<b>${x.getDate()}</b></span>`}).join('');
+    };
+    const mesHTML=d=>{
       const y=d.getFullYear(),m=d.getMonth(),primeiro=new Date(y,m,1).getDay(),dias=new Date(y,m+1,0).getDate();
-      let h=dows.map(x=>`<span class="dow">${x}</span>`).join('');
+      let h=['D','S','T','Q','Q','S','S'].map(x=>`<span class="dow">${x}</span>`).join('');
       for(let i=0;i<primeiro;i++)h+='<span></span>';
       for(let dia=1;dia<=dias;dia++)h+=`<span class="${dia===d.getDate()?'hoje':''}">${dia}</span>`;
       return h;
@@ -902,17 +990,20 @@ const PAINEIS_RENDER={
     const desenha=()=>{
       const d=new Date();
       hora.textContent=d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-      const txt=d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-      data.textContent=txt.charAt(0).toUpperCase()+txt.slice(1);
-      if(d.getDate()!==ultimoDia){ultimoDia=d.getDate();cal.innerHTML=calendario(d)}
+      data.textContent=fmtData(d);
+      if(d.getDate()!==ultimoDia){ultimoDia=d.getDate();semana.innerHTML=seteDias(d);mes.innerHTML=mesHTML(d)}
     };
+    const alterna=()=>{const aberto=linha.classList.toggle('on');mes.classList.toggle('aberto',aberto);linha.setAttribute('aria-expanded',aberto)};
+    linha.onclick=alterna;
+    linha.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();alterna()}};
     desenha();const id=setInterval(desenha,1000);
     return ()=>clearInterval(id);
   },
   clima:(corpo)=>{
-    corpo.innerHTML='<div class="clima-top"><div class="clima-ico">🌡️</div><div><div class="clima-temp">--°</div><div class="clima-cond">Localizando…</div></div></div><div class="clima-sub"></div><div class="clima-local"></div><button class="clima-acao" type="button">Atualizar</button>';
-    const ico=corpo.querySelector('.clima-ico'),temp=corpo.querySelector('.clima-temp'),cond=corpo.querySelector('.clima-cond'),
-      sub=corpo.querySelector('.clima-sub'),local=corpo.querySelector('.clima-local'),btn=corpo.querySelector('.clima-acao');
+    corpo.innerHTML='<div class="clima-linha"><div class="clima-resumo" role="button" tabindex="0" aria-expanded="false"><span class="clima-ico">🌡️</span><span class="clima-temp">--°</span><span class="clima-cond">Localizando…</span><span class="clima-seta">⌄</span></div><button class="clima-refresh" type="button" title="Atualizar clima" aria-label="Atualizar clima"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6.7"/><path d="M20 4v7h-7"/></svg></button></div><div class="clima-detalhes"></div>';
+    const resumo=corpo.querySelector('.clima-resumo'),ico=corpo.querySelector('.clima-ico'),
+      temp=corpo.querySelector('.clima-temp'),cond=corpo.querySelector('.clima-cond'),
+      detalhes=corpo.querySelector('.clima-detalhes'),btn=corpo.querySelector('.clima-refresh');
     const MAPA={
       0:['☀️','Céu limpo'],1:['🌤️','Quase limpo'],2:['⛅','Parcialmente nublado'],3:['☁️','Nublado'],
       45:['🌫️','Névoa'],48:['🌫️','Névoa com geada'],
@@ -925,10 +1016,13 @@ const PAINEIS_RENDER={
       95:['⛈️','Trovoada'],96:['⛈️','Trovoada com granizo'],99:['⛈️','Trovoada com granizo']
     };
     const num=v=>typeof v==='number'?Math.round(v)+'°':'--';
+    const alterna=()=>{const aberto=resumo.classList.toggle('on');detalhes.classList.toggle('aberto',aberto);resumo.setAttribute('aria-expanded',aberto)};
+    resumo.onclick=alterna;
+    resumo.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();alterna()}};
     let vivo=true,abort=null;
     const carregar=async()=>{
       if(!vivo)return;
-      cond.textContent='Localizando…';temp.textContent='--°';sub.textContent='';local.textContent='';
+      cond.textContent='Localizando…';temp.textContent='--°';detalhes.textContent='';resumo.title='';
       let pos=null,origem='';
       try{
         if(!navigator.geolocation)throw Error('sem geolocalização');
@@ -949,14 +1043,15 @@ const PAINEIS_RENDER={
         const info=MAPA[cur.weather_code]||['🌡️','Tempo'];
         ico.textContent=info[0];temp.textContent=num(cur.temperature_2m);cond.textContent=info[1];
         const tmax=num(dia.temperature_2m_max&&dia.temperature_2m_max[0]),tmin=num(dia.temperature_2m_min&&dia.temperature_2m_min[0]);
-        sub.textContent=`máx ${tmax} · mín ${tmin} · sensação ${num(cur.apparent_temperature)} · vento ${typeof cur.wind_speed_10m==='number'?Math.round(cur.wind_speed_10m):'--'} km/h`;
-        local.textContent=origem+' · Open-Meteo';
+        detalhes.textContent=`máx ${tmax} · mín ${tmin} · sensação ${num(cur.apparent_temperature)} · vento ${typeof cur.wind_speed_10m==='number'?Math.round(cur.wind_speed_10m):'--'} km/h`;
+        resumo.title=origem+' · Open-Meteo';
       }catch(e){
         if(e.name==='AbortError')return;
-        cond.textContent='Clima indisponível';sub.textContent='Não consegui consultar o Open-Meteo agora.';
+        cond.textContent='Clima indisponível';detalhes.textContent='Não consegui consultar o Open-Meteo agora.';
       }
     };
-    btn.onclick=carregar;carregar();
+    const girar=async()=>{btn.classList.add('girando');try{await carregar()}finally{btn.classList.remove('girando')}};
+    btn.onclick=girar;carregar();
     return ()=>{vivo=false;if(abort)abort.abort()};
   }
 };
@@ -1019,37 +1114,52 @@ function renderImagens(corpo,p,palco){
     mostra();
     return ()=>clearInterval(timer);
   }
-  corpo.innerHTML='<div class="img-tela"><img loading="lazy" decoding="async" alt=""><button class="img-nav prev" type="button" title="Anterior">‹</button><button class="img-nav next" type="button" title="Próxima">›</button></div><div class="img-legenda"></div><div class="img-dots"></div>';
-  const img=corpo.querySelector('img'),leg=corpo.querySelector('.img-legenda'),dots=corpo.querySelector('.img-dots');
+  corpo.innerHTML='<div class="img-tela"><img loading="lazy" decoding="async" alt=""><button class="img-nav prev" type="button" title="Anterior">‹</button><button class="img-nav next" type="button" title="Próxima">›</button><div class="img-legenda"></div></div><div class="img-dots"></div>';
+  const img=corpo.querySelector('img'),leg=corpo.querySelector('.img-legenda'),dots=corpo.querySelector('.img-dots'),tela=corpo.querySelector('.img-tela');
   let usouFallback=false;
   img.onerror=()=>{
     if(palco&&!usouFallback){usouFallback=true;img.src=(itens[i]&&itens[i].url)||'';}
     else{img.style.opacity='.25';img.alt='Imagem indisponível'}
   };
-  let i=0;
+  let i=0,zoom=false;
   iniciarMenuPalco();
   menuTitulo('Imagem');
   const infoMenu=menuInfo('');
-  const gCiel=menuGrupo('Ciel');
-  const bPerguntar=menuBotao(gCiel,'Perguntar',()=>perguntarItem((itens[i]||{}).titulo||p.titulo||'Imagem',(itens[i]||{}).credito||'Wikimedia'));
-  const bSalvar=menuBotao(gCiel,'Salvar',()=>{
+  const row=document.createElement('div');row.className='palco-icones';
+  const svg={
+    perguntar:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>',
+    salvar:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16l-6-4-6 4z"/></svg>',
+    abrir:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/><path d="M19 13v6H5V5h6"/></svg>',
+    zoom:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M15 15l4.5 4.5M8 10.5h5M10.5 8v5"/></svg>',
+    minimizar:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h6M14 5h5v5M20 4l-7 7"/></svg>',
+    fechar:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+  };
+  const icone=(rotulo,chave,fn)=>{const b=document.createElement('button');b.type='button';b.className='feed-chip';b.innerHTML=svg[chave];b.title=rotulo;b.setAttribute('aria-label',rotulo);b.onclick=fn;row.appendChild(b);return b};
+  const bPerguntar=icone('Perguntar sobre a imagem','perguntar',()=>perguntarItem((itens[i]||{}).titulo||p.titulo||'Imagem',(itens[i]||{}).credito||'Wikimedia'));
+  const bSalvar=icone('Salvar fonte','salvar',()=>{
     const it=itens[i]||{};
     const saved=salvarFonte({titulo:it.titulo||p.titulo||'Imagem',fonte:it.credito||'Wikimedia',link:it.link||'',tipo:'IMAGEM',quando:''},bSalvar);
     bSalvar.classList.toggle('on',saved);
   });
-  const gFonte=menuGrupo('Fonte');
-  const bAbrir=menuBotao(gFonte,'Abrir original',()=>abrirFonteItem((itens[i]||{}).link));
-  const gJanela=menuGrupo('Janela');
-  menuBotao(gJanela,'Minimizar',()=>minimizarPalco());
-  menuBotao(gJanela,'Fechar',()=>fecharPalco());
+  bSalvar.dataset.icone='1';
+  const bAbrir=icone('Abrir original','abrir',()=>abrirFonteItem((itens[i]||{}).link));
+  const bZoom=icone('Ampliar imagem','zoom',()=>{
+    zoom=!zoom;tela.classList.toggle('zoom',zoom);bZoom.classList.toggle('on',zoom);
+    bZoom.title=zoom?'Reduzir imagem':'Ampliar imagem';bZoom.setAttribute('aria-label',bZoom.title);
+    img.style.cursor=zoom?'zoom-out':'zoom-in';
+  });
+  icone('Minimizar para a lateral','minimizar',()=>minimizarPalco());
+  icone('Fechar','fechar',()=>fecharPalco());
+  document.getElementById('palco-opcoes').appendChild(row);
   function atualizaMenu(){
     const it=itens[i]||{};
     if(infoMenu)infoMenu.textContent=(i+1)+' de '+itens.length+' · '+(it.credito||'Wikimedia');
     if(bAbrir)bAbrir.disabled=!(it.link&&String(it.link).startsWith('http'));
     if(bSalvar){
       const salvo=fontesSalvas().some(x=>x.link===it.link);
-      bSalvar.textContent=salvo?'Salvo':'Salvar';
       bSalvar.classList.toggle('on',salvo);
+      bSalvar.title=salvo?'Remover dos salvos':'Salvar fonte';
+      bSalvar.setAttribute('aria-label',bSalvar.title);
       bSalvar.disabled=!it.link;
     }
   }
@@ -1060,6 +1170,9 @@ function renderImagens(corpo,p,palco){
     img.src=(palco&&it.urlGrande)||it.url||'';
     try{img.animate([{opacity:.25},{opacity:1}],{duration:280,easing:'ease-out'})}catch(e){}
     img.alt=it.titulo||'Imagem';
+    img.title='Clique para ampliar ou reduzir';
+    img.style.cursor='zoom-in';
+    img.onclick=()=>{zoom=!zoom;tela.classList.toggle('zoom',zoom);bZoom.classList.toggle('on',zoom);bZoom.title=zoom?'Reduzir imagem':'Ampliar imagem';bZoom.setAttribute('aria-label',bZoom.title);img.style.cursor=zoom?'zoom-out':'zoom-in'};
     leg.textContent='';
     const b=document.createElement('b');b.textContent=it.titulo||'';
     leg.appendChild(b);
@@ -1284,7 +1397,7 @@ function salvarFonte(item,btn){
   else arr.push({titulo:item.titulo,fonte:item.fonte,link:item.link,tipo:item.tipo,quando:item.quando});
   try{localStorage.setItem('ciel:fontes',JSON.stringify(arr.slice(-100)))}catch(e){}
   const saved=i<0;
-  if(btn){btn.textContent=saved?'Salvo':'Salvar';btn.classList.toggle('on',saved)}
+  if(btn){if(!btn.dataset.icone)btn.textContent=saved?'Salvo':'Salvar';btn.title=saved?'Remover dos salvos':'Salvar fonte';btn.classList.toggle('on',saved)}
   cap(saved?'fonte salva':'fonte removida dos salvos');
   return saved;
 }
@@ -1294,7 +1407,8 @@ function renderFeed(corpo,p,palco){
   if(!palco){
     corpo.innerHTML='';
     const temaFeed=(p.dados&&p.dados.tema)||'';
-    const intro=document.createElement('div');intro.className='feed-intro';intro.textContent=temaFeed?'Feed de pesquisa · '+temaFeed:'Feed de pesquisa — demo';
+    const rotuloFeed=(p.dados&&p.dados.titulo_curto)||temaFeed;
+    const intro=document.createElement('div');intro.className='feed-intro';intro.textContent=temaFeed?'Feed de pesquisa · '+rotuloFeed:'Feed de pesquisa — demo';
     const prev=document.createElement('div');prev.className='feed-preview';
     const b=document.createElement('b');b.textContent=base.length+' fontes';prev.appendChild(b);
     const mini=document.createElement('div');mini.className='feed-mini';
@@ -1313,7 +1427,8 @@ function renderFeed(corpo,p,palco){
   const root=corpo;
   const opcoes=iniciarMenuPalco();
   const temaFeed=(p.dados&&p.dados.tema)||'';
-  const intro=document.createElement('div');intro.className='feed-intro';intro.textContent=temaFeed?'Feed de pesquisa · '+temaFeed:'Feed de pesquisa — demo · curadoria estática';
+  const rotuloFeed=(p.dados&&p.dados.titulo_curto)||temaFeed;
+  const intro=document.createElement('div');intro.className='feed-intro';intro.textContent=temaFeed?'Feed de pesquisa · '+rotuloFeed:'Feed de pesquisa — demo · curadoria estática';
   const contador=document.createElement('span');contador.className='feed-contador';intro.append(' · ',contador);
   const lista=document.createElement('div');lista.className='feed-lista';
   const sentinela=document.createElement('div');sentinela.className='feed-mais';sentinela.textContent='Carregar mais';
@@ -1476,7 +1591,7 @@ PAINEIS_RENDER.feed.palco=(corpo,p)=>renderFeed(corpo,p,true);
 async function abrirFeedDemo(){
   if(!modoPesquisa)await entrarPesquisa();
   if(!modoPesquisa)return;
-  const btn=$('feed'),rotulo=btn?btn.textContent:'Feed';
+  const btn=$('feed'),rotulo='';
   const existente=feedAbertoId();
   if(existente){
     const s=paineisAbertos.get(existente);
@@ -1486,7 +1601,7 @@ async function abrirFeedDemo(){
     fecharPainel(existente);
   }
   const temaInicial=ultimoTemaChat||temaPesquisa||'';
-  if(btn){btn.disabled=true;btn.textContent='…'}
+  if(btn){btn.disabled=true;btn.classList.add('busy')}
   cap('carregando feed…');
   let painel=null;
   const ctrl=new AbortController();
@@ -1496,7 +1611,7 @@ async function abrirFeedDemo(){
     const d=await r.json();
     if(d&&d.ok&&d.painel)painel=d.painel;
   }catch(e){}finally{clearTimeout(limiteEspera)}
-  if(btn){btn.disabled=false;btn.textContent=rotulo}
+  if(btn){btn.disabled=false;btn.classList.remove('busy')}
   if(!painel){
     painel={id:'feed-demo',tipo:'feed',titulo:'Feed de pesquisa — demo',nomes:['feed','notícias','pesquisa','fontes'],
       apresentacao:'central',slot:'bottom-left',fala:'nunca',resumo:'Feed de demonstração com fontes de estudo.',
@@ -1725,15 +1840,20 @@ async function executarAcao(p,a,btn){
       if(!r.ok||!d.ok)throw Error(d.error||d.message||'falha');
       cap(d.message||'painel atualizado');
     }catch(e){cap('⚠ '+e.message)}
-    finally{if(btn.isConnected){btn.disabled=false;btn.textContent=rotulo}}
+    finally{if(btn.isConnected){btn.disabled=false;if(btn.dataset.icone)btn.innerHTML=btn.dataset.icone;else btn.textContent=rotulo}}
   }
 }
 function montarAcoes(el,p){
   const acoes=(Array.isArray(p.acoes)?p.acoes:[]).filter(a=>a&&a.tipo&&a.acao);
   if(!acoes.length)return;
+  const icones={
+    atualizar:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6.7"/><path d="M20 4v7h-7"/></svg>'
+  };
   const row=document.createElement('div');row.className='painel-acoes';
   acoes.forEach(a=>{
-    const btn=document.createElement('button');btn.type='button';btn.textContent=a.rotulo||a.acao;
+    const btn=document.createElement('button');btn.type='button';
+    if(icones[a.id]){btn.innerHTML=icones[a.id];btn.dataset.icone=icones[a.id];btn.title=a.rotulo||a.acao;btn.setAttribute('aria-label',btn.title)}
+    else btn.textContent=a.rotulo||a.acao;
     btn.onclick=(e)=>{e.stopPropagation();executarAcao(p,a,btn)};
     row.appendChild(btn);
   });
@@ -1750,11 +1870,14 @@ function abrirPainel(p){
   el.className='painel';el.dataset.slot=p.slot||'top-left';el.dataset.id=p.id;el.dataset.tipo=p.tipo;
   const h=document.createElement('div');h.className='painel-h';h.title='Clique para destacar';
   const b=document.createElement('b');b.textContent=p.titulo||p.tipo;
-  const tag=document.createElement('span');tag.className='painel-tag';tag.textContent='fala: '+(p.fala||'nunca');tag.title='Política de fala deste painel';
+  const nunca=(p.fala||'nunca')==='nunca';
+  const voz=document.createElement('span');voz.className='painel-voz'+(nunca?' off':'');
+  voz.title='Fala: '+(p.fala||'nunca');voz.setAttribute('aria-label','Fala: '+(p.fala||'nunca'));
+  voz.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"></path><path d="M16 8.5a5 5 0 0 1 0 7"></path>'+(nunca?'<path d="M4 4l16 16"></path>':'')+'</svg>';
   const x=document.createElement('button');x.className='painel-x';x.type='button';x.textContent='×';x.title='Fechar';
   x.onclick=(e)=>{e.stopPropagation();fecharPainel(p.id)};
   h.onclick=(e)=>{if(e.target.closest('.painel-x'))return;alternarFoco(p.id)};
-  h.append(b,tag,x);
+  h.append(b,voz,x);
   const corpo=document.createElement('div');el.append(h,corpo);
   $('paineis').appendChild(el);
   let cleanup=null;

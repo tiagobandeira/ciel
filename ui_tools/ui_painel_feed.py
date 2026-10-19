@@ -6,7 +6,7 @@ OUTPUT = "external"
 
 def run(tema: str = "", limite: int = 4) -> str:
     """
-    tema: assunto que está sendo pesquisado (ex.: Lua, Artemis, dinossauros). Se vazio, usa um tema neutro.
+    tema: tema curto da pesquisa, 1 a 4 palavras (ex.: Lua, Artemis, dinossauros, Tensura). Se vazio, usa um tema neutro.
     limite: quantidade inicial de itens (4 a 12; padrão 4). O restante vem pelo botão Carregar mais.
     """
     tema = " ".join(str(tema or "").split())[:80]

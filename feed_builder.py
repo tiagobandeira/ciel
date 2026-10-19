@@ -50,6 +50,25 @@ def _tema_limpo(tema) -> str:
     return t or NEUTRAL
 
 
+def _titulo_curto(tema: str) -> str:
+    t = _tema_limpo(tema)
+    for _ in range(6):
+        antes = t
+        t = t.strip(" ,.;-")
+        t = re.sub(r"^(?:foi[,\s]+)?(?:faz|faça|faca|fazer|realiza|realize|pesquisa|pesquise|busca|busque|me\s+faz|me\s+faça|me\s+fala|me\s+fale|fala|fale)\s+", "", t, flags=re.I)
+        t = re.sub(r"^(?:uma\s+)?pesquisa\s+(?:para\s+mim\s*)?[,\s]*(?:sobre\s+)?", "", t, flags=re.I)
+        t = re.sub(r"^[,\s]*sobre\s+", "", t, flags=re.I)
+        t = re.sub(r"^(?:o\s+que\s+(?:é|e)|que\s+(?:é|e)|como\s+funciona)\s+", "", t, flags=re.I)
+        t = re.sub(r"^(?:um|uma|o|a)\s+(?:anime|mangá|manga|série|serie|filme|jogo|livro)\s+(?:chamado|chamada|de\s+nome)?\s*", "", t, flags=re.I)
+        t = t.strip(" ,.;-?!")
+        if t == antes:
+            break
+    t = re.sub(r"^(?:a|o|as|os|um|uma)\s+", "", t, flags=re.I).strip(" ,.;-?!")
+    if t and t.isupper() and " " not in t:
+        t = t.capitalize()
+    return (t or _tema_limpo(tema))[:38]
+
+
 def _tags(tema: str, *extras: str) -> list[str]:
     base = _slug(tema).replace("-", " ")
     tags = [base, *[str(e).strip().lower() for e in extras if e]]
@@ -559,10 +578,12 @@ def build_painel(tema: str = "", limite: int = 4, forcar: bool = False) -> dict:
     """Monta o manifesto de painel do feed (o front o abre no palco)."""
     dados = build_feed(tema, limite, forcar)
     tema = dados["tema"]
+    curto = _titulo_curto(tema)
+    dados["titulo_curto"] = curto
     return {
         "id": "feed-" + _slug(tema),
         "tipo": "feed",
-        "titulo": "Feed: " + tema,
+        "titulo": "Feed: " + curto,
         "nomes": [tema, "feed", "pesquisa", "notícias", "fontes"],
         "apresentacao": "central",
         "slot": "bottom-left",

@@ -7,7 +7,5 @@
   "tamanho": "pequeno",
   "fala": "resumo",
   "resumo": "Clima atual e máximas/mínimas do dia na localização do usuário.",
-  "acoes": [
-    { "id": "atualizar", "rotulo": "Atualizar" }
-  ]
+  "acoes": []
 }
