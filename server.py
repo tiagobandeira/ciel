@@ -41,6 +41,7 @@ import sys
 import json
 import base64
 import argparse
+import re
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory, send_file, abort
@@ -71,7 +72,7 @@ auth = AuthManager()
 
 # ── importações do core ───────────────────────────────────────────────────────
 # run_agent vem do agent_loop (fonte única após refatoração da CLI)
-from agent_loop import run_agent, AgentResult
+from agent_loop import run_agent, AgentResult, _call_model, OLLAMA_URL
 from cli import (
     load_task, find_tasks, build_task_prompt, is_trusted_task_path,
     _reload_tools, _handle_auto_tool, _save_session,
@@ -436,6 +437,45 @@ def _contexto_tela(tela, ativo: bool, palco: str = "", foco: str = ""):
     return "\n".join(linhas)
 
 
+_TOPICO_FEED_PROMPT = """Você é um roteador de pesquisa do Ciel.
+Leia o diálogo recente e responda APENAS com um tema curto de 1 a 4 palavras para buscar em um feed de pesquisa.
+Use a última resposta do Ciel para resolver pronomes e referências como "esse anime", "esse jogo", "isso", "ele".
+Exemplos: Tensura; One Piece; Lua NASA; Egito Antigo.
+Se não houver assunto claro, responda VAZIO.
+Não explique, não use Markdown, não escreva "tema:" e não use pontuação extra."""
+
+
+def _tema_feed_do_chat() -> str:
+    """Extrai um tema curto do diálogo recente, incluindo a resposta do agente."""
+    if not state or not getattr(state, "history", None):
+        return ""
+    linhas = []
+    for mensagem in state.history[-8:]:
+        papel = mensagem.get("role", "")
+        texto = " ".join(str(mensagem.get("content", "")).split())[:700]
+        if not texto:
+            continue
+        linhas.append(("Usuário: " if papel == "user" else "Ciel: ") + texto)
+    if not linhas:
+        return ""
+    mensagens = [
+        {"role": "system", "content": _TOPICO_FEED_PROMPT},
+        {"role": "user", "content": "\n\n".join(linhas)},
+    ]
+    bruto, _, _ = _call_model(mensagens, state.model, OLLAMA_URL)
+    tema = ""
+    for linha in str(bruto or "").splitlines():
+        linha = linha.strip()
+        if linha:
+            tema = linha
+            break
+    tema = re.sub(r"^(?:tema|assunto)\s*:\s*", "", tema, flags=re.I)
+    tema = tema.strip("`*_\"' .;:!?")
+    if not tema or tema.upper() in {"VAZIO", "NENHUM", "N/A", "NONE"}:
+        return ""
+    return " ".join(tema.split())[:60]
+
+
 def _server_confirm_path(raw_path: str, need_write: bool) -> bool:
     """No server não há TTY — paths fora do workspace são sempre recusados."""
     return False
@@ -487,6 +527,18 @@ def api_feed_mais():
     itens = pagina.get("itens") or []
     return jsonify({"ok": bool(itens), "tema": pagina.get("tema", tema),
                     "itens": itens, "error": None if itens else "sem novos itens"}), 200
+
+
+@app.route("/api/feed/tema", methods=["POST"])
+def api_feed_tema():
+    """Resolve o tema do feed a partir do diálogo, incluindo a resposta do Ciel."""
+    try:
+        tema = _tema_feed_do_chat()
+    except Exception as e:
+        return jsonify({"ok": False, "tema": "", "error": str(e)[:160]}), 200
+    if not tema:
+        return jsonify({"ok": False, "tema": "", "error": "sem tema claro"}), 200
+    return jsonify({"ok": True, "tema": tema}), 200
 
 
 @app.route("/api/chat", methods=["POST"])

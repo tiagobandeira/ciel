@@ -1393,6 +1393,17 @@ function feedAbertoId(){
   }
   return demo;
 }
+async function resolverTemaFeed(fallback){
+  const ctrl=new AbortController();
+  const limiteEspera=setTimeout(()=>ctrl.abort(),20000);
+  try{
+    const r=await fetch('/api/feed/tema',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:ctrl.signal});
+    const d=await r.json();
+    if(d&&d.ok&&d.tema)return d.tema;
+  }catch(e){}
+  finally{clearTimeout(limiteEspera)}
+  return fallback||'';
+}
 function lembrarTema(valor){
   const t=String(valor||'').trim();if(!t)return;
   temaPesquisa=t;
@@ -1618,12 +1629,14 @@ async function abrirFeedDemo(){
   }
   const temaInicial=ultimoTemaChat||temaPesquisa||'';
   if(btn){btn.disabled=true;btn.classList.add('busy')}
+  cap('entendendo o assunto…');
+  const temaResolvido=await resolverTemaFeed(temaInicial);
   cap('carregando feed…');
   let painel=null;
   const ctrl=new AbortController();
   const limiteEspera=setTimeout(()=>ctrl.abort(),45000);
   try{
-    const r=await fetch('/api/feed?tema='+encodeURIComponent(temaInicial)+'&limite=4',{signal:ctrl.signal});
+    const r=await fetch('/api/feed?tema='+encodeURIComponent(temaResolvido)+'&limite=4',{signal:ctrl.signal});
     const d=await r.json();
     if(d&&d.ok&&d.painel)painel=d.painel;
   }catch(e){}finally{clearTimeout(limiteEspera)}
@@ -1665,9 +1678,11 @@ async function atualizarFeedAberto(tema,forcar=false){
 async function recarregarFeed(){
   const id=feedAbertoId();if(!id)return;
   const s=paineisAbertos.get(id);
-  const tema=(ultimoTemaChat||temaPesquisa||(s&&s.p&&s.p.dados&&s.p.dados.tema)||'');
+  let tema=(ultimoTemaChat||temaPesquisa||(s&&s.p&&s.p.dados&&s.p.dados.tema)||'');
   const btn=$('feed-recarregar');
   if(btn){btn.disabled=true;btn.classList.add('carregando');btn.textContent='Recarregando…'}
+  cap('entendendo o assunto…');
+  tema=await resolverTemaFeed(tema);
   cap('recarregando feed…');
   try{await atualizarFeedAberto(tema,true)}
   finally{
