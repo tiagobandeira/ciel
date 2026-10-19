@@ -365,16 +365,14 @@ def _stream_response(
 
 def _load_skill(skill: str) -> str | None:
     """
-    Lê o conteúdo de uma skill em skills/<skill>.md.
-    Retorna o texto da skill ou None se não encontrada.
+    Lê o texto completo de uma skill em skills/<skill>.md.
+
+    Delega para skill_loader (fonte única) mas mantém o comportamento
+    histórico: retorna o arquivo inteiro, incluindo front-matter, porque
+    é exatamente isso que entra no system prompt do modelo secundário.
     """
-    path = _SKILLS_DIR / f"{skill}.md"
-    if not path.exists():
-        # tenta sem extensão caso o usuário já tenha passado o nome com .md
-        path = _SKILLS_DIR / skill
-    if path.exists():
-        return path.read_text(encoding="utf-8")
-    return None
+    from skill_loader import load_text
+    return load_text(skill, skills_dir=_SKILLS_DIR)
 
 
 def _load_config() -> dict:

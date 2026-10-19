@@ -50,6 +50,7 @@ from agent_loop import (
     OLLAMA_URL,
     MAX_STEPS_TASK,
 )
+from task_defs import build_task_prompt
 
 # ── limites de conteúdo ─────────────────────────────────────────────────────
 # Aumentar QUEUE_MAX_RESULT_CHARS se tools como read_url estiverem sendo cortadas.
@@ -419,7 +420,6 @@ def run_task(
         # sem campo grupo → comportamento antigo, sem planner
         _call(on_model_end, step)
         _call(on_step, step, "plano", "sem grupo definido — usando run_agent direto", "done")
-        from cli import build_task_prompt
         return run_agent(
             build_task_prompt(task), tools, schema, model, agent_info,
             history=history,
@@ -455,7 +455,6 @@ def run_task(
     if not actions:
         # fallback: sem plano, delega pro run_agent normal
         _call(on_step, step, "plano falhou", "usando run_agent direto", "error")
-        from cli import build_task_prompt   # evita import circular no topo
         return run_agent(
             build_task_prompt(task), tools, schema, model, agent_info,
             history=history,
@@ -482,7 +481,6 @@ def run_task(
     has_tool_actions = any(a.get("type") == "tool" for a in actions)
     if not has_tool_actions:
         _call(on_step, step, "plano", "sem fila — usando run_agent direto", "done")
-        from cli import build_task_prompt
         return run_agent(
             build_task_prompt(task), tools, schema, model, agent_info,
             history=history,

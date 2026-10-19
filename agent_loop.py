@@ -43,6 +43,7 @@ from typing import Callable
 
 import requests
 
+from llm.client import LLMError, OllamaClient
 from trust.input_verifier import InputVerifier
 
 # ── config padrão (pode ser sobrescrita pelo chamador) ────────────────────────
@@ -90,15 +91,36 @@ def _parse_response(text: str) -> dict:
 
 
 def _call_model(messages: list, model: str, ollama_url: str) -> tuple[str, int, int]:
-    payload = {"model": model, "messages": messages, "stream": False}
-    resp = requests.post(ollama_url, json=payload, timeout=120)
-    resp.raise_for_status()
-    data = resp.json()
-    return (
-        data["message"]["content"],
-        data.get("prompt_eval_count", 0),
-        data.get("eval_count", 0),
-    )
+    """
+    Caminho padrão: Ollama (`/api/chat`), sem streaming.
+
+    A implementação HTTP vive em `llm/client.py` (fonte única); esta função
+    mantém a assinatura antiga porque `task_runner`, testes e chamadores
+    externos ainda a usam diretamente.
+    """
+    result = OllamaClient(ollama_url, timeout=120).chat(messages, model=model)
+    return result.as_tuple()
+
+
+def _chat_completion(
+    client,
+    messages: list,
+    model: str,
+    ollama_url: str,
+) -> tuple[str, int, int]:
+    """
+    Uma chamada ao modelo, pelo cliente injetado ou pelo Ollama padrão.
+
+    `model` pode ser vazio quando o cliente já carrega o modelo (papéis do
+    modo build) — nesse caso o cliente decide.
+    """
+    if client is None:
+        return _call_model(messages, model, ollama_url)
+
+    result = client.chat(messages, model=model or None)
+    if hasattr(result, "as_tuple"):
+        return result.as_tuple()
+    return result  # compatibilidade com dublês que devolvem tupla
 
 
 def _build_system_prompt(
@@ -134,7 +156,7 @@ def _build_system_prompt(
 
 
 def _ask_model_for_tool_proposal(
-    messages: list, model: str, ollama_url: str
+    messages: list, model: str, ollama_url: str, model_client=None
 ) -> dict | None:
     """Verifica se uma nova tool resolveria a tarefa (chamada extra ao modelo)."""
     history_only = [m for m in messages if m["role"] != "system"]
@@ -162,7 +184,7 @@ def _ask_model_for_tool_proposal(
         },
     ]
     try:
-        raw, _, _ = _call_model(probe, model, ollama_url)
+        raw, _, _ = _chat_completion(model_client, probe, model, ollama_url)
         parsed = _parse_response(raw)
         if parsed.get("criar_tool") is True and parsed.get("nome") and parsed.get("descricao"):
             return parsed
@@ -250,6 +272,10 @@ def run_agent(
     # TUI, que já controla o terminal. None = tool roda sem essa injeção
     # (ela mesma decide o que fazer, ex: erro dizendo que precisa do harness).
     on_ask_user: Callable[[str, list[str] | None], str] | None = None,
+    # cliente de modelo opcional (llm.client.BaseClient). None = caminho
+    # histórico (Ollama via ollama_url), preservando 100% o comportamento
+    # atual. O runner do modo build injeta um cliente cloud aqui.
+    model_client=None,
 ) -> AgentResult:
     """
     Executa o loop agêntico e retorna um AgentResult.
@@ -260,13 +286,18 @@ def run_agent(
     total_in  = 0
     total_out = 0
 
-    system_prompt = _build_system_prompt(
-        agent_info, schema,
-        web_base_url=web_base_url,
-        session_id=session_id,
-    )
-    if context_injection:
-        system_prompt = f"{system_prompt}\n\n{context_injection}"
+    def _system_prompt() -> str:
+        """System prompt atual; reaplicado quando o registry recarrega."""
+        prompt = _build_system_prompt(
+            agent_info, schema,
+            web_base_url=web_base_url,
+            session_id=session_id,
+        )
+        if context_injection:
+            prompt = f"{prompt}\n\n{context_injection}"
+        return prompt
+
+    system_prompt = _system_prompt()
 
     # reconstrói contexto dos turnos anteriores
     context: list[dict] = []
@@ -295,11 +326,18 @@ def run_agent(
         _call(on_step, step, "modelo", "aguardando…", "model")
 
         try:
-            raw, t_in, t_out = _call_model(messages, model, ollama_url)
+            raw, t_in, t_out = _chat_completion(
+                model_client, messages, model, ollama_url
+            )
             total_in  += t_in
             total_out += t_out
+        except LLMError as e:
+            msg = f"Erro no cliente de modelo: {e}"
+            _call(on_error, "connection", str(e))
+            return AgentResult("error", msg, tokens_in=total_in, tokens_out=total_out, steps=step)
         except requests.RequestException as e:
-            msg = f"Erro de conexão com Ollama: {e}"
+            target = "o cliente de modelo" if model_client is not None else "Ollama"
+            msg = f"Erro de conexão com {target}: {e}"
             _call(on_error, "connection", str(e))
             return AgentResult("error", msg, tokens_in=total_in, tokens_out=total_out, steps=step)
         finally:
@@ -430,7 +468,7 @@ def run_agent(
                         ))
                     schema.clear()
                     schema.extend(tools_schema(tools))
-                    messages[0]["content"] = _build_system_prompt(agent_info, schema)
+                    messages[0]["content"] = _system_prompt()
                     _call(on_step, step, "registry", f"{len(tools)} tools carregadas", "done")
 
                 # reload automático após adicionar servidor MCP
@@ -442,7 +480,7 @@ def run_agent(
                     ))
                     schema.clear()
                     schema.extend(tools_schema(tools))
-                    messages[0]["content"] = _build_system_prompt(agent_info, schema)
+                    messages[0]["content"] = _system_prompt()
                     _call(on_step, step, "registry", f"{len(tools)} tools carregadas", "done")
 
                 # reload automático após remover servidor MCP
@@ -452,7 +490,7 @@ def run_agent(
                         mcp_manager.remove_server_tools(removed_name, tools)
                     schema.clear()
                     schema.extend(tools_schema(tools))
-                    messages[0]["content"] = _build_system_prompt(agent_info, schema)
+                    messages[0]["content"] = _system_prompt()
                     _call(on_step, step, "registry", f"{len(tools)} tools carregadas", "done")
 
             except TypeError as e:
@@ -472,7 +510,9 @@ def run_agent(
         messages.append({"role": "user", "content": f"Resultado da tool: {tool_content}"})
 
     # ── steps esgotados ───────────────────────────────────────────────────────
-    proposal = _ask_model_for_tool_proposal(messages, model, ollama_url)
+    proposal = _ask_model_for_tool_proposal(
+        messages, model, ollama_url, model_client=model_client
+    )
 
     if proposal:
         _call(on_limit, max_steps, total_in, total_out)

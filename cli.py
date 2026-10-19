@@ -48,6 +48,13 @@ from tool_dispatch import filter_unsafe
 from workspace import get_workspace, init_workspace
 from agent_loop import run_agent, AgentResult
 from task_runner import run_task
+from task_defs import (
+    TASKS_DIR_DEFAULT,
+    build_task_prompt,
+    find_tasks,
+    is_trusted_task_path,
+    load_task,
+)
 
 # ── config ────────────────────────────────────────────────────────────────────
 OLLAMA_URL       = "http://localhost:11434/api/chat"
@@ -302,96 +309,10 @@ def _resolve_input_and_image(user_input: str, image_b64: str | None = None) -> t
     return msg["content"], (images[0] if images else None)
 
 
-def load_task(path: Path) -> dict | None:
-    """
-    Lê um arquivo .md de task e retorna dict com:
-      { "nome": str, "objetivo": str, "acoes": list[str], "resultado": str }
-    Retorna None se o arquivo não seguir o formato mínimo.
-    """
-    if not path.exists():
-        return None
-
-    text = path.read_text(encoding="utf-8")
-    lines = text.splitlines()
-
-    nome      = ""
-    objetivo  = ""
-    acoes     = []
-    resultado = ""
-    grupo     = ""
-    section   = None
-
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("## task:"):
-            nome = stripped.split(":", 1)[1].strip()
-        elif stripped.startswith("objetivo:"):
-            objetivo = stripped.split(":", 1)[1].strip()
-            section  = None
-        elif stripped.startswith("grupo:"):
-            grupo   = stripped.split(":", 1)[1].strip()
-            section = None
-        elif stripped == "ações:" or stripped == "acoes:":
-            section = "acoes"
-        elif stripped.startswith("resultado esperado:"):
-            resultado = stripped.split(":", 1)[1].strip()
-            section   = None
-        elif section == "acoes" and stripped.startswith("-"):
-            acoes.append(stripped[1:].strip())
-
-    if not nome or not acoes:
-        return None
-
-    return {"nome": nome, "objetivo": objetivo, "acoes": acoes, "resultado": resultado, "grupo": grupo}
-
-
-def find_tasks(query: str, tasks_dir: Path) -> list[Path]:
-    """
-    Busca tasks cujo nome contenha o query (case-insensitive).
-    Retorna lista de paths ordenada por relevância (match exato primeiro).
-    """
-    if not tasks_dir.exists():
-        return []
-    q = query.lower().replace(" ", "-")
-    matches = [p for p in tasks_dir.glob("*.md") if q in p.stem.lower()]
-    # match exato primeiro
-    matches.sort(key=lambda p: (0 if p.stem.lower() == q else 1, p.stem))
-    return matches
-
-
-TASKS_DIR_DEFAULT = Path("tasks")
-
-
-def is_trusted_task_path(task_path: Path, tasks_dir: Path | None = None) -> bool:
-    """
-    Retorna True se a task está dentro da pasta tasks/ padrão do projeto.
-    Tasks externas (path absoluto ou relativo fora de tasks/) são não-confiáveis
-    e exigem confirmação do usuário (CLI/TUI) ou autenticação (server).
-    No headless (--task) são simplesmente recusadas — automação só roda
-    tasks do próprio projeto.
-    """
-    base = (tasks_dir or TASKS_DIR_DEFAULT).resolve()
-    try:
-        task_path.resolve().relative_to(base)
-        return True
-    except ValueError:
-        return False
-
-
-def build_task_prompt(task: dict) -> str:
-    """
-    Converte a task num prompt direto pro run_agent.
-    O agente recebe o plano pronto e age como executor/inspetor.
-    """
-    acoes_fmt = "\n".join(f"  {i+1}. {a}" for i, a in enumerate(task["acoes"]))
-    return (
-        f"Execute a seguinte task: {task['nome']}\n\n"
-        f"Objetivo: {task['objetivo']}\n\n"
-        f"Ações a executar em ordem:\n{acoes_fmt}\n\n"
-        f"Resultado esperado: {task['resultado']}\n\n"
-        f"Siga as ações na ordem indicada. Se uma ação especificar [tool: nome], "
-        f"use essa tool. Caso contrário, escolha a tool mais adequada disponível."
-    )
+# load_task, find_tasks, is_trusted_task_path e build_task_prompt saíram
+# daqui — vivem em task_defs.py (sem dependência de UI), importados no topo.
+# Mantidos reexportados neste módulo para não quebrar task_runner, testes
+# e qualquer chamador que ainda faça `from cli import load_task`.
 
 
 def _run_agent_callbacks(session_flags: dict, interactive: bool = True) -> dict:
