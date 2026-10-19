@@ -44,7 +44,11 @@ input{flex:1 1 110px;min-width:0}
 #cap{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 34px);width:min(92vw,640px);text-align:center;font-size:16px;line-height:1.4;text-shadow:0 0 12px var(--gl);pointer-events:none}
 #chat{position:fixed;right:14px;top:calc(env(safe-area-inset-top,0px) + 110px);bottom:calc(env(safe-area-inset-bottom,0px) + 14px);width:min(340px,28vw);box-sizing:border-box;display:flex;flex-direction:column;padding:10px;border-radius:16px;background:rgba(8,20,40,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(74,168,255,.35);box-shadow:0 0 24px var(--gl),inset 0 0 12px rgba(74,168,255,.12);transition:opacity .7s;z-index:50}
 #chat.idle{opacity:.15}#chat.vazio{display:none}
-#msgs{overflow-y:auto;display:flex;flex-direction:column;gap:8px;scrollbar-width:thin}
+#msgs{overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px;scrollbar-width:thin;scrollbar-color:rgba(74,168,255,.4) transparent}
+#msgs::-webkit-scrollbar{width:6px}
+#msgs::-webkit-scrollbar-track{background:transparent}
+#msgs::-webkit-scrollbar-thumb{background:rgba(74,168,255,.3);border-radius:999px;border:1px solid transparent;background-clip:padding-box}
+#msgs::-webkit-scrollbar-thumb:hover{background:rgba(140,210,255,.58)}
 .m{padding:8px 11px;border-radius:12px;max-width:92%;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}
 .m.u{align-self:flex-end;background:rgba(74,168,255,.25)}.m.c{align-self:flex-start;background:rgba(255,255,255,.06)}
 @media(max-width:1300px){#chat{bottom:calc(env(safe-area-inset-bottom,0px) + 150px)}}
