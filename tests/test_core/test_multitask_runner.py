@@ -206,7 +206,7 @@ class TestExecucaoFeliz:
              ):
             run_board(board, {}, [], AGENT, store=store, workspace_root=workspace)
 
-        load.assert_called_once_with("frontend")
+        load.assert_called_once_with("frontend", profile="local")
         assert calls[0]["agent_info"] is persona
 
 

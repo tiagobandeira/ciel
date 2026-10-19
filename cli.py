@@ -91,6 +91,54 @@ CLR_WARN    = "warn"
 
 console = Console(theme=CIEL_THEME)
 
+# ── perfil da sessão ─────────────────────────────────────────────────────────
+# "local" = orquestrador no Ollama (comportamento histórico)
+# "build" = orquestrador no provider secundário (sem tool secondary_model)
+_SESSION = {
+    "perfil": "local",
+    "label": DEFAULT_MODEL,
+    "client": None,
+    "roles": None,
+}
+
+
+def _resolve_session_roles(
+    local_model: str,
+    perfil: str | None = None,
+):
+    """Resolve papéis + cliente do orquestrador para o perfil pedido."""
+    from llm.roles import load_roles
+
+    roles = load_roles(local_model, perfil=perfil)
+    if roles.perfil == "build":
+        spec = roles.orchestrator
+        if spec is None or spec.is_local:
+            raise RuntimeError(
+                "perfil build exige um provider secundário configurado "
+                "(use /connect ou inicie com --perfil local)"
+            )
+        return roles, spec.client(), spec.label
+    return roles, None, local_model
+
+
+def _run_agent_session(
+    user_input: str,
+    tools: dict,
+    schema: list,
+    model: str,
+    agent_info: dict,
+    **kwargs,
+):
+    """run_agent com o modelo/perfil da sessão (local ou build)."""
+    client = _SESSION.get("client")
+    if client is not None:
+        model = ""
+    kwargs.setdefault("profile", _SESSION.get("perfil", "local"))
+    return run_agent(
+        user_input, tools, schema, model, agent_info,
+        model_client=client, **kwargs,
+    )
+
 # ── nome da ferramenta ────────────────────────────────────────────────────────
 NAME = "Ciel CLI"   # altere aqui quando decidir o nome definitivo
 VERSION = "1.0.0"
@@ -117,6 +165,8 @@ def header(model: str, agent_name: str, tools: dict, safe: bool = False, clear: 
         tools_line += f"  [muted]({n_perm} permanentes · {n_temp} temp)[/muted]"
 
     safe_badge = "  [tool]⚠ modo seguro[/tool]\n" if safe else ""
+    perfil = _SESSION.get("perfil", "local")
+    display_model = _SESSION.get("label") or model
 
     ws = get_workspace()
     ws_display = str(ws.default_root)
@@ -142,7 +192,8 @@ def header(model: str, agent_name: str, tools: dict, safe: bool = False, clear: 
         f"\n"
         f"{safe_badge}"
         f"  [muted]agent:[/muted] [user]{agent_name}[/user]   "
-        f"[muted]model:[/muted] [white]{model}[/white]\n"
+        f"[muted]perfil:[/muted] [white]{perfil}[/white]\n"
+        f"  [muted]model:[/muted] [white]{display_model}[/white]\n"
         f"  [muted]tools:[/muted] [tool]{tools_line}[/tool]\n"
         f"  [muted]workspace:[/muted] [white]{ws_display}[/white]{ws_extra}\n"
         f"{ascii_art}"
@@ -713,6 +764,10 @@ def _reload_tools(agent_info: dict, safe: bool) -> tuple[dict, list]:
     all_tools = load_tools()
     tools     = filter_tools(all_tools, agent_info["allowed_tools"])
     tools     = filter_unsafe(tools, safe)
+    if _SESSION.get("perfil") == "build":
+        # no build o próprio orquestrador é o modelo cloud; chamar o
+        # secondary_model seria chamar a si mesmo.
+        tools.pop("secondary_model", None)
     return tools, tools_schema(tools)
 
 
@@ -854,7 +909,7 @@ def _handle_auto_tool(
     # pra não repetir o prompt genérico de confirmação aqui nem vazar
     # "confia sempre" pro resto da sessão sem o usuário ter escolhido "auto".
     print_rule("executando")
-    create_result = run_agent(
+    create_result = _run_agent_session(
         create_instruction,
         tools,
         schema,
@@ -901,7 +956,7 @@ def _handle_auto_tool(
 
     # ── reexecuta tarefa original ─────────────────────────────────────────────
     print_rule("executando")
-    retry_result = run_agent(
+    retry_result = _run_agent_session(
         user_input,
         new_tools,
         new_schema,
@@ -1118,7 +1173,9 @@ def run_task_headless(task_path: Path, args) -> int:
 
 def main():
     parser = argparse.ArgumentParser(description="Agent CLI")
-    parser.add_argument("--model",       default=DEFAULT_MODEL,  help="modelo Ollama")
+    parser.add_argument("--model",       default=DEFAULT_MODEL,  help="modelo Ollama (perfil local)")
+    parser.add_argument("--perfil",      choices=["local", "build"], default=None,
+                        help="perfil de modelo da sessão (default: ciel_config.json)")
     parser.add_argument("--agent",       default=DEFAULT_AGENT,  help="persona do agente (nome do .md em /agents)")
     parser.add_argument("--safe",        action="store_true",    help="desabilita tools de execução arbitrária")
     parser.add_argument("--auto",         action="store_true",    help="não pede confirmação antes de create_tool/create_temp_tool rodarem (mesmo que escolher auto no prompt)")
@@ -1147,7 +1204,23 @@ def main():
     # Pulado em --list-agents (não precisa do Ollama) e --task headless (tem seu próprio tratamento).
     _env_warnings: list[str] = []
     if not args.list_agents and not args.task:
-        _env_warnings = check_environment(model=args.model)
+        try:
+            _roles, _client, _label = _resolve_session_roles(
+                args.model, args.perfil
+            )
+        except RuntimeError as exc:
+            console.print(f"  [{CLR_ERR}]✗ {escape(str(exc))}[/{CLR_ERR}]\n")
+            sys.exit(1)
+
+        _SESSION.update({
+            "perfil": _roles.perfil,
+            "label": _label,
+            "client": _client,
+            "roles": _roles,
+        })
+        _env_warnings = check_environment(
+            model=args.model, profile=_SESSION["perfil"]
+        )
 
     if args.list_agents:
         print_agents_list()
@@ -1172,7 +1245,7 @@ def main():
 
     # carrega agente
     try:
-        agent_info = load_agent(args.agent)
+        agent_info = load_agent(args.agent, profile=_SESSION["perfil"])
     except FileNotFoundError as e:
         console.print(f"[err]Erro:[/err] {e}")
         sys.exit(1)
@@ -1182,6 +1255,8 @@ def main():
     tools = filter_tools(all_tools, agent_info["allowed_tools"])
 
     tools = filter_unsafe(tools, args.safe)
+    if _SESSION["perfil"] == "build":
+        tools.pop("secondary_model", None)
 
     # ── aviso de tools opcionais sem dependência (EXTRA = True) ──────────────
     _missing = get_missing_optional_tools()
@@ -1266,7 +1341,7 @@ def main():
         "/mcp", "/mcp -v",
         "/analisar",
         "/img", "/imagem",
-        "/model", "/connect", "/tools-extras",
+        "/model", "/perfil", "/connect", "/tools-extras",
     ]
     pt_style = PtStyle.from_dict({"prompt": "ansibrightcyan bold"})
 
@@ -1287,7 +1362,10 @@ def main():
 
     while True:
         try:
-            user_input = pt_prompt("❯ ", completer=completer, style=pt_style).strip()
+            user_input = pt_prompt(
+                f"{_SESSION['perfil']} ❯ ",
+                completer=completer, style=pt_style,
+            ).strip()
         except (KeyboardInterrupt, EOFError):
             console.print("\n[muted]até mais.[/muted]")
             sys.exit(0)
@@ -1392,6 +1470,83 @@ def main():
             grant = get_workspace().add_grant(target, write=write)
             perms = "leitura+escrita" if grant.write else "somente leitura"
             console.print(f"  [{CLR_OK}]✓[/{CLR_OK}] {tipo} liberado ({perms}): {grant.root}")
+            console.print()
+            continue
+
+        # ── /perfil — alterna entre orquestrador local e build ────────────
+        if user_input.startswith("/perfil"):
+            partes = user_input.split(None, 1)
+            arg_perfil = partes[1].strip().lower() if len(partes) > 1 else ""
+
+            if not arg_perfil:
+                roles = _SESSION.get("roles")
+                spec = getattr(roles, "orchestrator", None)
+                body = [
+                    f"  [muted]perfil atual:[/muted] "
+                    f"[white]{_SESSION['perfil']}[/white]",
+                    f"  [muted]modelo:[/muted] "
+                    f"{_SESSION.get('label') or args.model}",
+                    "",
+                    "  [tool]/perfil local[/tool]   Ollama local + tool secondary_model",
+                    "  [tool]/perfil build[/tool]   orquestrador no provider secundário",
+                    "",
+                    "  [muted]a troca vale para esta sessão; para iniciar em "
+                    "build use --perfil build[/muted]",
+                ]
+                if spec is not None:
+                    body.insert(2, f"  [muted]orquestrador:[/muted] {spec.label}")
+                console.print(Panel(
+                    "\n".join(body),
+                    title="[tool]perfil[/tool]",
+                    border_style=CLR_BORDER,
+                    padding=(0, 1),
+                    expand=False,
+                ))
+                console.print()
+                continue
+
+            if arg_perfil not in ("local", "build"):
+                console.print(
+                    "  [tool]uso:[/tool] /perfil local  ·  /perfil build\n"
+                )
+                continue
+
+            try:
+                _roles, _client, _label = _resolve_session_roles(
+                    args.model, arg_perfil
+                )
+            except RuntimeError as exc:
+                console.print(
+                    f"  [{CLR_ERR}]✗ {escape(str(exc))}[/{CLR_ERR}]\n"
+                )
+                continue
+
+            _SESSION.update({
+                "perfil": _roles.perfil,
+                "label": _label,
+                "client": _client,
+                "roles": _roles,
+            })
+
+            tools, schema = _reload_tools(agent_info, args.safe)
+            _apply_mcp_tools(tools, mcp_manager, agent_info)
+            schema = tools_schema(tools)
+            header(
+                args.model, agent_info["name"], tools,
+                safe=args.safe, clear=False,
+            )
+            completer = make_completer(tools)
+
+            console.print(
+                f"  [{CLR_OK}]✓[/{CLR_OK}] perfil: "
+                f"[white]{_SESSION['perfil']}[/white]  ·  "
+                f"[muted]{escape(str(_SESSION['label']))}[/muted]"
+            )
+            if _SESSION["perfil"] == "build":
+                console.print(
+                    "  [muted]secondary_model oculto nesta sessão; "
+                    "o chat usa o provider cloud como orquestrador.[/muted]"
+                )
             console.print()
             continue
 
@@ -1665,7 +1820,9 @@ def main():
 
             # tenta carregar antes de perguntar
             try:
-                novo_agent_info = load_agent(novo_nome)
+                novo_agent_info = load_agent(
+                    novo_nome, profile=_SESSION["perfil"]
+                )
             except FileNotFoundError:
                 agentes_disponiveis = list_agents()
                 console.print(
@@ -1811,7 +1968,9 @@ def main():
                 # troca de agente se necessário
                 if picked["agent_id"] != agent_info.get("id", args.agent):
                     try:
-                        agent_info = load_agent(picked["agent_id"])
+                        agent_info = load_agent(
+                            picked["agent_id"], profile=_SESSION["perfil"]
+                        )
                         args.agent = picked["agent_id"]
                         tools, schema = _reload_tools(agent_info, args.safe)
                         _apply_mcp_tools(tools, mcp_manager, agent_info)
@@ -2056,11 +2215,20 @@ def main():
 
             # /skill <nome> <prompt> — delega ao agente com skill ativa
 
-            # Monta um prompt que instrui o orquestrador a usar essa skill
-            injected = (
-                f"{skill_prompt}\n\n"
-                f"[instrução do sistema: use a tool secondary_model com skill=\"{skill_name}\"]"
-            )
+            if _SESSION.get("perfil") == "build":
+                # no build o orquestrador é o modelo principal: a skill
+                # entra no prompt dele, não numa chamada ao secondary_model.
+                from skill_loader import load_text
+
+                skill_text = load_text(skill_name) or ""
+                injected = f"{skill_prompt}\n\n## Skill ativa: {skill_name}\n\n{skill_text}"
+            else:
+                # Monta um prompt que instrui o orquestrador a usar a skill
+                injected = (
+                    f"{skill_prompt}\n\n"
+                    f"[instrução do sistema: use a tool secondary_model "
+                    f"com skill=\"{skill_name}\"]"
+                )
 
             ts = datetime.now().strftime("%a %H:%M")
             history.append({"role": "user", "content": f"/skill {skill_name} {skill_prompt}", "ts": ts})
@@ -2069,7 +2237,7 @@ def main():
             if current_session_id is not None:
                 store.append_turn(current_session_id, "user", injected, ts)
 
-            agent_result = run_agent(
+            agent_result = _run_agent_session(
                 injected, tools, schema, args.model, agent_info,
                 history=history[:-1],
                 session_id=str(current_session_id) if current_session_id else None,
@@ -2136,6 +2304,8 @@ def main():
                 "  [tool]/history salvar[/tool]          salva/atualiza sessão atual\n"
                 "  [tool]/history exportar[/tool]        exporta sessão atual como .md\n"
                 "  [tool]/model[/tool]                   exibe e configura modelos local e secundário\n"
+                "  [tool]/perfil[/tool]                  mostra o perfil atual (local/build)\n"
+                "  [tool]/perfil [white]local|build[/white][/tool]    troca o orquestrador da sessão\n"
                 "  [tool]/tools-extras[/tool]            tools opcionais e exemplos disponíveis\n"
                 "  [tool]/ajuda[/tool]                   este menu",
                 title="[white]comandos[/white]",
@@ -2271,7 +2441,7 @@ def main():
             ts = datetime.now().strftime("%a %H:%M")
             history.append({"role": "user", "content": f"/criar {arg}", "ts": ts})
 
-            agent_result = run_agent(
+            agent_result = _run_agent_session(
                 task_prompt, tools, schema, args.model, agent_info,
                 history=history[:-1],
                 session_id=str(current_session_id) if current_session_id else None,
@@ -2524,7 +2694,10 @@ def main():
             # ── modelo + plano + confirmação ──────────────────────────────
             canceled = False
             while True:
-                roles = load_roles(args.model, perfil=board.perfil or None)
+                roles = load_roles(
+                    args.model,
+                    perfil=board.perfil or _SESSION.get("perfil") or None,
+                )
                 effective_perfil = board.perfil or roles.perfil
                 use_cloud = (
                     effective_perfil == "build"
@@ -2724,6 +2897,7 @@ def main():
                     mcp_manager=mcp_manager,
                     callbacks=_callbacks,
                     on_event=on_multitask_event,
+                    profile=effective_perfil,
                 )
             except BoardLocked as exc:
                 console.print(f"  [err]{escape(str(exc))}[/err]\n")
@@ -2869,8 +3043,10 @@ def main():
             ts = datetime.now().strftime("%a %H:%M")
             history.append({"role": "user", "content": f"/task {task['nome']}", "ts": ts})
 
-            if getattr(args, "no_queue", False):
-                agent_result = run_agent(
+            if _SESSION.get("client") is not None or getattr(args, "no_queue", False):
+                # build: o orquestrador é o modelo cloud; task_runner local
+                # não se aplica (a fila determinística é do modo local).
+                agent_result = _run_agent_session(
                     task_prompt, tools, schema, args.model, agent_info,
                     history=history[:-1],
                     session_id=str(current_session_id) if current_session_id else None,
@@ -2933,6 +3109,12 @@ def main():
                 continue
 
             prompt_final  = img_texto or "Analise esta imagem e descreva o conteúdo relevante."
+            if _SESSION.get("perfil") == "build":
+                console.print(
+                    "  [warn]imagens no perfil build ainda não são suportadas; "
+                    "use /perfil local para analisar imagens.[/warn]\n"
+                )
+                continue
             history_label = format_image_hint(user_input.split()[1], img_texto)
 
             ts = datetime.now().strftime("%a %H:%M")
@@ -2942,7 +3124,7 @@ def main():
             if current_session_id is not None:
                 store.append_turn(current_session_id, "user", history_label, ts)
 
-            agent_result = run_agent(
+            agent_result = _run_agent_session(
                 prompt_final, tools, schema, args.model, agent_info,
                 history=history[:-1],
                 image_b64=img_b64,
@@ -3003,6 +3185,12 @@ def main():
             history_content = format_image_hint(img_path_token, inline_texto)
             run_input       = inline_texto or "Analise esta imagem e descreva o conteúdo relevante."
             run_img_b64     = inline_img_b64
+            if _SESSION.get("perfil") == "build":
+                console.print(
+                    "  [warn]imagens no perfil build ainda não são suportadas — "
+                    "seguindo só com o texto. Use /perfil local para visão.[/warn]\n"
+                )
+                run_img_b64 = None
         else:
             history_content = user_input
             run_input       = user_input
@@ -3022,7 +3210,7 @@ def main():
                 store.update_title(current_session_id, auto_title)
 
         # history[:-1] exclui o turno atual (já passado via user_input)
-        agent_result = run_agent(
+        agent_result = _run_agent_session(
             run_input, tools, schema, args.model, agent_info,
             history=history[:-1],
             image_b64=run_img_b64,

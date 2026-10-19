@@ -308,6 +308,27 @@ class TestSkills:
         captured = capsys.readouterr()
         assert "invalido" in captured.err.lower() or "nível" in captured.err
 
+    def test_build_nao_instrui_chamar_secondary_model(self, agents_dir):
+        write_agent(agents_dir, "teste", AGENT_COMPLETO)
+        info = al.load_agent("teste", profile="build")
+        prompt = info["system_prompt"]
+        assert "não existe a tool" in prompt
+        assert "passe `skill=" not in prompt
+
+    def test_build_injeta_skill_obrigatoria(self, agents_dir):
+        write_agent(agents_dir, "obrigatoria", """\
+# Teste
+
+## Persona
+Teste.
+
+## Skills
+frontend-visual: obrigatoria
+""")
+        info = al.load_agent("obrigatoria", profile="build")
+        # conteúdo real da skill skills/frontend-visual.md
+        assert "Frontend Visual Rico" in info["system_prompt"]
+
     def test_sem_skills_retorna_lista_vazia(self, agents_dir):
         write_agent(agents_dir, "minimo", AGENT_MINIMO)
         info = al.load_agent("minimo")

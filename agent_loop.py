@@ -128,9 +128,13 @@ def _build_system_prompt(
     schema: list,
     web_base_url: str | None = None,
     session_id: str | None = None,
+    profile: str = "local",
 ) -> str:
     core_prompt = ""
-    core_path = Path("system/core_prompt.md")
+    core_name = "core_build.md" if profile == "build" else "core_prompt.md"
+    core_path = Path("system") / core_name
+    if not core_path.exists():          # fallback: instalação sem o arquivo
+        core_path = Path("system/core_prompt.md")
     if core_path.exists():
         core_prompt = core_path.read_text(encoding="utf-8").strip()
 
@@ -141,6 +145,7 @@ def _build_system_prompt(
         f"\n\n## Tools disponíveis\n{tools_block}",
         f"\n\n## Sessão atual"
         f"\nagent_id: {agent_info.get('id', 'general')}"
+        f"\nperfil: {profile}"
         f"\nsession_id: {session_id or f'_nosession_{id(agent_info)}'}",
     ]
     if web_base_url:
@@ -276,6 +281,9 @@ def run_agent(
     # histórico (Ollama via ollama_url), preservando 100% o comportamento
     # atual. O runner do modo build injeta um cliente cloud aqui.
     model_client=None,
+    # perfil define o core prompt: "local" (orquestrador + secondary_model)
+    # ou "build" (o próprio modelo é o principal).
+    profile: str = "local",
 ) -> AgentResult:
     """
     Executa o loop agêntico e retorna um AgentResult.
@@ -292,6 +300,7 @@ def run_agent(
             agent_info, schema,
             web_base_url=web_base_url,
             session_id=session_id,
+            profile=profile,
         )
         if context_injection:
             prompt = f"{prompt}\n\n{context_injection}"
@@ -466,6 +475,8 @@ def run_agent(
                             mcp_manager.all_tools(),
                             agent_info.get("allowed_mcp_servers"),
                         ))
+                    if profile == "build":
+                        tools.pop("secondary_model", None)
                     schema.clear()
                     schema.extend(tools_schema(tools))
                     messages[0]["content"] = _system_prompt()
@@ -478,6 +489,8 @@ def run_agent(
                         mcp_manager.all_tools(),
                         agent_info.get("allowed_mcp_servers"),
                     ))
+                    if profile == "build":
+                        tools.pop("secondary_model", None)
                     schema.clear()
                     schema.extend(tools_schema(tools))
                     messages[0]["content"] = _system_prompt()
@@ -488,6 +501,8 @@ def run_agent(
                     removed_name = feedback.split("'")[1] if "'" in str(feedback) else ""
                     if removed_name:
                         mcp_manager.remove_server_tools(removed_name, tools)
+                    if profile == "build":
+                        tools.pop("secondary_model", None)
                     schema.clear()
                     schema.extend(tools_schema(tools))
                     messages[0]["content"] = _system_prompt()

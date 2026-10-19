@@ -11,6 +11,7 @@ Uso:
     python ciel.py --cli        # força CLI
     python ciel.py --agent dev_helper
     python ciel.py --model gemma4:cloud
+    python ciel.py --perfil build
     python ciel.py --safe
     python ciel.py --list-agents
 
@@ -81,6 +82,8 @@ def _launch_tui(extra_argv: list[str]) -> None:
     p = argparse.ArgumentParser(prog="ciel --tui", add_help=True)
     p.add_argument("--agent",  default="general",      metavar="NOME")
     p.add_argument("--model",  default="gemma4:cloud", metavar="MODELO")
+    p.add_argument("--perfil", choices=["local", "build"], default="local",
+                   help="perfil de modelo da sessão")
     p.add_argument("--safe",   action="store_true",    default=False)
     args = p.parse_args(extra_argv)
 
@@ -88,6 +91,7 @@ def _launch_tui(extra_argv: list[str]) -> None:
     app = CielTUI(
         initial_agent=args.agent,
         initial_model=args.model,
+        initial_perfil=args.perfil,
         safe_mode=args.safe,
     )
     app.run()

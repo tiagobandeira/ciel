@@ -97,6 +97,7 @@ python ciel.py --tui                       # força TUI (requer Textual)
 python ciel.py --agent dev_helper          # agente específico
 python ciel.py --model gemma4:e2b-it-qat   # modelo local
 python ciel.py --safe                      # sem tools de execução arbitrária
+python ciel.py --perfil build              # orquestrador no provider secundário
 python ciel.py --auto                      # pula confirmação de create_tool (confia na sessão inteira)
 python ciel.py --list-agents               # lista personas disponíveis
 python server.py                           # versão server local
@@ -143,6 +144,8 @@ python server.py                           # versão server local
 | `/tokens` | mostra tokens gastos na sessão atual |
 | `/copiar` | copia última resposta do agente |
 | `/model` | exibe modelo local/secundário e lista providers configurados; escolher um número ativa |
+| `/perfil` | mostra o perfil da sessão (local/build) |
+| `/perfil <local\|build>` | troca o orquestrador da sessão |
 | `/model <nome>` | troca o modelo local (Ollama) direto |
 | `/connect` | conecta ou atualiza um provider do modelo secundário |
 | `/tools-extras` | tools opcionais disponíveis e status de instalação |
@@ -425,6 +428,27 @@ As tools do servidor aparecem automaticamente no registry com namespace `mcp_{se
 O projeto inclui um servidor MCP para **Telegram** (`mcp/telegram/`) pronto para usar. Outros servidores MCP públicos (NPM, PyPI) também funcionam sem adaptação.
 
 → **[Documentação completa: docs/mcp.md](docs/mcp.md)** · **[Tutorial Telegram: docs/mcp_telegram_tutorial.md](docs/mcp_telegram_tutorial.md)** · **[Tutorial Notion: docs/mcp_notion_tutorial.md](docs/mcp_notion_tutorial.md)**
+
+---
+
+## Perfis de modelo (local / build)
+
+| Perfil | Orquestrador | `secondary_model` | Ollama |
+|---|---|---|---|
+| `local` (padrão) | Ollama (`--model`) | disponível | obrigatório |
+| `build` | provider configurado com `/connect` | oculto | não necessário |
+
+- `--perfil build` inicia a sessão no build; `/perfil build` troca na hora.
+- Banner e prompt mostram o perfil (`build ❯`), para não esquecer em qual modo
+  você está.
+- O padrão vem de `"perfil"` em `ciel_config.json`; `--perfil` e `/perfil`
+  sobrescrevem só a sessão.
+- No build, o core prompt vira `system/core_build.md`: você é o modelo
+  principal, não delega para o `secondary_model`. Skills `obrigatoria` da
+  persona entram no prompt; `sugerida`/`opcional` podem ser carregadas com
+  `/skill` (o conteúdo é injetado no orquestrador).
+- Ainda têm suporte parcial no build: imagens (`/img`), server e bots. O foco
+  atual é CLI/TUI.
 
 ---
 

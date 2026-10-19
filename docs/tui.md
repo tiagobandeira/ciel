@@ -23,6 +23,7 @@ A tela é organizada em três regiões principais:
 | `/skill` | Ativa uma skill disponível |
 | `/tool` | Lista e inspeciona ferramentas |
 | `/model <nome>` | Troca o modelo principal |
+| `/perfil [local\|build]` | Mostra/troca o perfil da sessão |
 | `/source <arquivo>` | Indexa arquivo na base de conhecimento |
 | `/history` | Lista, salva ou exporta sessões |
 | `/novo` | Inicia nova sessão |

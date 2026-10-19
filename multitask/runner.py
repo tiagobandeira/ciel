@@ -331,6 +331,7 @@ def run_board(
     on_event: Callable[[dict], None] | None = None,
     should_pause: Callable[[], bool] | None = None,
     workspace_root: str | Path | None = None,
+    profile: str = "local",
 ) -> RunResult:
     """
     Executa as tasks pendentes do quadro, em ordem, até concluir, falhar,
@@ -363,6 +364,7 @@ def run_board(
             on_event=on_event,
             should_pause=should_pause,
             workspace_root=workspace_root,
+            profile=profile,
         )
 
 
@@ -383,6 +385,7 @@ def _execute(
     on_event,
     should_pause,
     workspace_root: str | Path | None,
+    profile: str = "local",
 ) -> RunResult:
     started = time.monotonic()
     tokens_in = 0
@@ -448,6 +451,7 @@ def _execute(
                 on_event=on_event,
                 root=root,
                 tokens_before=(tokens_in, tokens_out),
+                profile=profile,
             )
 
             tokens_in += outcome.tokens_in
@@ -582,6 +586,7 @@ def _execute_task(
     on_event,
     root: Path,
     tokens_before: tuple[int, int] = (0, 0),
+    profile: str = "local",
 ) -> _TaskOutcome:
     """
     Executa UMA task até concluir, esgotar as correções ou falhar.
@@ -607,7 +612,7 @@ def _execute_task(
     task_agent = agent_info
     if task.agente:
         try:
-            task_agent = load_agent(task.agente)
+            task_agent = load_agent(task.agente, profile=profile)
         except Exception as exc:
             erro = f"persona '{task.agente}' não encontrada: {exc}"
             _finish_failed(

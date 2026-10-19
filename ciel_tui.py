@@ -324,6 +324,8 @@ COMMANDS: list[tuple[str, str]] = [
     ("/agente",            "troca persona interativo      [F4]"),
     ("/agente <nome>",     "troca persona diretamente"),
     ("/model",             "modelos — local e secundário  [F5]"),
+    ("/perfil",            "perfil local/build da sessão"),
+    ("/perfil <local|build>", "troca o orquestrador da sessão"),
     ("/model <nome>",      "troca modelo Ollama direto"),
     ("/connect",           "configura provedor do modelo secundário"),
     ("/novo",              "nova sessão"),
@@ -2708,14 +2710,60 @@ class CielTUI(App):
         self,
         initial_agent: str = "general",
         initial_model: str = "gemma4:cloud",
+        initial_perfil: str = "local",
         safe_mode: bool = False,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self.current_agent        = initial_agent
         self.current_model        = initial_model
+        self._local_model         = initial_model
+        self.perfil               = "local"
+        self._model_client        = None
+        self._model_label         = initial_model
         self.safe_mode            = safe_mode
         self._trust_tool_creation = False  # True após o usuário escolher "auto"
+        self._configure_perfil(initial_perfil, initial_model)
+
+    def _configure_perfil(self, perfil: str, local_model: str | None = None) -> str:
+        """
+        Resolve o perfil da sessão e ajusta o cliente do orquestrador.
+        Retorna "" em sucesso ou uma mensagem de aviso.
+        """
+        from llm.roles import load_roles
+
+        local_model = local_model or self._local_model or "gemma4:cloud"
+        try:
+            roles = load_roles(local_model, perfil=perfil)
+        except Exception as exc:
+            self.perfil = "local"
+            self._model_client = None
+            self.current_model = local_model
+            self._model_label = local_model
+            return f"não foi possível resolver o perfil: {exc}"
+
+        if roles.perfil == "build":
+            spec = roles.orchestrator
+            if spec is None or spec.is_local:
+                self.perfil = "local"
+                self._model_client = None
+                self.current_model = local_model
+                self._model_label = local_model
+                return (
+                    "perfil build exige provider secundário configurado "
+                    "(use /connect); mantendo local."
+                )
+            self.perfil = "build"
+            self._model_client = spec.client()
+            self.current_model = spec.model
+            self._model_label = spec.label
+            return ""
+
+        self.perfil = "local"
+        self._model_client = None
+        self.current_model = local_model
+        self._model_label = local_model
+        return ""
 
     # ── compose ───────────────────────────────────────────────────────────────
 
@@ -2776,7 +2824,7 @@ class CielTUI(App):
     def _load_agent(self, agent_name: str) -> None:
         """Carrega agent_info, tools e schema. Atualiza estado e widgets."""
         try:
-            self._agent_info = load_agent(agent_name)
+            self._agent_info = load_agent(agent_name, profile=self.perfil)
         except Exception as e:
             self._log_write(msg_system(f"agente '{agent_name}' não encontrado: {e}", "err"))
             return
@@ -2784,6 +2832,8 @@ class CielTUI(App):
         all_tools = load_tools()
         tools = filter_tools(all_tools, self._agent_info.get("allowed_tools"))
         tools = filter_unsafe(tools, self.safe_mode)
+        if self.perfil == "build":
+            tools.pop("secondary_model", None)
 
         self._tools  = tools
         self._schema = tools_schema(tools)
@@ -3064,8 +3114,13 @@ class CielTUI(App):
         self._log_write(t)
         self._log_write(msg_sep())
         self._log_write(msg_system(
-            f"persona: {self.current_agent}  │  modelo: {self.current_model}", "info"))
-        self._log_write(msg_system("Ollama em localhost:11434", "ok"))
+            f"persona: {self.current_agent}  │  perfil: {self.perfil}"
+            f"  │  modelo: {self._model_label}", "info"))
+        if self.perfil == "build":
+            self._log_write(msg_system(
+                f"orquestrador cloud: {self._model_label}", "ok"))
+        else:
+            self._log_write(msg_system("Ollama em localhost:11434", "ok"))
         self._log_write(msg_system(
             f"{len(self._tools)} ferramentas ativas — F1 para listar", "info"))
         self._log_write(msg_system(
@@ -3407,7 +3462,7 @@ class CielTUI(App):
             agent_items = []
             for name in agent_names:
                 try:
-                    info = load_agent(name)
+                    info = load_agent(name, profile=self.perfil)
                     desc = info.get("description", "")[:60]
                 except Exception:
                     desc = ""
@@ -3471,6 +3526,8 @@ class CielTUI(App):
                 ("/agente <nome>",        "troca persona diretamente"),
                 ("/model",                "modelos — local e secundário  [F5]"),
                 ("/model <nome>",         "troca modelo local direto"),
+                ("/perfil",               "perfil local/build da sessão"),
+                ("/perfil <local|build>", "troca o orquestrador da sessão"),
                 ("/connect",             "configura provedor do modelo secundário"),
                 ("/novo",                 "nova sessão"),
                 ("/limpar",               "limpa display"),
@@ -3597,11 +3654,19 @@ class CielTUI(App):
                     self._log_write(t)
                 else:
                     # /skill <nome> <prompt> — injeta instrução e executa
-                    injected = (
-                        f"{skill_prompt}\n\n"
-                        f"[instrução do sistema: use a tool secondary_model"
-                        f" com skill=\"{skill_name}\"]"
-                    )
+                    if self.perfil == "build":
+                        from skill_loader import load_text
+                        skill_text = load_text(skill_name) or ""
+                        injected = (
+                            f"{skill_prompt}\n\n"
+                            f"## Skill ativa: {skill_name}\n\n{skill_text}"
+                        )
+                    else:
+                        injected = (
+                            f"{skill_prompt}\n\n"
+                            f"[instrução do sistema: use a tool secondary_model"
+                            f" com skill=\"{skill_name}\"]"
+                        )
                     self._log_write(msg_system(
                         f"skill: {skill_name}  │  {skill_prompt[:60]}", "info"
                     ))
@@ -3623,12 +3688,43 @@ class CielTUI(App):
                 except Exception as e:
                     self._log_write(msg_system(f"agente '{nome}' não encontrado: {e}", "err"))
 
+        elif verb == "/perfil":
+            arg = parts[1].lower() if len(parts) > 1 else ""
+            if not arg:
+                self._log_write(msg_system(
+                    f"perfil atual: {self.perfil}  ·  {self._model_label}",
+                    "info",
+                ))
+            elif arg not in ("local", "build"):
+                self._log_write(msg_system(
+                    "uso: /perfil local  ·  /perfil build", "warn"
+                ))
+            else:
+                warning = self._configure_perfil(arg)
+                self._reload_tools(log)
+                self.query_one("#top-bar", TopBar).update_state(
+                    model=self.current_model
+                )
+                self.query_one("#info-panel", InfoPanel).update_state(
+                    model=self.current_model,
+                    model2=self._model_label if self.perfil == "build" else "",
+                )
+                if warning:
+                    self._log_write(msg_system(warning, "warn"))
+                else:
+                    self._log_write(msg_system(
+                        f"perfil: {self.perfil}  ·  {self._model_label}",
+                        "ok",
+                    ))
+
         elif verb == "/model":
             if len(parts) >= 2:
                 # /model <nome> — troca modelo local direto, sem modal
-                self.current_model = parts[1]
-                self.query_one("#top-bar",    TopBar).update_state(model=parts[1])
-                self.query_one("#info-panel", InfoPanel).update_state(model=parts[1])
+                self._local_model = parts[1]
+                if self.perfil == "local":
+                    self.current_model = parts[1]
+                self.query_one("#top-bar",    TopBar).update_state(model=self.current_model)
+                self.query_one("#info-panel", InfoPanel).update_state(model=self.current_model)
                 self._log_write(msg_system(f"modelo local trocado para '{parts[1]}'", "ok"))
             else:
                 # /model sem args — abre ModelModal
@@ -4097,6 +4193,8 @@ class CielTUI(App):
         new_tools = load_tools()
         filtered  = filter_tools(new_tools, self._agent_info.get("allowed_tools"))
         filtered  = filter_unsafe(filtered, self.safe_mode)
+        if self.perfil == "build":
+            filtered.pop("secondary_model", None)
         self._tools  = filtered
         self._schema = tools_schema(filtered)
         # reinjeta tools MCP (do que já estiver conectado) pra não perdê-las no reload
@@ -4367,12 +4465,14 @@ class CielTUI(App):
             user_text,
             self._tools,
             self._schema,
-            self.current_model,
+            "" if self._model_client is not None else self.current_model,
             self._agent_info,
             history=context,
             image_b64=image_b64,
             session_id=str(self._session_id) if self._session_id else None,
             mcp_manager=self._mcp_manager,
+            model_client=self._model_client,
+            profile=self.perfil,
             on_step=on_step,
             on_done=on_done,
             on_limit=on_limit,

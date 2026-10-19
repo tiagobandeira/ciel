@@ -163,6 +163,11 @@ O fluxo pode declarar `perfil: build` para usar o provider secundário como
 executor (o mesmo salvo por `/connect`). Sem provider configurado, cai no
 Ollama local. O perfil `local` usa o modelo de `--model`.
 
+Na CLI/TUI, `--perfil build` (ou `/perfil build`) também muda o orquestrador
+da sessão para o provider secundário; nesse caso o chat normal já roda no
+modelo grande, sem a tool `secondary_model`. O perfil da sessão e o `perfil:`
+do fluxo usam a mesma resolução de papéis.
+
 ## Limites desta fase
 
 - O planejador exige um provider secundário configurado (`/connect`). Sem

@@ -116,19 +116,46 @@ def _check_secondary_config() -> list[str]:
 
 # ── função principal ──────────────────────────────────────────────────────────
 
-def check_environment(model: str = "gemma4:cloud") -> list[str]:
+def check_environment(model: str = "gemma4:cloud", profile: str = "local") -> list[str]:
     """
     Verifica o ambiente antes de iniciar o Ciel.
 
-    Bloqueante (sys.exit) se:
-      - Ollama não está acessível
-      - Nenhum modelo disponível no Ollama
-      - O modelo solicitado não existe
+    Perfil `build`: não exige Ollama; exige um provider secundário
+    configurado (o orquestrador é o modelo cloud).
+    Perfil `local`: comportamento histórico — Ollama é bloqueante.
 
     Retorna lista de strings de aviso (modelo secundário) para
     o chamador exibir após o header principal. Lista vazia = sem avisos.
     Cada string é uma linha única — sem quebras internas.
     """
+    if profile == "build":
+        try:
+            from llm.roles import load_roles
+
+            roles = load_roles(model, perfil="build")
+            spec = roles.orchestrator
+        except Exception as exc:
+            _console.print(Panel(
+                f"[err]✗[/err] não foi possível resolver o perfil build\n"
+                f"\n  [muted]{exc}[/muted]",
+                border_style="err",
+                padding=(0, 2),
+            ))
+            sys.exit(1)
+
+        if spec is None or spec.is_local:
+            _console.print(Panel(
+                "[err]✗[/err] perfil build exige um provider secundário\n"
+                "\n"
+                "  Configure com [muted]/connect[/muted] (ou variável de "
+                "ambiente) e tente de novo.\n"
+                "  Para usar o Ollama local: [muted]--perfil local[/muted]",
+                border_style="err",
+                padding=(0, 2),
+            ))
+            sys.exit(1)
+
+        return []
 
     # ── 1. Ollama acessível? ──────────────────────────────────────────────────
     running, available_models = _check_ollama_running()

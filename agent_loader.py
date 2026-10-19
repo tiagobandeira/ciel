@@ -137,13 +137,50 @@ def _parse_skills(raw: str) -> list[dict]:
     return skills
 
 
-def _build_skills_block(skills: list[dict]) -> str:
+def _build_skills_block(skills: list[dict], profile: str = "local") -> str:
     """
     Monta o bloco de texto injetado no system prompt do orquestrador.
     Retorna string vazia se não houver skills.
+
+    No perfil build o orquestrador é o modelo principal e não existe a tool
+    `secondary_model`; as skills entram como contexto/capacidade, não como
+    chamada de delegação.
     """
     if not skills:
         return ""
+
+    if profile == "build":
+        lines = ["## Skills desta persona"]
+        lines.append(
+            "Você é o modelo principal desta sessão; não existe a tool "
+            "`secondary_model`. As skills marcadas como `obrigatoria` já estão "
+            "com o conteúdo abaixo; as demais podem ser carregadas pelo "
+            "usuário com `/skill <nome> <prompt>`.\n"
+        )
+        for skill in skills:
+            lines.append(
+                f"- **{skill['name']}** [{skill['level']}]"
+            )
+
+        # No build não há secondary_model para injetar a skill sob demanda;
+        # skills obrigatórias entram no prompt do orquestrador.
+        try:
+            from skill_loader import load_text
+        except Exception:
+            load_text = None
+
+        if load_text is not None:
+            for skill in skills:
+                if skill["level"] != "obrigatoria":
+                    continue
+                content = load_text(skill["name"])
+                if content:
+                    lines += [
+                        "",
+                        f"### Skill obrigatória: {skill['name']}",
+                        content,
+                    ]
+        return "\n".join(lines)
 
     lines = ["## Skills desta persona"]
     lines.append(
@@ -160,7 +197,7 @@ def _build_skills_block(skills: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def load_agent(agent_name: str) -> dict:
+def load_agent(agent_name: str, *, profile: str = "local") -> dict:
     """
     Carrega e parseia o .md do agente.
 
@@ -197,7 +234,7 @@ def load_agent(agent_name: str) -> dict:
     allowed_tools       = _parse_allowed_tools(tools_raw)
     allowed_mcp_servers = _parse_allowed_mcp_servers(mcp_raw)
     skills              = _parse_skills(skills_raw)
-    skills_block        = _build_skills_block(skills)
+    skills_block        = _build_skills_block(skills, profile=profile)
 
     # Monta o system prompt
     parts = [f"# {name}\n"]

@@ -154,3 +154,30 @@ class TestContextInjectionSobreviveAoReload:
         assert result.status == "done"
         assert len(sistemas) >= 2          # houve reload entre as chamadas
         assert all("Contexto do teste" in s for s in sistemas)
+
+
+class TestPerfilNoPrompt:
+    def _system_for(self, profile: str) -> str:
+        captured = {}
+
+        class Client:
+            def chat(self, messages, *, model=None, **kwargs):
+                captured["system"] = messages[0]["content"]
+                return ChatResult(_done("ok"), 1, 1)
+
+        run_agent(
+            "oi", {}, [], "", AGENT_INFO,
+            model_client=Client(), profile=profile,
+        )
+        return captured["system"]
+
+    def test_build_usa_core_build(self):
+        system = self._system_for("build")
+        assert "modo build" in system
+        assert "modelo principal" in system.lower()
+        assert "secundário" not in system.lower() or "não existe" in system.lower()
+
+    def test_local_usa_core_prompt(self):
+        system = self._system_for("local")
+        assert "Modelo secundário" in system
+        assert "modo build" not in system
