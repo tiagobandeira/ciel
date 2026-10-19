@@ -197,6 +197,37 @@ def detect_format(text: str) -> str | None:
     return None
 
 
+def is_trusted_flow_path(
+    path: str | Path,
+    flows_dir: str | Path | None = None,
+) -> bool:
+    """True se o fluxo está dentro de `flows/` (o diretório do projeto)."""
+    base = (Path(flows_dir) if flows_dir else DEFAULT_FLOWS_DIR).resolve()
+    try:
+        Path(path).resolve().relative_to(base)
+        return True
+    except ValueError:
+        return False
+
+
+def command_checks(flow: Flow) -> list[dict]:
+    """Lista as checagens que executam comando (para aviso de fluxo externo)."""
+    found: list[dict] = []
+
+    def visit(check) -> None:
+        if isinstance(check, list):
+            for item in check:
+                visit(item)
+        elif isinstance(check, dict):
+            tipo = str(check.get("tipo") or check.get("type") or "").lower()
+            if tipo in ("comando", "cmd", "command", "shell", "exit", "exec"):
+                found.append(check)
+
+    for task in flow.tasks:
+        visit(task.get("checagem"))
+    return found
+
+
 # ── fluxo → quadro ────────────────────────────────────────────────────────
 
 def build_board(
@@ -294,5 +325,7 @@ __all__ = [
     "load_flow",
     "list_flows",
     "detect_format",
+    "is_trusted_flow_path",
+    "command_checks",
     "build_board",
 ]

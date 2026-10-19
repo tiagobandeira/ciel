@@ -161,6 +161,10 @@ def _header_facts(board: Board) -> str:
     duration = _duration(board)
     if duration:
         facts.append(duration)
+    corrections = sum(int(t.correcoes or 0) for t in board.tasks())
+    if corrections:
+        label = "correção" if corrections == 1 else "correções"
+        facts.append(f"{corrections} {label}")
     return " · ".join(facts)
 
 
@@ -199,6 +203,13 @@ def _markdown(board: Board) -> str:
                 decisions = _decisions(task)
                 if decisions:
                     lines.append(f"  - decisões: {decisions}")
+                if task.checagem_ok is not None:
+                    icon = "✓" if task.checagem_ok else "✗"
+                    lines.append(
+                        f"  - verificação: {icon} {_one_line(task.checagem_resumo, 200)}"
+                    )
+                if task.correcoes:
+                    lines.append(f"  - correções: {task.correcoes}")
             lines.append("")
     lines.append("")
 
@@ -308,6 +319,13 @@ def _bullets(board: Board) -> str:
         artifacts = _artifacts(task)
         if artifacts:
             lines.append(f"  - arquivos: {artifacts}")
+        if task.checagem_ok is not None:
+            check_icon = "✓" if task.checagem_ok else "✗"
+            lines.append(
+                f"  - verificação: {check_icon} {_one_line(task.checagem_resumo, 160)}"
+            )
+        if task.correcoes:
+            lines.append(f"  - correções: {task.correcoes}")
     for task in _failed_tasks(board):
         erro = _one_line(task.erro or task.resumo, 200) or "erro"
         lines.append(f"- ✗ **{task.titulo}** — {erro}")

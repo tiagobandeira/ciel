@@ -12,6 +12,7 @@ Pacote livre de UI — CLI, TUI, server e bots consomem as mesmas peças.
     print(result.message)
 """
 
+from multitask.checks import CheckResult, run_checks
 from multitask.flow import Flow, FlowError, build_board, list_flows, load_flow
 from multitask.report import build_report
 from multitask.runner import RunResult, run_board
@@ -22,6 +23,8 @@ __all__ = [
     "load_flow",
     "list_flows",
     "build_board",
+    "CheckResult",
+    "run_checks",
     "RunResult",
     "run_board",
     "build_report",

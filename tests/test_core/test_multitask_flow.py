@@ -12,7 +12,9 @@ import pytest
 from multitask.flow import (
     FlowError,
     build_board,
+    command_checks,
     detect_format,
+    is_trusted_flow_path,
     list_flows,
     load_flow,
 )
@@ -220,3 +222,32 @@ class TestDetectFormat:
             flow, objetivo="entregue em tópicos", formato="resumo",
         )
         assert board.entrega["formato"] == "resumo"
+
+
+class TestTrustEPerigo:
+    def test_fluxo_dentro_de_flows_e_confiavel(self, flows_dir):
+        flow = load_flow("site_teste", flows_dir=flows_dir)
+        assert is_trusted_flow_path(flow.path, flows_dir=flows_dir) is True
+
+    def test_fluxo_fora_de_flows_nao_e_confiavel(self, tmp_path, flows_dir):
+        externo = tmp_path / "externo.md"
+        externo.write_text(FLOW, encoding="utf-8")
+        assert is_trusted_flow_path(externo, flows_dir=flows_dir) is False
+
+    def test_command_checks_aninhados(self, tmp_path):
+        d = tmp_path / "flows"
+        d.mkdir()
+        (d / "x.md").write_text(
+            "## flow: x\nobjetivo: x\n\n"
+            "## task: a\n"
+            'checagem: [{"tipo":"arquivo","path":"a"},'
+            '{"tipo":"comando","cmd":["echo","ok"]}]\n'
+            "ações:\n- fazer\n",
+            encoding="utf-8",
+        )
+        flow = load_flow("x", flows_dir=d)
+        assert len(command_checks(flow)) == 1
+
+    def test_command_checks_sem_comando(self, flows_dir):
+        flow = load_flow("site_teste", flows_dir=flows_dir)
+        assert command_checks(flow) == []

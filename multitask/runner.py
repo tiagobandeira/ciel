@@ -39,6 +39,7 @@ from board import (
     BoardStore,
     now_iso,
 )
+from multitask.checks import build_correction_context, run_checks
 from multitask.report import build_report
 
 # callbacks aceitos por run_agent (mantém a assinatura explícita)
@@ -245,10 +246,11 @@ def _filter_callbacks(callbacks: dict | None) -> dict:
     return {key: callbacks[key] for key in _RUN_CALLBACKS if key in callbacks}
 
 
-def _emit(store: BoardStore, board: Board, on_event, tipo: str, **data) -> None:
-    event = {"ts": now_iso(), "tipo": tipo, "run": board.id, **data}
+def _emit(store: BoardStore, board: Board, on_event, evento: str, **data) -> None:
+    # "tipo" é reservado para o tipo do evento — dados não podem sobrescrever.
+    event = {"ts": now_iso(), "run": board.id, **data, "tipo": evento}
     try:
-        store.append_event(board.id, tipo, run=board.id, **data)
+        store.append_event(board.id, evento, run=board.id, **data)
     except Exception:
         pass
     if on_event is not None:
@@ -425,99 +427,35 @@ def _execute(
                 current_phase = phase
                 _emit(store, board, on_event, "fase_iniciada", fase=phase)
 
-            total = len(board.tasks())
-            index = _task_index(board, task)
-            board.mark_task(
-                task.id, TASK_EM_ANDAMENTO,
-                tentativas=task.tentativas + 1,
-            )
-            store.save(board)
             stopped_at = task.id
             current_task_id = task.id
-            _emit(
-                store, board, on_event, "task_iniciada",
-                task=task.id, titulo=task.titulo, fase=phase,
-                indice=index, total=total,
-            )
 
-            task_started = time.time()
-            task_clock = time.monotonic()
-            context = build_task_context(board, task, phase)
-
-            task_agent = agent_info
-            if task.agente:
-                try:
-                    task_agent = load_agent(task.agente)
-                except Exception as exc:
-                    _finish_failed(
-                        board, store, task, on_event, tasks_fail,
-                        erro=f"persona '{task.agente}' não encontrada: {exc}",
-                        tokens_in=0, tokens_out=0, duracao_s=0.0,
-                    )
-                    motivo = f"task {task.id}: persona inválida"
-                    board.set_status(RUN_FALHOU)
-                    store.save(board)
-                    break
-
-            result = run_agent(
-                context,
-                tools,
-                schema,
-                model,
-                task_agent,
-                history=[],
+            outcome = _execute_task(
+                board, task, phase, tools, schema, agent_info,
+                store=store,
+                model=model,
+                model_client=model_client,
                 session_id=session_id,
                 max_steps=max_steps_per_task,
                 ollama_url=ollama_url,
                 mcp_manager=mcp_manager,
-                model_client=model_client,
-                **callbacks,
+                callbacks=callbacks,
+                on_event=on_event,
+                root=root,
+                tokens_before=(tokens_in, tokens_out),
             )
 
-            duration = time.monotonic() - task_clock
-            tokens_in += result.tokens_in
-            tokens_out += result.tokens_out
+            tokens_in += outcome.tokens_in
+            tokens_out += outcome.tokens_out
 
-            if result.status == "done":
-                artifacts = collect_artifacts(root, task_started)
-                board.record_task_result(
-                    task.id, TASK_CONCLUIDA,
-                    resumo=result.message,
-                    tokens_in=result.tokens_in,
-                    tokens_out=result.tokens_out,
-                    duracao_s=duration,
-                )
-                for artifact in artifacts:
-                    board.add_artifact(
-                        task.id, artifact["path"], mtime=artifact["mtime"]
-                    )
-                store.save(board)
+            if outcome.status == "done":
                 tasks_ok.append(task.id)
-                _emit(
-                    store, board, on_event, "task_concluida",
-                    task=task.id, titulo=task.titulo, fase=phase,
-                    resumo=(result.message or "")[:500],
-                    tokens_in=result.tokens_in,
-                    tokens_out=result.tokens_out,
-                    duracao_s=round(duration, 2),
-                    artefatos=[a["path"] for a in artifacts],
-                )
                 if _phase_finished(board, phase):
                     _emit(store, board, on_event, "fase_concluida", fase=phase)
                 continue
 
-            # qualquer outro status encerra a execução nesta fase
-            _finish_failed(
-                board, store, task, on_event, tasks_fail,
-                erro=result.message or f"status {result.status}",
-                tokens_in=result.tokens_in,
-                tokens_out=result.tokens_out,
-                duracao_s=duration,
-                status_original=result.status,
-            )
-            motivo = (
-                f"task {task.id} terminou com status '{result.status}'"
-            )
+            tasks_fail.append(task.id)
+            motivo = outcome.motivo
             board.set_status(RUN_FALHOU)
             store.save(board)
             break
@@ -590,18 +528,241 @@ def _execute(
     )
 
 
+@dataclass
+class _TaskOutcome:
+    status: str
+    tokens_in: int = 0
+    tokens_out: int = 0
+    erro: str = ""
+    motivo: str = ""
+
+
+def _max_corrections(board: Board) -> int:
+    try:
+        return max(0, int(board.orcamento.get("max_correcoes_por_task", 3)))
+    except (TypeError, ValueError):
+        return 3
+
+
+def _execute_task(
+    board: Board,
+    task,
+    phase: str,
+    tools: dict,
+    schema: list,
+    agent_info: dict,
+    *,
+    store: BoardStore,
+    model: str,
+    model_client,
+    session_id: str | None,
+    max_steps: int,
+    ollama_url: str,
+    mcp_manager,
+    callbacks: dict,
+    on_event,
+    root: Path,
+    tokens_before: tuple[int, int] = (0, 0),
+) -> _TaskOutcome:
+    """
+    Executa UMA task até concluir, esgotar as correções ou falhar.
+
+    Ciclo: run_agent → checagem por código → (se falhar) correção com o erro
+    e os arquivos envolvidos, até `max_correcoes_por_task`.
+    """
+    total = len(board.tasks())
+    index = _task_index(board, task)
+    task_started = time.time()
+    task_clock = time.monotonic()
+    tokens_in = 0
+    tokens_out = 0
+    corrections = 0
+    max_corrections = _max_corrections(board)
+
+    base_context = build_task_context(board, task, phase)
+    context = base_context
+
+    task_agent = agent_info
+    if task.agente:
+        try:
+            task_agent = load_agent(task.agente)
+        except Exception as exc:
+            erro = f"persona '{task.agente}' não encontrada: {exc}"
+            _finish_failed(
+                board, store, task, on_event,
+                erro=erro, tokens_in=0, tokens_out=0,
+                duracao_s=time.monotonic() - task_clock,
+                correcoes=0,
+            )
+            return _TaskOutcome(
+                "failed", erro=erro,
+                motivo=f"task {task.id}: persona inválida",
+            )
+
+    attempts = 0
+    while True:
+        attempts += 1
+        board.mark_task(task.id, TASK_EM_ANDAMENTO, tentativas=attempts)
+        store.save(board)
+
+        if attempts == 1:
+            _emit(
+                store, board, on_event, "task_iniciada",
+                task=task.id, titulo=task.titulo, fase=phase,
+                indice=index, total=total,
+            )
+
+        result = run_agent(
+            context,
+            tools,
+            schema,
+            model,
+            task_agent,
+            history=[],
+            session_id=session_id,
+            max_steps=max_steps,
+            ollama_url=ollama_url,
+            mcp_manager=mcp_manager,
+            model_client=model_client,
+            **callbacks,
+        )
+
+        tokens_in += result.tokens_in
+        tokens_out += result.tokens_out
+
+        if result.status != "done":
+            duration = time.monotonic() - task_clock
+            erro = result.message or f"status {result.status}"
+            _finish_failed(
+                board, store, task, on_event,
+                erro=erro, tokens_in=tokens_in, tokens_out=tokens_out,
+                duracao_s=duration, status_original=result.status,
+                correcoes=corrections,
+            )
+            return _TaskOutcome(
+                "failed", tokens_in=tokens_in, tokens_out=tokens_out,
+                erro=erro,
+                motivo=f"task {task.id} terminou com status '{result.status}'",
+            )
+
+        check = run_checks(task.checagem, workspace_root=root)
+        task.checagem_ok = check.ok if check.verificado else None
+        task.checagem_resumo = check.mensagem
+        board.touch()
+        store.save(board)
+
+        if check.ok:
+            duration = time.monotonic() - task_clock
+            artifacts = collect_artifacts(root, task_started)
+            board.record_task_result(
+                task.id, TASK_CONCLUIDA,
+                resumo=result.message,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                duracao_s=duration,
+                correcoes=corrections,
+                checagem_ok=task.checagem_ok,
+                checagem_resumo=check.mensagem,
+            )
+            for artifact in artifacts:
+                board.add_artifact(
+                    task.id, artifact["path"], mtime=artifact["mtime"]
+                )
+            store.save(board)
+
+            if corrections:
+                _emit(
+                    store, board, on_event, "task_corrigida",
+                    task=task.id, titulo=task.titulo,
+                    correcoes=corrections,
+                )
+
+            _emit(
+                store, board, on_event, "task_concluida",
+                task=task.id, titulo=task.titulo, fase=phase,
+                resumo=(result.message or "")[:500],
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                duracao_s=round(duration, 2),
+                artefatos=[a["path"] for a in artifacts],
+                correcoes=corrections,
+                checagem=check.mensagem,
+                checagem_ok=task.checagem_ok,
+            )
+            return _TaskOutcome(
+                "done", tokens_in=tokens_in, tokens_out=tokens_out,
+            )
+
+        # ── checagem falhou ──────────────────────────────────────────────
+        _emit(
+            store, board, on_event, "checagem_falhou",
+            task=task.id, titulo=task.titulo,
+            checagem_tipo=check.tipo, erro=check.mensagem,
+            correcoes=corrections,
+        )
+
+        if corrections >= max_corrections:
+            duration = time.monotonic() - task_clock
+            erro = f"checagem falhou: {check.mensagem}"
+            _finish_failed(
+                board, store, task, on_event,
+                erro=erro, tokens_in=tokens_in, tokens_out=tokens_out,
+                duracao_s=duration, correcoes=corrections,
+                checagem_ok=False, checagem_resumo=check.mensagem,
+            )
+            return _TaskOutcome(
+                "failed", tokens_in=tokens_in, tokens_out=tokens_out,
+                erro=erro, motivo=f"task {task.id}: checagem falhou",
+            )
+
+        if _budget_exceeded(
+            board,
+            tokens_before[0] + tokens_in,
+            tokens_before[1] + tokens_out,
+        ):
+            duration = time.monotonic() - task_clock
+            erro = "orçamento de tokens esgotado durante a correção"
+            _finish_failed(
+                board, store, task, on_event,
+                erro=erro, tokens_in=tokens_in, tokens_out=tokens_out,
+                duracao_s=duration, correcoes=corrections,
+                checagem_ok=False, checagem_resumo=check.mensagem,
+            )
+            return _TaskOutcome(
+                "failed", tokens_in=tokens_in, tokens_out=tokens_out,
+                erro=erro, motivo=erro,
+            )
+
+        corrections += 1
+        task.correcoes = corrections
+        board.touch()
+        store.save(board)
+        _emit(
+            store, board, on_event, "correcao_iniciada",
+            task=task.id, titulo=task.titulo,
+            tentativa=corrections, max=max_corrections,
+            erro=check.mensagem,
+        )
+
+        context = base_context + "\n\n" + build_correction_context(
+            check, task=task, workspace_root=root
+        )
+
+
 def _finish_failed(
     board: Board,
     store: BoardStore,
     task,
     on_event,
-    tasks_fail: list[str],
     *,
     erro: str,
     tokens_in: int,
     tokens_out: int,
     duracao_s: float,
     status_original: str = "",
+    correcoes: int | None = None,
+    checagem_ok: bool | None = None,
+    checagem_resumo: str | None = None,
 ) -> None:
     board.record_task_result(
         task.id, TASK_FALHOU,
@@ -610,9 +771,11 @@ def _finish_failed(
         tokens_in=tokens_in,
         tokens_out=tokens_out,
         duracao_s=duracao_s,
+        correcoes=correcoes,
+        checagem_ok=checagem_ok,
+        checagem_resumo=checagem_resumo,
     )
     store.save(board)
-    tasks_fail.append(task.id)
     _emit(
         store, board, on_event, "task_falhou",
         task=task.id, titulo=task.titulo,
@@ -621,6 +784,7 @@ def _finish_failed(
         tokens_in=tokens_in,
         tokens_out=tokens_out,
         duracao_s=round(duracao_s, 2),
+        correcoes=correcoes if correcoes is not None else 0,
     )
 
 

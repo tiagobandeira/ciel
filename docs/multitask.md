@@ -75,12 +75,49 @@ Na CLI, o plano é mostrado antes de executar e pede confirmação.
    e o que já foi concluído na fase.
 4. Chama `run_agent` com `history=[]`, `context_injection=...` e um limite de
    steps por task.
-5. Grava status, resumo, tokens, duração e artefatos detectados no quadro.
-6. Repete até concluir, falhar, pausar (Ctrl+C) ou esgotar o orçamento.
-7. Gera o relatório final (`multitask/report.py`) no formato do fluxo.
+5. Roda a checagem por código declarada na task (se houver).
+6. Se a checagem falhar, monta um contexto de correção com o erro e os
+   arquivos envolvidos e tenta de novo, até `max_correcoes_por_task`.
+7. Grava status, resumo, tokens, duração, verificação e artefatos no quadro.
+8. Repete até concluir, falhar, pausar (Ctrl+C) ou esgotar o orçamento.
+9. Gera o relatório final (`multitask/report.py`) no formato do fluxo.
 
 Artefatos são detectados pelos arquivos modificados/criados durante a task
 (ignorando `.git`, `venv`, `__pycache__`, `data/runs`, banco de histórico etc.).
+
+## Checagens e correção
+
+A checagem é **código**, roda depois do `done` do modelo e não depende de o
+modelo avaliar o próprio trabalho. Tipos:
+
+```yaml
+checagem: {"tipo": "arquivo", "path": "index.html", "contem": "<html"}
+checagem: {"tipo": "comando", "cmd": ["python", "-m", "pytest", "-q"],
+           "cwd": ".", "esperado": 0, "timeout": 60}
+checagem: {"tipo": "http", "url": "http://127.0.0.1:8000/", "esperado": 200}
+checagem: {"tipo": "json", "path": "dados.json", "chaves": ["itens"]}
+checagem: [ {"tipo": "arquivo", "path": "a.txt"},
+            {"tipo": "arquivo", "path": "b.txt"} ]   # todas precisam passar
+```
+
+| Tipo | Campos principais |
+|---|---|
+| `arquivo` | `path`, `existe` (default true), `contem`, `nao_contem`, `tamanho_min` |
+| `comando` | `cmd` (lista ou string), `cwd`, `esperado` (default 0), `timeout` |
+| `http` | `url`, `esperado` (default 200), `metodo`, `corpo_contem`, `timeout` |
+| `json` | `path`, `chaves` obrigatórias |
+
+Uma string (`checagem: manual`) é apenas um critério textual: não conta como
+verificação automática.
+
+**Correção:** se a checagem falhar, o runner não chama o modelo de novo às
+cegas. Ele monta um contexto com o erro, `stdout`/`stderr` e o conteúdo dos
+arquivos envolvidos e repete a mesma task. Limite em
+`orcamento.max_correcoes_por_task` (default 3). Esgotou, a task falha e a
+execução para — o relatório mostra o erro e as pendências.
+
+**Segurança:** paths e `cwd` são resolvidos dentro do workspace. Fluxos fora
+de `flows/` pedem confirmação na CLI e avisam quando há checagens de comando.
 
 ## Perfis de modelo
 
@@ -91,10 +128,8 @@ Ollama local. O perfil `local` usa o modelo de `--model`.
 ## Limites desta fase
 
 - Sem planejador: `/multitask <objetivo>` livre ainda exige um fluxo.
-- Sem checagem automática: `checagem` é enviada ao modelo como critério, mas
-  ainda não é validada por código (Fase 2).
-- Sem correção automática de task falha: a execução para e o relatório mostra
-  a falha e as pendências.
+- A correção é a mesma task com contexto de erro; ela não cria uma task nova
+  no quadro (o contador `correcoes` e os eventos registram as tentativas).
 - Sem paralelismo e sem TUI dedicada: use `python ciel.py --cli`.
 - `--retomar` só tenta tasks pendentes; uma task que falhou não é repetida
   automaticamente.
@@ -112,9 +147,7 @@ pendências e como testar.
 
 ## O que vem depois
 
-1. **Fase 2** — checagens por código (`arquivo`, `cmd`, `http`, `json`) e task
-   de correção com limite.
-2. **Fase 3** — planejador no modelo secundário, validação do plano, aprovação
+1. **Fase 3** — planejador no modelo secundário, validação do plano, aprovação
    e replanejamento; `/multitask <objetivo>` livre.
-3. **Fase 4** — fluxo `web_projeto` completo, entrevista, servidor e entrega.
-4. **Fase 5** — painel na TUI, revisão por fase e retomada com mais garantias.
+2. **Fase 4** — fluxo `web_projeto` completo, entrevista, servidor e entrega.
+3. **Fase 5** — painel na TUI, revisão por fase e retomada com mais garantias.

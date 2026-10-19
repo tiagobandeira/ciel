@@ -77,15 +77,17 @@ def error(message: str) -> AgentResult:
 
 def make_fake(responses, calls=None, on_call=None):
     queue = list(responses)
+    counter = {"n": 0}
 
     def fake(prompt, tools, schema, model, agent_info, **kwargs):
+        counter["n"] += 1
         if calls is not None:
             calls.append({
                 "prompt": prompt, "model": model,
                 "agent_info": agent_info, "kwargs": kwargs,
             })
         if on_call is not None:
-            on_call(len(calls) if calls is not None else 0)
+            on_call(counter["n"])
         item = queue.pop(0) if len(queue) > 1 else queue[0]
         if isinstance(item, BaseException):
             raise item
@@ -380,3 +382,120 @@ class TestIntegracaoComRunAgentReal:
         assert (result.tokens_in, result.tokens_out) == (4, 2)
         assert "feito de verdade" in result.message
         assert store.load(board.id).task("t1").status == TASK_CONCLUIDA
+
+
+class TestChecagensECorrecao:
+    def _board(self, checagem, *, max_corrections: int = 3) -> Board:
+        board = Board.new("checagem", run_id="run-check")
+        board.add_task("f", "tarefa", acoes=["a"], checagem=checagem)
+        board.orcamento["max_correcoes_por_task"] = max_corrections
+        return board
+
+    def test_checagem_ok_na_primeira(self, store, workspace):
+        (workspace / "ok.txt").write_text("ok", encoding="utf-8")
+        board = self._board({"tipo": "arquivo", "path": "ok.txt"})
+
+        with patch("multitask.runner.run_agent", side_effect=make_fake([done("feito")])):
+            result = run_board(board, {}, [], AGENT, store=store, workspace_root=workspace)
+
+        assert result.status == RUN_CONCLUIDA
+        task = board.task("t1")
+        assert task.checagem_ok is True
+        assert "existe" in task.checagem_resumo
+        assert task.correcoes == 0
+        assert task.tentativas == 1
+
+    def test_falha_abre_correcao_e_depois_conclui(self, store, workspace):
+        board = self._board({"tipo": "arquivo", "path": "novo.txt"})
+        calls = []
+
+        def criar_na_segunda(n):
+            calls.append(n)
+            if n >= 2:
+                (workspace / "novo.txt").write_text("ok", encoding="utf-8")
+
+        with patch(
+            "multitask.runner.run_agent",
+            side_effect=make_fake([done("tentativa 1"), done("tentativa 2")],
+                                  on_call=criar_na_segunda),
+        ):
+            result = run_board(board, {}, [], AGENT, store=store, workspace_root=workspace)
+
+        assert result.status == RUN_CONCLUIDA
+        task = board.task("t1")
+        assert task.checagem_ok is True
+        assert task.correcoes == 1
+        assert task.tentativas == 2
+        assert task.resumo == "tentativa 2"
+
+        eventos = [e["tipo"] for e in store.read_events(board.id)]
+        assert "checagem_falhou" in eventos
+        assert "correcao_iniciada" in eventos
+        assert "task_corrigida" in eventos
+        assert "task_concluida" in eventos
+
+    def test_correcao_recebe_erro_e_arquivos(self, store, workspace):
+        (workspace / "index.html").write_text("conteúdo atual", encoding="utf-8")
+        board = self._board(
+            {"tipo": "arquivo", "path": "index.html", "contem": "esperado"}
+        )
+        prompts = []
+
+        def fake(prompt, tools, schema, model, agent_info, **kwargs):
+            prompts.append(prompt)
+            if len(prompts) == 2:
+                (workspace / "index.html").write_text(
+                    "conteúdo esperado", encoding="utf-8"
+                )
+            return done(f"tentativa {len(prompts)}")
+
+        with patch("multitask.runner.run_agent", side_effect=fake):
+            result = run_board(board, {}, [], AGENT, store=store, workspace_root=workspace)
+
+        assert result.status == RUN_CONCLUIDA
+        assert "Correção automática" in prompts[1]
+        assert "não contém" in prompts[1]
+        assert "conteúdo atual" in prompts[1]
+
+    def test_correcoes_esgotadas_falham(self, store, workspace):
+        board = self._board(
+            {"tipo": "arquivo", "path": "nunca.txt"}, max_corrections=1,
+        )
+        with patch("multitask.runner.run_agent", side_effect=make_fake([done("ok")])):
+            result = run_board(board, {}, [], AGENT, store=store, workspace_root=workspace)
+
+        assert result.status == RUN_FALHOU
+        task = board.task("t1")
+        assert task.status == TASK_FALHOU
+        assert task.checagem_ok is False
+        assert task.correcoes == 1
+        assert task.tentativas == 2
+        assert "checagem falhou" in task.erro
+        assert "Falhas" in result.message
+
+    def test_sem_checagem_nao_marca_verificado(self, store, workspace):
+        board = Board.new("sem check", run_id="run-sem-check")
+        board.add_task("f", "tarefa", acoes=["a"])
+
+        with patch("multitask.runner.run_agent", side_effect=make_fake([done("ok")])):
+            run_board(board, {}, [], AGENT, store=store, workspace_root=workspace)
+
+        task = board.task("t1")
+        assert task.checagem_ok is None
+        assert task.checagem_resumo == "sem checagem automática"
+
+    def test_orcamento_esgotado_impede_correcao(self, store, workspace):
+        board = self._board({"tipo": "arquivo", "path": "nunca.txt"})
+        board.orcamento["max_tokens"] = 5
+
+        with patch(
+            "multitask.runner.run_agent",
+            side_effect=make_fake([done("ok", tokens_in=10, tokens_out=5)]),
+        ):
+            result = run_board(board, {}, [], AGENT, store=store, workspace_root=workspace)
+
+        task = board.task("t1")
+        assert result.status == RUN_FALHOU
+        assert task.correcoes == 0
+        assert task.tentativas == 1
+        assert "orçamento" in task.erro

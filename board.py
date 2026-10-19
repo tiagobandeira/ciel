@@ -66,7 +66,8 @@ EVENT_TYPES = frozenset({
     "run_encerrada",
     "fase_iniciada", "fase_concluida",
     "task_iniciada", "task_concluida", "task_falhou", "task_pulada",
-    "checagem_falhou", "checkpoint", "replanejado",
+    "checagem_ok", "checagem_falhou", "correcao_iniciada", "task_corrigida",
+    "checkpoint", "replanejado",
 })
 
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -180,6 +181,8 @@ class TaskState:
     acoes: list[str] = field(default_factory=list)
     resultado_esperado: str = ""
     checagem: Any = None
+    checagem_ok: bool | None = None
+    checagem_resumo: str = ""
     resumo: str = ""
     artefatos: list[dict] = field(default_factory=list)
     decisoes: list[str] = field(default_factory=list)
@@ -475,16 +478,25 @@ class Board:
         duracao_s: float = 0.0,
         artefatos: list[str] | None = None,
         decisoes: list[str] | None = None,
+        correcoes: int | None = None,
+        checagem_ok: bool | None = None,
+        checagem_resumo: str | None = None,
     ) -> TaskState:
-        task = self.mark_task(
-            task_id,
-            status,
-            resumo=resumo,
-            erro=erro,
-            tokens_in=_coerce_int(tokens_in),
-            tokens_out=_coerce_int(tokens_out),
-            duracao_s=float(duracao_s or 0.0),
-        )
+        fields = {
+            "resumo": resumo,
+            "erro": erro,
+            "tokens_in": _coerce_int(tokens_in),
+            "tokens_out": _coerce_int(tokens_out),
+            "duracao_s": float(duracao_s or 0.0),
+        }
+        if correcoes is not None:
+            fields["correcoes"] = _coerce_int(correcoes)
+        if checagem_ok is not None:
+            fields["checagem_ok"] = bool(checagem_ok)
+        if checagem_resumo is not None:
+            fields["checagem_resumo"] = str(checagem_resumo)
+
+        task = self.mark_task(task_id, status, **fields)
         for path in artefatos or []:
             self.add_artifact(task_id, path)
         for decision in decisoes or []:

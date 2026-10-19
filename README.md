@@ -316,6 +316,7 @@ ações:
 - criar index.html
 - criar style.css
 resultado esperado: os arquivos existem
+checagem: {"tipo": "arquivo", "path": "index.html"}
 
 ## task: conferir
 fase: verificação
@@ -326,12 +327,15 @@ resultado esperado: a listagem contém os arquivos
 ```
 
 O estado fica em `data/runs/<id>/board.json` (e os eventos em `eventos.jsonl`),
-com escrita atômica e trava por execução. O relatório final é montado a partir
-do quadro — não depende de o modelo lembrar do que fez.
+com escrita atômica e trava por execução. Cada task pode declarar uma
+`checagem` por código (`arquivo`, `comando`, `http`, `json`); se falhar, o
+runner tenta uma correção com o erro e os arquivos envolvidos, até o limite
+configurado. O relatório final é montado a partir do quadro — não depende de o
+modelo lembrar do que fez.
 
 **Nesta fase:** o plano vem de um fluxo escrito à mão (o planejador com modelo
-secundário chega na próxima fase); checagens automáticas por código e a TUI
-dedicada também. Use `python ciel.py --cli` por enquanto.
+secundário chega na próxima fase) e a TUI dedicada também. Use
+`python ciel.py --cli` por enquanto.
 
 → **[Documentação: docs/multitask.md](docs/multitask.md)**
 

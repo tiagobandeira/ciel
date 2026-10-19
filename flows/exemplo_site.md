@@ -13,6 +13,7 @@ ações:
 - criar data/user/exemplo_multitask/style.css com um tema escuro simples e legível
 - criar data/user/exemplo_multitask/script.js com uma saudação no console
 resultado esperado: os três arquivos existem em data/user/exemplo_multitask
+checagem: [{"tipo": "arquivo", "path": "data/user/exemplo_multitask/index.html", "contem": "<html"}, {"tipo": "arquivo", "path": "data/user/exemplo_multitask/style.css"}, {"tipo": "arquivo", "path": "data/user/exemplo_multitask/script.js"}]
 
 ## task: conferir
 fase: verificação
@@ -22,3 +23,4 @@ ações:
 - listar data/user/exemplo_multitask [tool: list_directory]
 - confirmar que index.html, style.css e script.js aparecem na listagem
 resultado esperado: a listagem contém os três arquivos
+checagem: {"tipo": "arquivo", "path": "data/user/exemplo_multitask/style.css"}

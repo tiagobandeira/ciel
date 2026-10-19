@@ -2197,7 +2197,10 @@ def main():
                 TASK_PENDENTE,
             )
             from llm.roles import load_roles
-            from multitask.flow import FlowError, build_board, list_flows, load_flow
+            from multitask.flow import (
+                FlowError, build_board, command_checks,
+                is_trusted_flow_path, list_flows, load_flow,
+            )
             from multitask.runner import reset_interrupted_tasks, run_board
 
             arg      = user_input[len("/multitask"):].strip()
@@ -2298,6 +2301,35 @@ def main():
                     )
                     continue
 
+                if not is_trusted_flow_path(flow.path):
+                    cmd_checks = command_checks(flow)
+                    warn = [
+                        f"  [warn]fluxo externo:[/warn] {escape(str(flow.path))}",
+                        f"  [muted]{len(flow.tasks)} tasks · "
+                        f"{sum(1 for t in flow.tasks if t.get('checagem'))} "
+                        f"checagem(ns)[/muted]",
+                    ]
+                    if cmd_checks:
+                        warn.append(
+                            f"  [err]{len(cmd_checks)} checagem(ns) executam "
+                            f"comandos neste computador.[/err]"
+                        )
+                    console.print(Panel(
+                        "\n".join(warn),
+                        title="[warn]⚠ fluxo fora de flows/[/warn]",
+                        border_style=CLR_WARN,
+                        padding=(0, 1),
+                    ))
+                    console.print()
+                    raw_trust = Prompt.ask(
+                        f"  [{CLR_WARN}]usar este fluxo?[/{CLR_WARN}]",
+                        choices=["s", "n"],
+                        default="n",
+                    ).strip().lower()
+                    if raw_trust != "s":
+                        console.print("  [muted]cancelado.[/muted]\n")
+                        continue
+
                 try:
                     board = build_board(
                         flow, objetivo=objetivo_override or None
@@ -2352,9 +2384,18 @@ def main():
                         f"  [muted]← {', '.join(task.depende_de)}[/muted]"
                         if task.depende_de else ""
                     )
+                    check = ""
+                    if task.checagem:
+                        if isinstance(task.checagem, dict):
+                            ctype = task.checagem.get("tipo") or "check"
+                        elif isinstance(task.checagem, list):
+                            ctype = f"{len(task.checagem)} checks"
+                        else:
+                            ctype = "manual"
+                        check = f"  [muted]· {escape(str(ctype))}[/muted]"
                     plan.append(
                         f"    {_icons.get(task.status, '○')} "
-                        f"{escape(task.titulo)}{dep}"
+                        f"{escape(task.titulo)}{dep}{check}"
                     )
 
             console.print(Panel(
@@ -2426,11 +2467,33 @@ def main():
                         f"  [ok]✓[/ok] {escape(str(event.get('titulo', '')))}  "
                         f"[muted]{escape(resumo)}[/muted]"
                     )
+                    if event.get("checagem_ok") is True and not event.get("correcoes"):
+                        console.print(
+                            f"  [muted]✓ checagem: "
+                            f"{escape(str(event.get('checagem', '')))}[/muted]"
+                        )
                 elif tipo == "task_falhou":
                     erro = str(event.get("erro") or "")[:120]
                     console.print(
                         f"  [err]✗[/err] {escape(str(event.get('titulo', '')))}  "
                         f"[muted]{escape(erro)}[/muted]"
+                    )
+                elif tipo == "checagem_falhou":
+                    console.print(
+                        f"  [warn]✗ checagem:[/warn] "
+                        f"{escape(str(event.get('erro', '')))}"
+                    )
+                elif tipo == "correcao_iniciada":
+                    console.print(
+                        f"  [warn]↻ correção "
+                        f"{event.get('tentativa')}/{event.get('max')}[/warn]"
+                    )
+                elif tipo == "task_corrigida":
+                    n_corr = int(event.get("correcoes") or 0)
+                    label = "correção" if n_corr == 1 else "correções"
+                    console.print(
+                        f"  [ok]✓ checagem ok após "
+                        f"{n_corr} {label}[/ok]"
                     )
                 elif tipo == "run_pausada":
                     console.print(

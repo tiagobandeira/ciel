@@ -98,6 +98,27 @@ class TestMarkdown:
         assert "### Falhas" in report
         assert "arquivo não encontrado" in report
 
+    def test_verificacao_e_correcoes(self):
+        board = make_board()
+        task = board.task("t1")
+        task.checagem_ok = True
+        task.checagem_resumo = "arquivo existe: site/index.html"
+        task.correcoes = 2
+
+        report = build_report(board)
+        assert "verificação: ✓ arquivo existe" in report
+        assert "correções: 2" in report
+        assert "2 correções" in report
+
+    def test_verificacao_falha_aparece(self):
+        board = make_board()
+        task = board.task("t1")
+        task.checagem_ok = False
+        task.checagem_resumo = "comando retornou 1"
+
+        report = build_report(board)
+        assert "verificação: ✗ comando retornou 1" in report
+
     def test_sem_tasks_concluidas(self):
         board = Board.new("vazio", run_id="r")
         board.add_task("f", "t", acoes=["a"])
