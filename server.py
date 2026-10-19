@@ -411,9 +411,9 @@ def _contexto_tela(tela, ativo: bool, palco: str = "", foco: str = ""):
         "- ui_painel_noticias(tema): abre um painel com notícias recentes (Google Notícias); use "
         "quando o usuário pedir notícias ou informação atual.",
         "- ui_painel_feed(tema): abre o feed de pesquisa no palco central com notícias, posts do "
-        "Bluesky e mídia do Wikimedia sobre o tema; use quando o usuário pedir o feed, quiser "
-        "aprofundar um assunto ou explorar várias fontes abertas. Se o feed já estiver aberto e "
-        "o assunto mudar, chame esta tool de novo com o novo tema para atualizá-lo.",
+        "Bluesky e mídia do Wikimedia sobre o tema; use quando o usuário pedir o feed ou quiser "
+        "explorar várias fontes abertas. Não atualize o feed sozinho a cada pergunta: a atualização "
+        "é manual pelo botão Recarregar do feed.",
         "- ui_painel_video(tema, url=\"\"): abre um vídeo no palco central. Se tiver uma URL "
         "de YouTube/Vimeo/vídeo direto, passe em url; senão busca no Wikimedia Commons.",
         "- ui_painel_tarefas(titulo, itens): abre uma checklist lateral; itens separados por linha.",

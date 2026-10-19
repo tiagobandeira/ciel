@@ -530,11 +530,12 @@ rede:{partes:[{tipo:'esf',r:.5,peso:2},...N5.map(q=>({tipo:'esf',r:.25,pos:[...q
 const TOOLS={web_search:'lupa',web_search_extended:'lupa',read_url:'lupa',http_request:'lupa',
 read_file:'documento',read_pdf:'documento',read_source:'documento',search_knowledge:'documento',list_directory:'documento',list_directory_files:'documento',
 write_file:'lapis',docx_criar:'lapis',docx_substituir_texto:'lapis',docx_comentar:'lapis',run_script:'terminal',secondary_model:'rede'};
-let tema=null,fim,faloui=false,ultC='',lerId=0,leitura=false,modoLive=false,modoPesquisa=false,anotId=null,marcas=[],kAtual=-1,lendo=false,temaPesquisa='',feedReq=0;
+let tema=null,fim,faloui=false,ultC='',lerId=0,leitura=false,modoLive=false,modoPesquisa=false,anotId=null,marcas=[],kAtual=-1,lendo=false,temaPesquisa='',feedReq=0,ultimoTemaChat='';
 let turnoAtivo=false,filaFala=[],falandoPainel=false,painelLerId=0,painelFalandoId=null,ttsWatch=null,painelWatch=null;
 try{leitura=localStorage.getItem('ciel_leitura')==='1'}catch(e){}
 try{modoLive=localStorage.getItem('ciel_live')==='1'}catch(e){}
 try{temaPesquisa=localStorage.getItem('ciel:ultimo-tema')||''}catch(e){}
+try{ultimoTemaChat=localStorage.getItem('ciel:ultimo-tema-chat')||temaPesquisa}catch(e){}
 const limpa=t=>{const r=t.replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/https?:\/\/\S+/g,'').replace(/[*_`#>|~]+/g,' ').replace(/^\s*[-•]\s+/,'').replace(/\s+/g,' ').trim();return /[\p{L}\p{N}]/u.test(r)?r:''};
 const fatiarFala=(t,max=160)=>{const out=[];let r=String(t||'').trim();while(r.length>max){let c=r.lastIndexOf(' ',max);if(c<max*.55)c=max;const p=r.slice(0,c).trim();if(p)out.push(p);r=r.slice(c).trim()}if(r)out.push(r);return out};
 const voz=()=>{const v=speechSynthesis.getVoices().filter(x=>/^pt/i.test(x.lang));return v.find(x=>/pt-BR/i.test(x.lang)&&/natural|online/i.test(x.name))||v.find(x=>/pt-BR/i.test(x.lang))||v[0]};
@@ -670,10 +671,15 @@ else if(m.tipo==='erro'){turnoAtivo=false;cap('⚠ '+m.texto);tema=null;go('repo
 const es=new EventSource('/ui/events');es.onmessage=e=>{try{ev(JSON.parse(e.data))}catch(x){}};
 async function send(deVoz){const t=$('msg').value.trim();if(!t)return;
 const semTema=t.length<4||/^(?:ok|obrigad[oa]|valeu|sim|não|nao|beleza|legal|entendi|show|perfeito|hum+|hmm+|interessante)\b/i.test(t);
-if(modoPesquisa&&t&&!semTema&&!/^(?:sobre este item:|fecha|fechar|ocult|escond|limpa|limpar)/i.test(t)){
-  const tema=temaDaPergunta(t);temaPesquisa=tema;
-  try{localStorage.setItem('ciel:ultimo-tema',tema)}catch(e){}
-  atualizarFeedAberto(tema);
+const comando=/^(?:sobre este item:|fecha|fechar|ocult|escond|limpa|limpar)/i.test(t);
+const temaAtual=(!semTema&&!comando)?temaDaPergunta(t):'';
+if(temaAtual){
+  ultimoTemaChat=temaAtual;
+  try{localStorage.setItem('ciel:ultimo-tema-chat',temaAtual)}catch(e){}
+}
+if(modoPesquisa&&temaAtual){
+  temaPesquisa=temaAtual;
+  try{localStorage.setItem('ciel:ultimo-tema',temaAtual)}catch(e){}
 }
 aquecerAudio();$('msg').value='';parar();turnoAtivo=true;tema=null;faloui=false;ultC='';
 if(deVoz===true&&vz)vz.envio=performance.now();else vz=null;
@@ -1226,17 +1232,34 @@ const FEED_DEMO=[
 ];
 function temaDaPergunta(texto){
   let s=String(texto||'').replace(/\s+/g,' ').trim();
-  s=s.replace(/^(?:me\s+)?(?:mostre|mostra|fale|fala|explique|explica|quero|queria|gostaria|pesquise|pesquisa|busque|busca|abra|abre|traga|traz|conte|conta)\s+(?:mais\s+)?(?:sobre\s+|de\s+|do\s+|da\s+)?/i,'');
+  s=s.replace(/^(?:bora|bara|vamos)\s+/i,'');
+  s=s.replace(/^(?:me\s+)?(?:mostre|mostra|fale|fala|falar|explique|explica|quero|queria|gostaria|pesquise|pesquisa|busque|busca|abra|abre|traga|traz|conte|conta)\s+(?:mais\s+)?(?:sobre\s+|de\s+|do\s+|da\s+)?/i,'');
   s=s.replace(/^(?:saber|conhecer|entender|aprender)\s+(?:mais\s+)?(?:sobre\s+|de\s+|do\s+|da\s+)?/i,'');
   s=s.replace(/^(?:o que (?:é|e)|quem (?:é|e)|como funciona|como)\s+/i,'');
   s=s.replace(/^(?:a|o|as|os|um|uma)\s+/i,'');
   s=s.replace(/[?？！!]+$/,'').trim();
   return (s||String(texto||'')).slice(0,80);
 }
+function ehFeedDemo(id,s){
+  return id==='feed-demo'||!s||!s.p||!s.p.dados||!s.p.dados.tema;
+}
+function limparFeedsDemo(){
+  for(const [id,s] of [...paineisAbertos]){
+    if(s&&s.p&&s.p.tipo==='feed'&&ehFeedDemo(id,s))fecharPainel(id);
+  }
+}
 function feedAbertoId(){
-  if(palcoAtual){const s=paineisAbertos.get(palcoAtual);if(s&&s.p&&s.p.tipo==='feed')return palcoAtual}
-  for(const [id,s] of paineisAbertos){if(s&&s.p&&s.p.tipo==='feed')return id}
-  return null;
+  let demo=null,atual=null;
+  if(palcoAtual){const s=paineisAbertos.get(palcoAtual);if(s&&s.p&&s.p.tipo==='feed')atual=palcoAtual}
+  if(atual&&!ehFeedDemo(atual,paineisAbertos.get(atual)))return atual;
+  if(atual)demo=atual;
+  for(const [id,s] of paineisAbertos){
+    if(s&&s.p&&s.p.tipo==='feed'){
+      if(ehFeedDemo(id,s)){if(!demo)demo=id}
+      else return id;
+    }
+  }
+  return demo;
 }
 function lembrarTema(valor){
   const t=String(valor||'').trim();if(!t)return;
@@ -1384,7 +1407,7 @@ function renderFeed(corpo,p,palco){
     const limiteEspera=setTimeout(()=>ctrl.abort(),30000);
     try{
       const r=await fetch('/api/feed/mais',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({tema:temaPesquisa||temaFeed||'',limite:4,excluir}),signal:ctrl.signal});
+        body:JSON.stringify({tema:temaFeed||temaPesquisa||'',limite:4,excluir}),signal:ctrl.signal});
       const d=await r.json();
       if(minha!==geracao)return;
       if(!d.ok||!Array.isArray(d.itens)||!d.itens.length){carregando=false;fim();return}
@@ -1443,14 +1466,21 @@ async function abrirFeedDemo(){
   if(!modoPesquisa)return;
   const btn=$('feed'),rotulo=btn?btn.textContent:'Feed';
   const existente=feedAbertoId();
-  if(existente){focarPainel(existente);abrirPalcoPorId(existente);return}
+  if(existente){
+    const s=paineisAbertos.get(existente);
+    if(!ehFeedDemo(existente,s)){
+      limparFeedsDemo();focarPainel(existente);abrirPalcoPorId(existente);return;
+    }
+    fecharPainel(existente);
+  }
+  const temaInicial=ultimoTemaChat||temaPesquisa||'';
   if(btn){btn.disabled=true;btn.textContent='…'}
   cap('carregando feed…');
   let painel=null;
   const ctrl=new AbortController();
-  const limiteEspera=setTimeout(()=>ctrl.abort(),30000);
+  const limiteEspera=setTimeout(()=>ctrl.abort(),45000);
   try{
-    const r=await fetch('/api/feed?tema='+encodeURIComponent(temaPesquisa||'')+'&limite=4',{signal:ctrl.signal});
+    const r=await fetch('/api/feed?tema='+encodeURIComponent(temaInicial)+'&limite=4',{signal:ctrl.signal});
     const d=await r.json();
     if(d&&d.ok&&d.painel)painel=d.painel;
   }catch(e){}finally{clearTimeout(limiteEspera)}
@@ -1492,7 +1522,7 @@ async function atualizarFeedAberto(tema,forcar=false){
 function recarregarFeed(){
   const id=feedAbertoId();if(!id)return;
   const s=paineisAbertos.get(id);
-  const tema=(temaPesquisa||(s&&s.p&&s.p.dados&&s.p.dados.tema)||'');
+  const tema=(ultimoTemaChat||temaPesquisa||(s&&s.p&&s.p.dados&&s.p.dados.tema)||'');
   cap('recarregando feed…');
   atualizarFeedAberto(tema,true);
 }
@@ -1693,7 +1723,10 @@ function montarAcoes(el,p){
 }
 function abrirPainel(p){
   if(!p||!p.id||!PAINEIS_RENDER[p.tipo])return;
-  if(p.tipo==='feed'){feedReq++;if(p.dados&&p.dados.tema)lembrarTema(p.dados.tema)}
+  if(p.tipo==='feed'){
+    feedReq++;
+    if(p.dados&&p.dados.tema){limparFeedsDemo();lembrarTema(p.dados.tema)}
+  }
   fecharPainel(p.id);
   const el=document.createElement('section');
   el.className='painel';el.dataset.slot=p.slot||'top-left';el.dataset.id=p.id;el.dataset.tipo=p.tipo;
