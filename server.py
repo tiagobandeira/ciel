@@ -55,6 +55,8 @@ from history_store  import HistoryStore, DB_PATH
 from history_ui     import build_context_injection
 from auth           import AuthManager
 import ui_bus
+from feed_builder import build_painel as construir_feed_painel
+from feed_builder import build_mais as construir_feed_mais
 from panel_actions import executar as executar_acao_painel
 from ui_routes import bp as ui_bp
 
@@ -346,6 +348,8 @@ _UI_ALIASES = {
     "mostrar_imagens": "ui_painel_imagens",
     "mostrar_texto": "ui_painel_texto",
     "mostrar_noticias": "ui_painel_noticias",
+    "carregar_feed": "ui_painel_feed",
+    "mostrar_feed": "ui_painel_feed",
     "focar_painel": "ui_painel_focar",
     "fechar_painel": "ui_painel_fechar",
     "mostrar_palco": "ui_palco_mostrar",
@@ -406,6 +410,10 @@ def _contexto_tela(tela, ativo: bool, palco: str = "", foco: str = ""):
         "usuário pedir para deixar uma síntese ou lista na tela. Não substitui a resposta do chat.",
         "- ui_painel_noticias(tema): abre um painel com notícias recentes (Google Notícias); use "
         "quando o usuário pedir notícias ou informação atual.",
+        "- ui_painel_feed(tema): abre o feed de pesquisa no palco central com notícias, posts do "
+        "Bluesky e mídia do Wikimedia sobre o tema; use quando o usuário pedir o feed, quiser "
+        "aprofundar um assunto ou explorar várias fontes abertas. Se o feed já estiver aberto e "
+        "o assunto mudar, chame esta tool de novo com o novo tema para atualizá-lo.",
         "- ui_painel_video(tema, url=\"\"): abre um vídeo no palco central. Se tiver uma URL "
         "de YouTube/Vimeo/vídeo direto, passe em url; senão busca no Wikimedia Commons.",
         "- ui_painel_tarefas(titulo, itens): abre uma checklist lateral; itens separados por linha.",
@@ -440,6 +448,45 @@ def api_painel_acao():
     data = request.get_json(force=True) or {}
     ok, mensagem = executar_acao_painel(data.get("acao", ""), data)
     return jsonify({"ok": ok, "message": mensagem, "error": None if ok else mensagem}), (200 if ok else 400)
+
+
+@app.route("/api/feed")
+def api_feed():
+    """Monta o feed de pesquisa real para o botão Feed (mesmo builder da tool)."""
+    tema = " ".join(str(request.args.get("tema", "") or "").split())[:80]
+    try:
+        limite = max(4, min(int(request.args.get("limite", "4")), 12))
+    except (TypeError, ValueError):
+        limite = 4
+    forcar = str(request.args.get("refresh", "")).lower() in ("1", "true", "sim")
+    try:
+        painel = construir_feed_painel(tema, limite, forcar)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)[:160]}), 200
+    if not (painel.get("dados") or {}).get("itens"):
+        return jsonify({"ok": False, "error": "sem itens"}), 200
+    return jsonify({"ok": True, "painel": painel})
+
+
+@app.route("/api/feed/mais", methods=["POST"])
+def api_feed_mais():
+    """Próxima página real do feed: busca de novo e ignora os links já vistos."""
+    data = request.get_json(force=True) or {}
+    tema = " ".join(str(data.get("tema", "") or "").split())[:80]
+    try:
+        limite = max(1, min(int(data.get("limite", 4)), 6))
+    except (TypeError, ValueError):
+        limite = 4
+    excluir = data.get("excluir") or []
+    if not isinstance(excluir, list):
+        excluir = []
+    try:
+        pagina = construir_feed_mais(tema, limite, excluir[:200])
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)[:160], "itens": []}), 200
+    itens = pagina.get("itens") or []
+    return jsonify({"ok": bool(itens), "tema": pagina.get("tema", tema),
+                    "itens": itens, "error": None if itens else "sem novos itens"}), 200
 
 
 @app.route("/api/chat", methods=["POST"])
