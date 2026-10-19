@@ -15,11 +15,11 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #bar #msg::placeholder{color:rgba(207,230,255,.45)}
 .bar-toolbar{display:flex;align-items:center;gap:2px;padding:4px;border-radius:999px;background:rgba(8,20,40,.4);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(74,168,255,.14)}
 .bar-sep{width:1px;height:16px;margin:0 4px;background:rgba(74,168,255,.22)}
-#bar .ib{position:relative;width:38px;height:38px;padding:0;display:grid;place-items:center;border:0;border-radius:50%;background:none;box-shadow:none;color:rgba(207,230,255,.6);cursor:pointer;transition:color .2s,background .2s,box-shadow .2s}
-#bar .ib:hover{color:var(--fg);background:rgba(74,168,255,.12)}
-#bar .ib.on{color:#e6f6ff;background:rgba(74,168,255,.22);box-shadow:0 0 14px var(--gl)}
-#bar .ib:disabled{opacity:.4;cursor:default}
-#bar .ib.busy svg{animation:barPulse 1s ease-in-out infinite}
+.ib{position:relative;width:38px;height:38px;padding:0;display:grid;place-items:center;border:0;border-radius:50%;background:none;box-shadow:none;color:rgba(207,230,255,.6);cursor:pointer;transition:color .2s,background .2s,box-shadow .2s}
+.ib:hover{color:var(--fg);background:rgba(74,168,255,.12)}
+.ib.on{color:#e6f6ff;background:rgba(74,168,255,.22);box-shadow:0 0 14px var(--gl)}
+.ib:disabled{opacity:.4;cursor:default}
+.ib.busy svg{animation:barPulse 1s ease-in-out infinite}
 #bar #send{color:#e6f6ff;background:rgba(74,168,255,.26)}
 #bar #mic.on{animation:barPulse 1.2s ease-in-out infinite}
 .ib svg,.it svg{width:20px;height:20px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
@@ -34,7 +34,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 .menu-aj .it .v{margin-left:auto;padding-left:16px;opacity:.6;font-size:12px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);border:0;padding:0}
 @keyframes barPulse{50%{opacity:.45}}
-@media(hover:hover){#bar [data-tip]:hover::after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);white-space:nowrap;padding:4px 9px;border-radius:8px;font-size:12px;color:var(--fg);background:rgba(2,5,13,.88);border:1px solid rgba(74,168,255,.25);pointer-events:none;z-index:2}}
+@media(hover:hover){.ib[data-tip]:hover::after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);white-space:nowrap;padding:4px 9px;border-radius:8px;font-size:12px;color:var(--fg);background:rgba(2,5,13,.88);border:1px solid rgba(74,168,255,.25);pointer-events:none;z-index:2}}
 @media(prefers-reduced-motion:reduce){#bar,#bar *{animation:none!important;transition:none!important}}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid rgba(140,210,255,.75);outline-offset:2px}
 button,input,select{font:inherit;color:var(--fg);background:rgba(74,168,255,.1);border:1px solid rgba(74,168,255,.35);border-radius:10px;padding:6px 10px}
@@ -108,17 +108,17 @@ input{flex:1 1 110px;min-width:0}
 .painel-voz.off{opacity:.22}
 .painel-voz svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .painel-tag{display:none}
-.painel-x{background:none;border:0;color:var(--fg);opacity:.6;font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
-.painel-x:hover{opacity:1}
+.painel-x{width:28px;height:28px;display:grid;place-items:center;padding:0;background:none;border:0;border-radius:50%;color:var(--fg);opacity:.65;font-size:16px;line-height:1;cursor:pointer;transition:opacity .2s,background .2s}
+.painel-x:hover{opacity:1;background:rgba(74,168,255,.12)}
+.painel-x svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
 .painel-acoes{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:7px;border-top:1px solid rgba(74,168,255,.18)}
 .painel-acoes button{font-size:10px;padding:3px 8px;border-radius:8px;background:rgba(74,168,255,.12);border:1px solid rgba(74,168,255,.3);color:var(--fg);cursor:pointer}
-.painel-acoes button[data-icone]{width:28px;height:28px;padding:0;display:grid;place-items:center}
+.painel-acoes button[data-icone]{width:28px;height:28px;padding:0;display:grid;place-items:center;border:0;border-radius:50%;background:none;box-shadow:none}
+.painel-acoes button[data-icone]:hover{background:rgba(74,168,255,.12);border:0}
 .painel-acoes button[data-icone] svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .painel-acoes button:hover{background:rgba(74,168,255,.22);border-color:rgba(140,210,255,.55)}
 .painel-acoes button:disabled{opacity:.45;cursor:wait}
 .palco-icones{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;padding:2px 0}
-.palco-icones .feed-chip{width:36px;height:36px;padding:0;display:grid;place-items:center;border-radius:50%}
-.palco-icones .feed-chip svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
 .tarefas-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .tarefas-top span{font-size:10px;opacity:.65;min-width:34px;font-variant-numeric:tabular-nums}
 .tarefas-barra{flex:1;height:3px;border-radius:2px;background:rgba(74,168,255,.18);overflow:hidden}
@@ -206,15 +206,26 @@ input{flex:1 1 110px;min-width:0}
 .img-preview img{width:100%;height:100%;object-fit:cover;display:block}
 .img-painel .img-tela{position:relative;height:150px;border-radius:12px;overflow:hidden;background:rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center}
 .img-painel .img-tela img{width:100%;height:100%;object-fit:cover;display:block}
-.palco-card .img-painel .img-tela{width:calc(100% + 32px);margin:0 -16px;height:auto;max-height:58vh;border-radius:0;background:#000;display:flex;align-items:center;justify-content:center}
-.palco-card .img-painel .img-tela img{width:auto;max-width:100%;height:auto;max-height:58vh;object-fit:contain;cursor:zoom-in}
-.palco-card .img-painel .img-tela.zoom{max-height:74vh}
-.palco-card .img-painel .img-tela.zoom img{max-height:74vh}
-.palco-card .img-painel .img-tela .img-legenda{position:absolute;left:0;right:0;bottom:0;margin:0;padding:26px 16px 12px;background:linear-gradient(transparent,rgba(2,5,13,.88));font-size:12px;line-height:1.45;pointer-events:none}
-.palco-card .img-painel .img-tela .img-legenda a{pointer-events:auto}
-#palco .img-painel .img-tela{height:min(56vh,460px)}
-#palco .img-painel .img-tela img{object-fit:contain}
-.img-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:2;width:30px;height:30px;padding:0;border-radius:50%;background:rgba(2,5,13,.58);border:1px solid rgba(74,168,255,.45);color:var(--fg);font-size:18px;line-height:1;cursor:pointer}
+.palco-card .img-painel .img-tela{width:calc(100% + 32px);margin:0 -16px;height:58vh;min-height:58vh;max-height:58vh;flex:0 0 58vh;border-radius:0;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+.palco-card .img-painel .img-tela .img-quadro{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;width:100%;height:100%;line-height:0;overflow:hidden}
+.palco-card .img-painel .img-tela .img-quadro img{width:auto;max-width:100%;height:auto;max-height:100%;object-fit:contain;display:block;cursor:zoom-in}
+.palco-card .img-painel .img-tela .img-nav.prev{left:18px}
+.palco-card .img-painel .img-tela .img-nav.next{right:18px}
+.palco-card .img-painel .img-tela.zoom{height:74vh;min-height:74vh;max-height:74vh;flex-basis:74vh}
+.palco-card .img-painel .img-tela.zoom .img-quadro img{max-height:100%}
+.palco-card .img-painel .img-rodape{position:relative;left:0;right:0;flex:0 0 auto;padding:10px 18px 12px;background:rgba(3,9,22,.32);border-top:1px solid rgba(74,168,255,.14)}
+.palco-card .img-painel .img-rodape .img-legenda{position:static;margin:0;padding:0;background:none;font-size:12px;line-height:1.45;pointer-events:auto}
+.palco-card .img-painel .img-rodape .img-dots{margin-top:7px}
+#palco.imagem-palco .palco-card{height:72vh;max-height:72vh}
+#palco.imagem-palco #palco-corpo{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+#palco.imagem-palco .img-painel{display:flex;flex-direction:column;height:100%;min-height:0}
+#palco.imagem-palco .img-tela{flex:1 1 auto;min-height:0;height:auto;max-height:none;flex-basis:auto}
+#palco.imagem-palco .img-tela.zoom{height:auto;min-height:0;max-height:none;flex-basis:auto}
+#palco.imagem-palco .img-tela.zoom .img-quadro img{transform:scale(1.25);max-height:100%}
+#palco.imagem-palco .img-rodape{flex:0 0 auto}
+.img-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:2;width:38px;height:38px;padding:0;border:0;border-radius:50%;background:rgba(2,5,13,.42);color:rgba(207,230,255,.78);display:grid;place-items:center;cursor:pointer;transition:color .2s,background .2s}
+.img-nav:hover{color:#fff;background:rgba(2,5,13,.72)}
+.img-nav svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
 .img-nav.prev{left:8px}.img-nav.next{right:8px}
 .img-legenda{font-size:11px;opacity:.85;margin-top:6px;line-height:1.45}
 .img-legenda a{color:var(--ac);text-decoration:none}
@@ -254,7 +265,7 @@ input{flex:1 1 110px;min-width:0}
   .painel.foco{max-height:46vh}
 }
 </style></head><body>
-<canvas id="c"></canvas><div id="tela"><div id="paineis"></div></div><div id="palco" aria-hidden="true"><div class="palco-fundo"></div><div id="palco-opcoes" class="palco-opcoes" aria-hidden="true"></div><div class="palco-card"><div class="palco-h"><b id="palco-titulo"></b><button class="painel-x" id="palco-min" type="button" title="Minimizar para a lateral">↘</button><button class="painel-x" id="palco-x" type="button" title="Fechar">×</button></div><div id="palco-corpo"></div></div></div><div id="hud"></div><div id="cap"></div><div id="chat" class="vazio"><div id="msgs"></div></div>
+<canvas id="c"></canvas><div id="tela"><div id="paineis"></div></div><div id="palco" aria-hidden="true"><div class="palco-fundo"></div><div id="palco-opcoes" class="palco-opcoes" aria-hidden="true"></div><div class="palco-card"><div class="palco-h"><b id="palco-titulo"></b><button class="painel-x ib" id="palco-min" type="button" title="Minimizar para a lateral" aria-label="Minimizar para a lateral" data-tip="Minimizar"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="11" height="11" rx="2"/><path d="M9 21h9a2 2 0 0 0 2-2v-9"/></svg></button><button class="painel-x ib" id="palco-x" type="button" title="Fechar" aria-label="Fechar" data-tip="Fechar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div id="palco-corpo"></div></div></div><div id="hud"></div><div id="cap"></div><div id="chat" class="vazio"><div id="msgs"></div></div>
 <div id="bar"><div class="bar-composer"><input id="msg" placeholder="Fale com o Ciel" autocomplete="off" aria-label="Mensagem para o Ciel"><button id="mic" class="ib" type="button" aria-label="Falar" data-tip="Falar"><svg class="i-mic" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true"><rect class="fl" x="7" y="7" width="10" height="10" rx="2"/></svg></button><button id="send" class="ib" type="button" aria-label="Enviar" data-tip="Enviar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
 <div class="bar-toolbar" role="toolbar" aria-label="Modos do Ciel"><button id="lv" class="ib" type="button" aria-label="Live" data-tip="Live"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h2M8 8v8M12 4v16M16 8v8M20 12h-2"/></svg></button><button id="pq" class="ib" type="button" aria-label="Pesquisa" data-tip="Pesquisa"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></button><button id="feed" class="ib" type="button" aria-label="Feed" data-tip="Feed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5a14 14 0 0 1 14 14M5 11a8 8 0 0 1 8 8"/><circle class="fl" cx="6" cy="18" r="1.3"/></svg></button><span class="bar-sep" aria-hidden="true"></span><button id="mais" class="ib" type="button" aria-label="Ajustes" aria-expanded="false" aria-controls="menuAj" data-tip="Ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fl" cx="5" cy="12" r="1.5"/><circle class="fl" cx="12" cy="12" r="1.5"/><circle class="fl" cx="19" cy="12" r="1.5"/></svg></button></div>
 <div id="menuAj" class="menu-aj"><button id="rd" class="it" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/></svg><span>Leitura</span></button><button id="ft" class="it on" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"/></svg><span>Formas de tool</span></button><button id="pin" class="it" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l-1 6 3 3H7l3-3-1-6zM12 13v7"/></svg><span>Fixar</span></button><button id="qb" class="it" type="button" data-n="2"><svg viewBox="0 0 24 24" aria-hidden="true"><rect class="fl b1" x="5" y="14" width="3.5" height="6" rx="1"/><rect class="fl b2" x="10.25" y="9" width="3.5" height="11" rx="1"/><rect class="fl b3" x="15.5" y="4" width="3.5" height="16" rx="1"/></svg><span>Profundidade</span><span class="v" id="qv">Média</span></button><select id="q" class="sr" tabindex="-1" aria-hidden="true"><option value="15000">Leve</option><option value="30000" selected>Média</option><option value="60000">Alta</option></select></div>
@@ -1082,6 +1093,23 @@ function menuBotao(row,rotulo,onClick){
   const b=document.createElement('button');b.type='button';b.className='feed-chip';b.textContent=rotulo;
   b.onclick=onClick;row.appendChild(b);return b;
 }
+const ICONES_PALCO={
+  perguntar:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>',
+  salvar:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16l-6-4-6 4z"/></svg>',
+  abrir:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/><path d="M19 13v6H5V5h6"/></svg>',
+  zoom:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M15 15l4.5 4.5M8 10.5h5M10.5 8v5"/></svg>',
+  minimizar:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h6M14 5h5v5M20 4l-7 7"/></svg>',
+  fechar:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+};
+function menuFileira(){
+  const m=$('palco-opcoes');if(!m)return null;
+  const row=document.createElement('div');row.className='palco-icones';m.appendChild(row);return row;
+}
+function menuIcone(row,rotulo,chave,onClick){
+  if(!row)return null;
+  const b=document.createElement('button');b.type='button';b.className='ib';b.dataset.tip=rotulo;b.title=rotulo;
+  b.setAttribute('aria-label',rotulo);b.innerHTML=ICONES_PALCO[chave]||'';b.onclick=onClick;row.appendChild(b);return b;
+}
 function abrirFonteItem(link){
   if(link&&String(link).startsWith('http'))window.open(link,'_blank','noopener,noreferrer');
 }
@@ -1114,7 +1142,7 @@ function renderImagens(corpo,p,palco){
     mostra();
     return ()=>clearInterval(timer);
   }
-  corpo.innerHTML='<div class="img-tela"><img loading="lazy" decoding="async" alt=""><button class="img-nav prev" type="button" title="Anterior">‹</button><button class="img-nav next" type="button" title="Próxima">›</button><div class="img-legenda"></div></div><div class="img-dots"></div>';
+  corpo.innerHTML='<div class="img-tela"><div class="img-quadro"><img loading="lazy" decoding="async" alt=""><button class="img-nav prev ib" type="button" title="Anterior" aria-label="Anterior"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button><button class="img-nav next ib" type="button" title="Próxima" aria-label="Próxima"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button></div></div><div class="img-rodape"><div class="img-legenda"></div><div class="img-dots"></div></div>';
   const img=corpo.querySelector('img'),leg=corpo.querySelector('.img-legenda'),dots=corpo.querySelector('.img-dots'),tela=corpo.querySelector('.img-tela');
   let usouFallback=false;
   img.onerror=()=>{
@@ -1125,32 +1153,20 @@ function renderImagens(corpo,p,palco){
   iniciarMenuPalco();
   menuTitulo('Imagem');
   const infoMenu=menuInfo('');
-  const row=document.createElement('div');row.className='palco-icones';
-  const svg={
-    perguntar:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>',
-    salvar:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16l-6-4-6 4z"/></svg>',
-    abrir:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/><path d="M19 13v6H5V5h6"/></svg>',
-    zoom:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M15 15l4.5 4.5M8 10.5h5M10.5 8v5"/></svg>',
-    minimizar:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h6M14 5h5v5M20 4l-7 7"/></svg>',
-    fechar:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
-  };
-  const icone=(rotulo,chave,fn)=>{const b=document.createElement('button');b.type='button';b.className='feed-chip';b.innerHTML=svg[chave];b.title=rotulo;b.setAttribute('aria-label',rotulo);b.onclick=fn;row.appendChild(b);return b};
-  const bPerguntar=icone('Perguntar sobre a imagem','perguntar',()=>perguntarItem((itens[i]||{}).titulo||p.titulo||'Imagem',(itens[i]||{}).credito||'Wikimedia'));
-  const bSalvar=icone('Salvar fonte','salvar',()=>{
+  const row=menuFileira();
+  const bPerguntar=menuIcone(row,'Perguntar sobre a imagem','perguntar',()=>perguntarItem((itens[i]||{}).titulo||p.titulo||'Imagem',(itens[i]||{}).credito||'Wikimedia'));
+  const bSalvar=menuIcone(row,'Salvar fonte','salvar',()=>{
     const it=itens[i]||{};
     const saved=salvarFonte({titulo:it.titulo||p.titulo||'Imagem',fonte:it.credito||'Wikimedia',link:it.link||'',tipo:'IMAGEM',quando:''},bSalvar);
     bSalvar.classList.toggle('on',saved);
   });
   bSalvar.dataset.icone='1';
-  const bAbrir=icone('Abrir original','abrir',()=>abrirFonteItem((itens[i]||{}).link));
-  const bZoom=icone('Ampliar imagem','zoom',()=>{
+  const bAbrir=menuIcone(row,'Abrir original','abrir',()=>abrirFonteItem((itens[i]||{}).link));
+  const bZoom=menuIcone(row,'Ampliar imagem','zoom',()=>{
     zoom=!zoom;tela.classList.toggle('zoom',zoom);bZoom.classList.toggle('on',zoom);
-    bZoom.title=zoom?'Reduzir imagem':'Ampliar imagem';bZoom.setAttribute('aria-label',bZoom.title);
+    bZoom.title=zoom?'Reduzir imagem':'Ampliar imagem';bZoom.setAttribute('aria-label',bZoom.title);bZoom.dataset.tip=bZoom.title;
     img.style.cursor=zoom?'zoom-out':'zoom-in';
   });
-  icone('Minimizar para a lateral','minimizar',()=>minimizarPalco());
-  icone('Fechar','fechar',()=>fecharPalco());
-  document.getElementById('palco-opcoes').appendChild(row);
   function atualizaMenu(){
     const it=itens[i]||{};
     if(infoMenu)infoMenu.textContent=(i+1)+' de '+itens.length+' · '+(it.credito||'Wikimedia');
@@ -1159,7 +1175,7 @@ function renderImagens(corpo,p,palco){
       const salvo=fontesSalvas().some(x=>x.link===it.link);
       bSalvar.classList.toggle('on',salvo);
       bSalvar.title=salvo?'Remover dos salvos':'Salvar fonte';
-      bSalvar.setAttribute('aria-label',bSalvar.title);
+      bSalvar.setAttribute('aria-label',bSalvar.title);bSalvar.dataset.tip=bSalvar.title;
       bSalvar.disabled=!it.link;
     }
   }
@@ -1397,7 +1413,7 @@ function salvarFonte(item,btn){
   else arr.push({titulo:item.titulo,fonte:item.fonte,link:item.link,tipo:item.tipo,quando:item.quando});
   try{localStorage.setItem('ciel:fontes',JSON.stringify(arr.slice(-100)))}catch(e){}
   const saved=i<0;
-  if(btn){if(!btn.dataset.icone)btn.textContent=saved?'Salvo':'Salvar';btn.title=saved?'Remover dos salvos':'Salvar fonte';btn.classList.toggle('on',saved)}
+  if(btn){if(!btn.dataset.icone)btn.textContent=saved?'Salvo':'Salvar';btn.title=saved?'Remover dos salvos':'Salvar fonte';if(btn.dataset.tip)btn.dataset.tip=btn.title;btn.classList.toggle('on',saved)}
   cap(saved?'fonte salva':'fonte removida dos salvos');
   return saved;
 }
@@ -1702,21 +1718,19 @@ function renderVideo(corpo,p,palco){
   iniciarMenuPalco();
   menuTitulo('Vídeo');
   menuInfo((d.fonte||provedor||'vídeo')+' · '+(d.embed?'player no centro':''));
-  const gCiel=menuGrupo('Ciel');
-  const bPerguntar=menuBotao(gCiel,'Perguntar',()=>perguntarItem(p.titulo||d.titulo||'Vídeo',d.fonte||provedor||''));
-  const bSalvar=menuBotao(gCiel,'Salvar',()=>{
+  const row=menuFileira();
+  const bPerguntar=menuIcone(row,'Perguntar sobre o vídeo','perguntar',()=>perguntarItem(p.titulo||d.titulo||'Vídeo',d.fonte||provedor||''));
+  const bSalvar=menuIcone(row,'Salvar fonte','salvar',()=>{
     const saved=salvarFonte({titulo:p.titulo||d.titulo||'Vídeo',fonte:d.fonte||provedor||'',link:d.link||'',tipo:'VÍDEO',quando:''},bSalvar);
     bSalvar.classList.toggle('on',saved);
   });
-  const gFonte=menuGrupo('Fonte');
-  const bAbrir=menuBotao(gFonte,'Abrir no provedor',()=>abrirFonteItem(d.link));
+  bSalvar.dataset.icone='1';
+  const bAbrir=menuIcone(row,'Abrir no provedor','abrir',()=>abrirFonteItem(d.link));
   bAbrir.disabled=!(d.link&&String(d.link).startsWith('http'));
   if(!d.link)bSalvar.disabled=true;
-  const gJanela=menuGrupo('Janela');
-  menuBotao(gJanela,'Minimizar',()=>minimizarPalco());
-  menuBotao(gJanela,'Fechar',()=>fecharPalco());
   const salvo=d.link&&fontesSalvas().some(x=>x.link===d.link);
-  bSalvar.textContent=salvo?'Salvo':'Salvar';bSalvar.classList.toggle('on',salvo);
+  bSalvar.classList.toggle('on',salvo);
+  if(salvo){bSalvar.title='Remover dos salvos';bSalvar.dataset.tip=bSalvar.title}
   return ()=>{
     try{
       if(midia.tagName==='VIDEO'){midia.pause();midia.removeAttribute('src');midia.load()}
@@ -1744,6 +1758,7 @@ function abrirPalco(p){
   fecharPalco();
   palcoAtual=p.id;$('palco-titulo').textContent=p.titulo||p.tipo;
   $('palco').classList.toggle('modo-opcoes',p.tipo==='feed'||p.tipo==='imagens'||p.tipo==='video');
+  $('palco').classList.toggle('imagem-palco',p.tipo==='imagens');
   $('palco').querySelector('.palco-card').classList.toggle('feed-palco',p.tipo==='feed');
   const corpo=$('palco-corpo');corpo.innerHTML='';
   try{palcoCleanup=render.palco(corpo,p)||null}catch(e){corpo.textContent='Falha ao abrir o painel.'}
@@ -1760,7 +1775,7 @@ function fecharPalco(){
   try{if(palcoCleanup)palcoCleanup()}catch(e){}
   palcoCleanup=null;
   $('palco').classList.remove('aberto');$('palco').setAttribute('aria-hidden','true');
-  $('palco').classList.remove('modo-opcoes');
+  $('palco').classList.remove('modo-opcoes','imagem-palco');
   $('palco').querySelector('.palco-card').classList.remove('feed-palco');
   const fo=$('palco-opcoes');if(fo){fo.innerHTML='';fo.classList.remove('aberto');fo.setAttribute('aria-hidden','true')}
   $('palco-corpo').innerHTML='';
@@ -1874,7 +1889,8 @@ function abrirPainel(p){
   const voz=document.createElement('span');voz.className='painel-voz'+(nunca?' off':'');
   voz.title='Fala: '+(p.fala||'nunca');voz.setAttribute('aria-label','Fala: '+(p.fala||'nunca'));
   voz.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"></path><path d="M16 8.5a5 5 0 0 1 0 7"></path>'+(nunca?'<path d="M4 4l16 16"></path>':'')+'</svg>';
-  const x=document.createElement('button');x.className='painel-x';x.type='button';x.textContent='×';x.title='Fechar';
+  const x=document.createElement('button');x.className='painel-x ib';x.type='button';x.title='Fechar';x.dataset.tip='Fechar';x.setAttribute('aria-label','Fechar');
+  x.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
   x.onclick=(e)=>{e.stopPropagation();fecharPainel(p.id)};
   h.onclick=(e)=>{if(e.target.closest('.painel-x'))return;alternarFoco(p.id)};
   h.append(b,voz,x);
