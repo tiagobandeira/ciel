@@ -495,9 +495,16 @@ def _execute(
 
     finally:
         duration = time.monotonic() - started
+        try:
+            planner_in = int(board.meta.get("planner_tokens_in") or 0)
+            planner_out = int(board.meta.get("planner_tokens_out") or 0)
+        except (TypeError, ValueError):
+            planner_in = planner_out = 0
         board.meta["duracao_s"] = round(duration, 2)
-        board.meta["tokens_in"] = tokens_in
-        board.meta["tokens_out"] = tokens_out
+        # total do relatório inclui planejamento + execução; RunResult
+        # devolve só a execução (o CLI soma o planejador à parte).
+        board.meta["tokens_in"] = planner_in + tokens_in
+        board.meta["tokens_out"] = planner_out + tokens_out
         try:
             store.save(board)
         except Exception:

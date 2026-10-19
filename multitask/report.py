@@ -174,7 +174,10 @@ def _markdown(board: Board) -> str:
     lines = [f"## Multitask — {_one_line(board.objetivo, 200)}", ""]
     lines.append(f"**Status:** {_header_facts(board)}")
     lines.append("")
-    if board.fluxo:
+    if board.meta.get("planner"):
+        lines.append(f"**Plano:** livre (planejador)  ·  **run:** `{board.id}`")
+        lines.append("")
+    elif board.fluxo:
         lines.append(
             f"**Fluxo:** {board.fluxo}  ·  **run:** `{board.id}`"
         )

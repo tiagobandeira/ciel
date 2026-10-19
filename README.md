@@ -132,6 +132,7 @@ python server.py                           # versão server local
 | `/task <arquivo.md>` | executa task pelo caminho direto |
 | `/multitask` | lista fluxos e execuções |
 | `/multitask <fluxo> <objetivo>` | executa um fluxo em tasks com quadro e status |
+| `/multitask <objetivo>` | objetivo livre: o planejador (modelo secundário) monta o plano |
 | `/multitask --fluxos` | lista fluxos disponíveis em `flows/` |
 | `/multitask --listar` | lista execuções e status |
 | `/multitask --retomar <id>` | retoma execução pausada |
@@ -333,8 +334,11 @@ runner tenta uma correção com o erro e os arquivos envolvidos, até o limite
 configurado. O relatório final é montado a partir do quadro — não depende de o
 modelo lembrar do que fez.
 
-**Nesta fase:** o plano vem de um fluxo escrito à mão (o planejador com modelo
-secundário chega na próxima fase) e a TUI dedicada também. Use
+**Plano livre:** `/multitask <objetivo>` usa o papel `planner` (modelo
+secundário) para montar o plano. O harness valida o JSON por código, devolve
+os erros ao modelo se necessário e pede sua aprovação antes de executar —
+inclusive com opção de refazer o plano com um ajuste. Sem secundário
+configurado, use um fluxo. A TUI dedicada ainda não entrou; use
 `python ciel.py --cli` por enquanto.
 
 → **[Documentação: docs/multitask.md](docs/multitask.md)**

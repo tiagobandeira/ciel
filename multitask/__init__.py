@@ -14,6 +14,11 @@ Pacote livre de UI — CLI, TUI, server e bots consomem as mesmas peças.
 
 from multitask.checks import CheckResult, run_checks
 from multitask.flow import Flow, FlowError, build_board, list_flows, load_flow
+from multitask.planner import (
+    PlannerUnavailable,
+    PlanResult,
+    generate_board,
+)
 from multitask.report import build_report
 from multitask.runner import RunResult, run_board
 
@@ -25,6 +30,9 @@ __all__ = [
     "build_board",
     "CheckResult",
     "run_checks",
+    "PlannerUnavailable",
+    "PlanResult",
+    "generate_board",
     "RunResult",
     "run_board",
     "build_report",

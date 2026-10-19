@@ -265,6 +265,117 @@ def print_auto_tool_proposal(proposal: dict):
     console.print()
 
 
+# ── display do multitask ──────────────────────────────────────────────────────
+
+_MULTITASK_ICONS = {
+    "concluida": "[ok]✓[/ok]",
+    "falhou": "[err]✗[/err]",
+    "pendente": "[muted]○[/muted]",
+    "em_andamento": "[tool]▶[/tool]",
+    "pulada": "[muted]↷[/muted]",
+}
+
+
+def _multitask_check_label(checagem) -> str:
+    if not checagem:
+        return ""
+    if isinstance(checagem, dict):
+        return str(checagem.get("tipo") or "check")
+    if isinstance(checagem, list):
+        return f"{len(checagem)} checks"
+    return "manual"
+
+
+def _multitask_command_check_count(board) -> int:
+    """Quantas checagens do quadro executam comandos locais."""
+    count = 0
+
+    def visit(check) -> None:
+        nonlocal count
+        if isinstance(check, list):
+            for item in check:
+                visit(item)
+        elif isinstance(check, dict):
+            tipo = str(check.get("tipo") or check.get("type") or "").lower()
+            if tipo in ("comando", "cmd", "command", "shell", "exit", "exec"):
+                count += 1
+
+    for task in board.tasks():
+        visit(task.checagem)
+    return count
+
+
+def _print_multitask_plan(
+    board,
+    *,
+    model_label: str,
+    perfil: str,
+    is_resume: bool = False,
+) -> None:
+    """Painel do plano/execução, sem executar nada."""
+    progress = board.progress()
+    origem = (
+        "livre (planejador)"
+        if board.meta.get("planner")
+        else (board.fluxo or "(manual)")
+    )
+    lines = [
+        f"  [muted]origem:[/muted] {escape(origem)}",
+        f"  [muted]run:[/muted] {board.id}",
+        f"  [muted]objetivo:[/muted] {escape(board.objetivo)}",
+        f"  [muted]modelo:[/muted] {model_label}   "
+        f"[muted]perfil:[/muted] {perfil}   "
+        f"[muted]formato:[/muted] {board.entrega.get('formato', 'markdown')}",
+        f"  [muted]tasks:[/muted] {progress['total']} "
+        f"em {len(board.fases)} fase(s)",
+        "",
+    ]
+
+    cmd_checks = _multitask_command_check_count(board)
+    if cmd_checks:
+        lines.insert(
+            len(lines) - 1,
+            f"  [warn]⚠ {cmd_checks} checagem(ns) de comando "
+            f"(executam código local)[/warn]",
+        )
+
+    for phase in board.fases:
+        lines.append(f"  [tool]{escape(phase.nome)}[/tool]")
+        for task in phase.tasks:
+            dep = (
+                f"  [muted]← {', '.join(task.depende_de)}[/muted]"
+                if task.depende_de else ""
+            )
+            check = _multitask_check_label(task.checagem)
+            check_str = f"  [muted]· {escape(check)}[/muted]" if check else ""
+            lines.append(
+                f"    {_MULTITASK_ICONS.get(task.status, '○')} "
+                f"{escape(task.titulo)}{dep}{check_str}"
+            )
+
+    console.print(Panel(
+        "\n".join(lines),
+        title=f"[tool]{'retomar' if is_resume else 'plano'} multitask[/tool]",
+        border_style=CLR_BORDER,
+        padding=(0, 1),
+    ))
+    console.print()
+
+
+def _print_plan_errors(errors: list[str]) -> None:
+    shown = errors[:12]
+    body = "\n".join(f"  • {escape(str(error))}" for error in shown)
+    if len(errors) > len(shown):
+        body += f"\n  [muted]… +{len(errors) - len(shown)} erro(s)[/muted]"
+    console.print(Panel(
+        body,
+        title="[err]plano rejeitado[/err]",
+        border_style=CLR_ERR,
+        padding=(0, 1),
+    ))
+    console.print()
+
+
 # ── core do agente ────────────────────────────────────────────────────────────
 #
 # build_system_prompt, parse_response, call_model e _ask_model_for_tool_proposal
@@ -1998,6 +2109,7 @@ def main():
                 "  [tool]/task [white]<nome ou prompt>[/white][/tool]  executa task pelo nome ou busca\n"
                 "  [tool]/task [white]<arquivo.md>[/white][/tool]      executa task por caminho direto\n"
                 "  [tool]/multitask [white]<fluxo> <objetivo>[/white][/tool]  planeja/executa um fluxo em tasks\n"
+                "  [tool]/multitask [white]<objetivo>[/white][/tool]          objetivo livre: planejador monta o plano\n"
                 "  [tool]/multitask --fluxos[/tool]           lista fluxos disponíveis em flows/\n"
                 "  [tool]/multitask --listar[/tool]           lista execuções e status\n"
                 "  [tool]/multitask --retomar <id>[/tool]     retoma execução pausada\n"
@@ -2194,13 +2306,14 @@ def main():
             from board import (
                 BoardError, BoardLocked, BoardNotFound, BoardStore,
                 RUN_CONCLUIDA, RUN_FALHOU, RUN_PAUSADA,
-                TASK_PENDENTE,
+                TASK_PENDENTE, default_orcamento,
             )
             from llm.roles import load_roles
             from multitask.flow import (
                 FlowError, build_board, command_checks,
                 is_trusted_flow_path, list_flows, load_flow,
             )
+            from multitask.planner import PlannerUnavailable, generate_board
             from multitask.runner import reset_interrupted_tasks, run_board
 
             arg      = user_input[len("/multitask"):].strip()
@@ -2239,6 +2352,7 @@ def main():
                 body += [
                     "",
                     "  [muted]/multitask <fluxo> <objetivo>  ·  "
+                    "/multitask <objetivo> (planejador)  ·  "
                     "/multitask --retomar <id>[/muted]",
                 ]
                 console.print(Panel(
@@ -2248,6 +2362,14 @@ def main():
                     padding=(0, 1),
                 ))
                 console.print()
+                continue
+
+            if parts_mt[0].startswith("--") and parts_mt[0] != "--retomar":
+                console.print(
+                    "  [tool]uso:[/tool] /multitask <fluxo|objetivo>  ·  "
+                    "/multitask --fluxos  ·  /multitask --listar  ·  "
+                    "/multitask --retomar <id>\n"
+                )
                 continue
 
             # ── retomar execução existente ────────────────────────────────
@@ -2286,132 +2408,220 @@ def main():
                     )
                 is_resume = True
 
-            # ── novo fluxo ───────────────────────────────────────────────
-            else:
+            # ── fluxo predefinido OU objetivo livre ───────────────────────
+            flow = None
+            is_free_plan = False
+            planner_tokens = [0, 0]
+            manual_replans = 0
+            max_manual_replans = 0
+
+            if not is_resume:
                 flow_name = parts_mt[0]
-                objetivo_override = arg[len(flow_name):].strip()
+                flow_path = (
+                    Path(flow_name) if flow_name.endswith(".md")
+                    else Path("flows") / f"{flow_name}.md"
+                )
 
-                try:
-                    flow = load_flow(flow_name)
-                except FlowError as exc:
-                    console.print(f"  [err]{escape(str(exc))}[/err]")
-                    console.print(
-                        "  [muted]dica: nesta fase o plano vem de um fluxo; "
-                        "use /multitask --fluxos[/muted]\n"
-                    )
-                    continue
-
-                if not is_trusted_flow_path(flow.path):
-                    cmd_checks = command_checks(flow)
-                    warn = [
-                        f"  [warn]fluxo externo:[/warn] {escape(str(flow.path))}",
-                        f"  [muted]{len(flow.tasks)} tasks · "
-                        f"{sum(1 for t in flow.tasks if t.get('checagem'))} "
-                        f"checagem(ns)[/muted]",
-                    ]
-                    if cmd_checks:
-                        warn.append(
-                            f"  [err]{len(cmd_checks)} checagem(ns) executam "
-                            f"comandos neste computador.[/err]"
-                        )
-                    console.print(Panel(
-                        "\n".join(warn),
-                        title="[warn]⚠ fluxo fora de flows/[/warn]",
-                        border_style=CLR_WARN,
-                        padding=(0, 1),
-                    ))
-                    console.print()
-                    raw_trust = Prompt.ask(
-                        f"  [{CLR_WARN}]usar este fluxo?[/{CLR_WARN}]",
-                        choices=["s", "n"],
-                        default="n",
-                    ).strip().lower()
-                    if raw_trust != "s":
-                        console.print("  [muted]cancelado.[/muted]\n")
+                if flow_path.exists():
+                    try:
+                        flow = load_flow(flow_name)
+                    except FlowError as exc:
+                        console.print(f"  [err]{escape(str(exc))}[/err]\n")
                         continue
 
-                try:
-                    board = build_board(
-                        flow, objetivo=objetivo_override or None
+                    objetivo_override = arg[len(flow_name):].strip()
+
+                    if not is_trusted_flow_path(flow.path):
+                        cmd_checks = command_checks(flow)
+                        warn = [
+                            f"  [warn]fluxo externo:[/warn] "
+                            f"{escape(str(flow.path))}",
+                            f"  [muted]{len(flow.tasks)} tasks · "
+                            f"{sum(1 for t in flow.tasks if t.get('checagem'))} "
+                            f"checagem(ns)[/muted]",
+                        ]
+                        if cmd_checks:
+                            warn.append(
+                                f"  [err]{len(cmd_checks)} checagem(ns) "
+                                f"executam comandos neste computador.[/err]"
+                            )
+                        console.print(Panel(
+                            "\n".join(warn),
+                            title="[warn]⚠ fluxo fora de flows/[/warn]",
+                            border_style=CLR_WARN,
+                            padding=(0, 1),
+                        ))
+                        console.print()
+                        raw_trust = Prompt.ask(
+                            f"  [{CLR_WARN}]usar este fluxo?[/{CLR_WARN}]",
+                            choices=["s", "n"],
+                            default="n",
+                        ).strip().lower()
+                        if raw_trust != "s":
+                            console.print("  [muted]cancelado.[/muted]\n")
+                            continue
+
+                    try:
+                        board = build_board(
+                            flow, objetivo=objetivo_override or None
+                        )
+                    except FlowError as exc:
+                        console.print(
+                            f"  [err]fluxo inválido: {escape(str(exc))}[/err]\n"
+                        )
+                        continue
+
+                else:
+                    # objetivo livre: o planejador (modelo secundário) monta
+                    # o plano; validação e correção do plano são por código.
+                    is_free_plan = True
+                    orcamento = default_orcamento()
+                    roles = load_roles(args.model)
+
+                    if roles.planner is None:
+                        console.print(
+                            "  [err]planejador não configurado.[/err]\n"
+                            "  [muted]use /connect para configurar o modelo "
+                            "secundário, ou /multitask --fluxos para usar um "
+                            "fluxo escrito à mão.[/muted]\n"
+                        )
+                        continue
+
+                    try:
+                        plan = generate_board(
+                            arg,
+                            roles=roles,
+                            tools=tools,
+                            agent_info=agent_info,
+                            orcamento=orcamento,
+                            on_attempt=lambda n, t: console.print(
+                                f"  [muted]planejando… tentativa {n}/{t}[/muted]"
+                            ),
+                        )
+                    except PlannerUnavailable as exc:
+                        console.print(f"  [err]{escape(str(exc))}[/err]\n")
+                        continue
+
+                    planner_tokens[0] += plan.tokens_in
+                    planner_tokens[1] += plan.tokens_out
+                    session_tokens_in += plan.tokens_in
+                    session_tokens_out += plan.tokens_out
+
+                    if not plan.ok:
+                        _print_plan_errors(plan.errors)
+                        continue
+
+                    board = plan.board
+                    if plan.model:
+                        console.print(
+                            f"  [muted]plano gerado por {escape(plan.model)} "
+                            f"em {plan.attempts} tentativa(s)[/muted]\n"
+                        )
+                    max_manual_replans = max(
+                        0, int(board.orcamento.get("max_replans", 2) or 0)
                     )
-                except FlowError as exc:
+
+            # ── modelo + plano + confirmação ──────────────────────────────
+            canceled = False
+            while True:
+                roles = load_roles(args.model, perfil=board.perfil or None)
+                effective_perfil = board.perfil or roles.perfil
+                use_cloud = (
+                    effective_perfil == "build"
+                    and roles.worker is not None
+                    and not roles.worker.is_local
+                )
+                model_spec = roles.worker if use_cloud else None
+                model_client = (
+                    model_spec.client() if model_spec is not None else None
+                )
+                run_model = "" if model_client is not None else args.model
+                model_label = (
+                    model_spec.label if model_spec is not None
+                    else f"local · {args.model}"
+                )
+
+                if is_free_plan:
+                    board.meta["planner_tokens_in"] = planner_tokens[0]
+                    board.meta["planner_tokens_out"] = planner_tokens[1]
+
+                _print_multitask_plan(
+                    board,
+                    model_label=model_label,
+                    perfil=effective_perfil,
+                    is_resume=is_resume,
+                )
+
+                choices = ["s", "n"]
+                hint = (
+                    f"  [{CLR_OK}]\\[s][/{CLR_OK}] executar   "
+                    f"[{CLR_ERR}]\\[n][/{CLR_ERR}] cancelar"
+                )
+                if is_free_plan and max_manual_replans > 0:
+                    choices.append("r")
+                    hint += (
+                        f"   [{CLR_WARN}]\\[r][/{CLR_WARN}] refazer o plano"
+                    )
+                console.print(hint + "\n")
+
+                raw_confirm = Prompt.ask(
+                    f"  [{CLR_WARN}]escolha[/{CLR_WARN}]",
+                    choices=choices,
+                    default="s",
+                ).strip().lower()
+
+                if raw_confirm == "s":
+                    break
+                if raw_confirm == "n":
+                    canceled = True
+                    break
+
+                # refazer o plano com feedback do usuário
+                if manual_replans >= max_manual_replans:
                     console.print(
-                        f"  [err]fluxo inválido: {escape(str(exc))}[/err]\n"
+                        f"  [warn]limite de {max_manual_replans} "
+                        f"replanejamento(s) atingido.[/warn]\n"
                     )
                     continue
 
-            # ── modelo: local ou provider secundário (perfil build) ──────
-            roles = load_roles(args.model, perfil=board.perfil or None)
-            effective_perfil = board.perfil or roles.perfil
-            use_cloud  = (
-                effective_perfil == "build"
-                and roles.worker is not None
-                and not roles.worker.is_local
-            )
-            model_spec = roles.worker if use_cloud else None
-            model_client = model_spec.client() if model_spec is not None else None
-            run_model    = "" if model_client is not None else args.model
-            model_label  = (
-                model_spec.label if model_spec is not None
-                else f"local · {args.model}"
-            )
+                feedback = Prompt.ask(
+                    "  o que ajustar no plano?"
+                ).strip()
+                if not feedback:
+                    continue
 
-            # ── plano / confirmação ──────────────────────────────────────
-            progress = board.progress()
-            plan = [
-                f"  [muted]fluxo:[/muted] {board.fluxo or '(manual)'}",
-                f"  [muted]run:[/muted] {board.id}",
-                f"  [muted]objetivo:[/muted] {escape(board.objetivo)}",
-                f"  [muted]modelo:[/muted] {model_label}   "
-                f"[muted]perfil:[/muted] {effective_perfil}   "
-                f"[muted]formato:[/muted] {board.entrega.get('formato', 'markdown')}",
-                f"  [muted]tasks:[/muted] {progress['total']} "
-                f"em {len(board.fases)} fase(s)",
-                "",
-            ]
-
-            _icons = {
-                "concluida": "[ok]✓[/ok]",
-                "falhou": "[err]✗[/err]",
-                "pendente": "[muted]○[/muted]",
-                "em_andamento": "[tool]▶[/tool]",
-                "pulada": "[muted]↷[/muted]",
-            }
-            for phase in board.fases:
-                plan.append(f"  [tool]{escape(phase.nome)}[/tool]")
-                for task in phase.tasks:
-                    dep = (
-                        f"  [muted]← {', '.join(task.depende_de)}[/muted]"
-                        if task.depende_de else ""
+                manual_replans += 1
+                try:
+                    plan = generate_board(
+                        arg,
+                        roles=roles,
+                        tools=tools,
+                        agent_info=agent_info,
+                        orcamento=board.orcamento,
+                        feedback=feedback,
+                        on_attempt=lambda n, t: console.print(
+                            f"  [muted]replanejando… tentativa {n}/{t}[/muted]"
+                        ),
                     )
-                    check = ""
-                    if task.checagem:
-                        if isinstance(task.checagem, dict):
-                            ctype = task.checagem.get("tipo") or "check"
-                        elif isinstance(task.checagem, list):
-                            ctype = f"{len(task.checagem)} checks"
-                        else:
-                            ctype = "manual"
-                        check = f"  [muted]· {escape(str(ctype))}[/muted]"
-                    plan.append(
-                        f"    {_icons.get(task.status, '○')} "
-                        f"{escape(task.titulo)}{dep}{check}"
+                except PlannerUnavailable as exc:
+                    console.print(f"  [err]{escape(str(exc))}[/err]\n")
+                    continue
+
+                planner_tokens[0] += plan.tokens_in
+                planner_tokens[1] += plan.tokens_out
+                session_tokens_in += plan.tokens_in
+                session_tokens_out += plan.tokens_out
+
+                if not plan.ok:
+                    _print_plan_errors(plan.errors)
+                    console.print(
+                        "  [muted]mantendo o plano anterior.[/muted]\n"
                     )
+                    continue
 
-            console.print(Panel(
-                "\n".join(plan),
-                title=f"[tool]{'retomar' if is_resume else 'plano'} multitask[/tool]",
-                border_style=CLR_BORDER,
-                padding=(0, 1),
-            ))
-            console.print()
+                board = plan.board
 
-            raw_confirm = Prompt.ask(
-                f"  [{CLR_WARN}]{'retomar' if is_resume else 'executar'}?[/{CLR_WARN}]",
-                choices=["s", "n"],
-                default="s",
-            ).strip().lower()
-            if raw_confirm != "s":
+            if canceled:
                 console.print("  [muted]cancelado.[/muted]\n")
                 continue
 
@@ -2531,9 +2741,18 @@ def main():
             session_tokens_in  += t_in
             session_tokens_out += t_out
 
+            try:
+                p_in = int(mt_result.board.meta.get("planner_tokens_in") or 0)
+                p_out = int(mt_result.board.meta.get("planner_tokens_out") or 0)
+            except (TypeError, ValueError):
+                p_in = p_out = 0
+
             ts = datetime.now().strftime("%a %H:%M")
             history.append({"role": "agent", "content": mt_result.message, "ts": ts})
-            print_history_entry("agent", mt_result.message, ts, t_in, t_out)
+            print_history_entry(
+                "agent", mt_result.message, ts,
+                t_in + p_in, t_out + p_out,
+            )
             print_turn_separator()
 
             if current_session_id is not None:

@@ -59,31 +59,59 @@ ajustado automaticamente; um `formato:` explícito no fluxo vence a heurística.
 /multitask                          # visão geral (fluxos + execuções)
 /multitask --fluxos                 # lista flows/
 /multitask --listar                 # execuções e status
-/multitask <fluxo> <objetivo>       # executa
+/multitask <fluxo> <objetivo>       # executa um fluxo escrito à mão
 /multitask <fluxo>                  # usa o objetivo do fluxo
+/multitask <objetivo>               # objetivo livre: planejador monta o plano
 /multitask --retomar <id>           # retoma tasks pendentes
 ```
 
-Na CLI, o plano é mostrado antes de executar e pede confirmação.
+Na CLI, o plano é mostrado antes de executar e pede confirmação. Para plano
+livre, `[r]` refaz o plano com um ajuste seu.
+
+Se o primeiro token corresponder a um arquivo em `flows/` (ou a um caminho
+`.md` existente), ele é usado como fluxo; caso contrário, todo o texto é
+tratado como objetivo livre e vai para o planejador.
 
 ## Como a execução funciona
 
-1. O fluxo vira um `Board` (`multitask/flow.py`).
-2. O runner (`multitask/runner.py`) pega a próxima task pendente cuja
+1. **Plano.** Em objetivo livre, o papel `planner` (modelo secundário) recebe
+   o objetivo e devolve um JSON de fases/tasks. O harness valida por código;
+   inválido, devolve os erros ao modelo até `max_replans + 1` tentativas. Em
+   fluxo predefinido, o `Board` vem do arquivo.
+2. O plano é mostrado para aprovação (`[s] executar`, `[n] cancelar`,
+   `[r] refazer com um ajuste`).
+3. O runner (`multitask/runner.py`) pega a próxima task pendente cuja
    dependência já terminou.
-3. Monta um contexto mínimo: objetivo geral, fase, task, ações, dependências
+4. Monta um contexto mínimo: objetivo geral, fase, task, ações, dependências
    e o que já foi concluído na fase.
-4. Chama `run_agent` com `history=[]`, `context_injection=...` e um limite de
+5. Chama `run_agent` com `history=[]`, `context_injection=...` e um limite de
    steps por task.
-5. Roda a checagem por código declarada na task (se houver).
-6. Se a checagem falhar, monta um contexto de correção com o erro e os
+6. Roda a checagem por código declarada na task (se houver).
+7. Se a checagem falhar, monta um contexto de correção com o erro e os
    arquivos envolvidos e tenta de novo, até `max_correcoes_por_task`.
-7. Grava status, resumo, tokens, duração, verificação e artefatos no quadro.
-8. Repete até concluir, falhar, pausar (Ctrl+C) ou esgotar o orçamento.
-9. Gera o relatório final (`multitask/report.py`) no formato do fluxo.
+8. Grava status, resumo, tokens, duração, verificação e artefatos no quadro.
+9. Repete até concluir, falhar, pausar (Ctrl+C) ou esgotar o orçamento.
+10. Gera o relatório final (`multitask/report.py`) no formato do fluxo.
 
 Artefatos são detectados pelos arquivos modificados/criados durante a task
 (ignorando `.git`, `venv`, `__pycache__`, `data/runs`, banco de histórico etc.).
+
+## Plano livre (planejador)
+
+`/multitask <objetivo>` usa `roles.planner` — o mesmo provider salvo por
+`/connect`, independente do perfil do executor ser `local` ou `build`.
+
+- O prompt fica em [prompts/planejamento.md](../prompts/planejamento.md) e
+  define schema, tamanho das tasks, tipos de checagem e regras.
+- O JSON é validado **antes de executar**: ids únicos, dependências apenas
+  para tasks anteriores, `resultado_esperado` obrigatório, no máximo 6 ações
+  por task, agente existente, checagem estruturalmente válida e limite de
+  tasks do orçamento.
+- Plano inválido volta ao modelo com a lista de erros; ele tem
+  `orcamento.max_replans + 1` tentativas.
+- Na aprovação, `[r]` chama o planejador de novo com o ajuste que você
+  escrever (até `max_replans` vezes).
+- Tokens do planejamento entram na sessão e no relatório final.
 
 ## Checagens e correção
 
@@ -127,9 +155,12 @@ Ollama local. O perfil `local` usa o modelo de `--model`.
 
 ## Limites desta fase
 
-- Sem planejador: `/multitask <objetivo>` livre ainda exige um fluxo.
+- O planejador exige um provider secundário configurado (`/connect`). Sem
+  ele, use um fluxo escrito à mão.
 - A correção é a mesma task com contexto de erro; ela não cria uma task nova
   no quadro (o contador `correcoes` e os eventos registram as tentativas).
+- Replanejamento automático quando uma task falha ainda não existe: a
+  execução para e o relatório mostra o erro.
 - Sem paralelismo e sem TUI dedicada: use `python ciel.py --cli`.
 - `--retomar` só tenta tasks pendentes; uma task que falhou não é repetida
   automaticamente.
@@ -147,7 +178,6 @@ pendências e como testar.
 
 ## O que vem depois
 
-1. **Fase 3** — planejador no modelo secundário, validação do plano, aprovação
-   e replanejamento; `/multitask <objetivo>` livre.
-2. **Fase 4** — fluxo `web_projeto` completo, entrevista, servidor e entrega.
-3. **Fase 5** — painel na TUI, revisão por fase e retomada com mais garantias.
+1. **Fase 4** — fluxo `web_projeto` completo, entrevista, servidor e entrega.
+2. **Fase 5** — painel na TUI, revisão por fase, replanejamento automático e
+   retomada com mais garantias.

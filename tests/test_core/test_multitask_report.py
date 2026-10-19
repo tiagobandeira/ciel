@@ -119,6 +119,16 @@ class TestMarkdown:
         report = build_report(board)
         assert "verificação: ✗ comando retornou 1" in report
 
+    def test_origem_plano_livre(self):
+        board = Board.new(
+            "objetivo livre", run_id="run-livre",
+            fluxo="plano", meta={"planner": True},
+        )
+        board.add_task("f", "t", acoes=["a"])
+        report = build_report(board)
+        assert "**Plano:** livre (planejador)" in report
+        assert "**Fluxo:** plano" not in report
+
     def test_sem_tasks_concluidas(self):
         board = Board.new("vazio", run_id="r")
         board.add_task("f", "t", acoes=["a"])

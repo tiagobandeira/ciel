@@ -445,6 +445,70 @@ def _check_json(checagem: dict, root: Path) -> CheckResult:
 
 # ── API ───────────────────────────────────────────────────────────────────
 
+def validate_check_spec(checagem: Any) -> list[str]:
+    """
+    Valida a ESTRUTURA de uma checagem antes de executá-la.
+
+    Usado pelo planejador para rejeitar planos com checagem malformada sem
+    esperar a task rodar. Retorna lista de erros (vazia = ok).
+    """
+    if checagem is None or isinstance(checagem, str):
+        return []
+
+    if isinstance(checagem, list):
+        errors: list[str] = []
+        for index, item in enumerate(checagem):
+            for error in validate_check_spec(item):
+                errors.append(f"checagem[{index}]: {error}")
+        return errors
+
+    if not isinstance(checagem, dict):
+        return ["checagem deve ser objeto JSON, lista, string ou null"]
+
+    tipo = str(
+        checagem.get("tipo") or checagem.get("type") or ""
+    ).strip().lower()
+
+    if not tipo:
+        return ["checagem sem campo 'tipo'"]
+
+    if tipo in _MANUAL_TYPES:
+        return []
+
+    if tipo in _FILE_TYPES:
+        if not (
+            checagem.get("path")
+            or checagem.get("caminho")
+            or checagem.get("arquivo")
+        ):
+            return ["checagem arquivo sem 'path'"]
+        return []
+
+    if tipo in _CMD_TYPES:
+        if not (
+            checagem.get("cmd")
+            or checagem.get("comando")
+            or checagem.get("command")
+        ):
+            return ["checagem comando sem 'cmd'"]
+        return []
+
+    if tipo in _HTTP_TYPES:
+        url = str(checagem.get("url") or "").strip()
+        if not url:
+            return ["checagem http sem 'url'"]
+        if urlparse(url).scheme not in ("http", "https"):
+            return [f"url http inválida: {url}"]
+        return []
+
+    if tipo in _JSON_TYPES:
+        if not (checagem.get("path") or checagem.get("caminho")):
+            return ["checagem json sem 'path'"]
+        return []
+
+    return [f"tipo de checagem desconhecido: {tipo!r}"]
+
+
 def run_check(
     checagem: dict,
     *,
@@ -634,6 +698,7 @@ __all__ = [
     "DEFAULT_CMD_TIMEOUT",
     "MAX_CMD_TIMEOUT",
     "CheckResult",
+    "validate_check_spec",
     "run_check",
     "run_checks",
     "build_correction_context",

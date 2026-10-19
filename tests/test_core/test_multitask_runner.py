@@ -165,6 +165,20 @@ class TestExecucaoFeliz:
         assert board.meta["tokens_out"] == 10
         assert board.meta["duracao_s"] >= 0
 
+    def test_tokens_do_planejador_somam_no_relatorio(self, store, workspace):
+        board = make_board()
+        board.meta["planner_tokens_in"] = 100
+        board.meta["planner_tokens_out"] = 50
+
+        with patch("multitask.runner.run_agent", side_effect=make_fake([done("ok")])):
+            result = run_board(board, {}, [], AGENT, store=store, workspace_root=workspace)
+
+        # RunResult devolve a execução; o relatório soma planejamento
+        assert result.tokens_in == 20
+        assert result.tokens_out == 10
+        assert board.meta["tokens_in"] == 120
+        assert board.meta["tokens_out"] == 60
+
     def test_model_client_repassado(self, store, workspace):
         sentinel = object()
         calls = []

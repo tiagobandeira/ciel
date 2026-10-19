@@ -16,6 +16,7 @@ from multitask.checks import (
     build_correction_context,
     run_check,
     run_checks,
+    validate_check_spec,
 )
 
 
@@ -55,6 +56,44 @@ class TestBase:
         result = run_check({"tipo": "magia"}, workspace_root=ws)
         assert result.ok is False
         assert "desconhecido" in result.mensagem
+
+
+class TestValidateSpec:
+    def test_none_e_string_sao_validos(self):
+        assert validate_check_spec(None) == []
+        assert validate_check_spec("manual") == []
+
+    def test_arquivo_sem_path(self):
+        errors = validate_check_spec({"tipo": "arquivo"})
+        assert any("path" in e for e in errors)
+
+    def test_comando_sem_cmd(self):
+        errors = validate_check_spec({"tipo": "comando"})
+        assert any("cmd" in e for e in errors)
+
+    def test_http_ok(self):
+        assert validate_check_spec(
+            {"tipo": "http", "url": "http://127.0.0.1:8000/"}
+        ) == []
+
+    def test_http_url_invalida(self):
+        errors = validate_check_spec({"tipo": "http", "url": "ftp://x"})
+        assert any("inválida" in e for e in errors)
+
+    def test_json_sem_path(self):
+        errors = validate_check_spec({"tipo": "json"})
+        assert any("path" in e for e in errors)
+
+    def test_tipo_desconhecido(self):
+        errors = validate_check_spec({"tipo": "magia"})
+        assert any("desconhecido" in e for e in errors)
+
+    def test_lista_prefixa_indice(self):
+        errors = validate_check_spec([
+            {"tipo": "arquivo", "path": "a"},
+            {"tipo": "comando"},
+        ])
+        assert any(e.startswith("checagem[1]") for e in errors)
 
 
 # ── arquivo ───────────────────────────────────────────────────────────────
