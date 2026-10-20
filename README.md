@@ -450,6 +450,8 @@ O projeto inclui um servidor MCP para **Telegram** (`mcp/telegram/`) pronto para
 - Ainda têm suporte parcial no build: imagens (`/img`), server e bots. O foco
   atual é CLI/TUI.
 
+→ Decisões de arquitetura e nomenclatura: [docs/decisoes.md](docs/decisoes.md)
+
 ---
 
 ## Modelo secundário (opcional)

@@ -72,6 +72,19 @@ Se o primeiro token corresponder a um arquivo em `flows/` (ou a um caminho
 `.md` existente), ele é usado como fluxo; caso contrário, todo o texto é
 tratado como objetivo livre e vai para o planejador.
 
+### Nomenclatura
+
+| Comando | Papel |
+|---|---|
+| `/task <arquivo>` | executa **uma** task `.md` (unidade isolada, sem quadro) |
+| `/quadro` | lista/gerencia o quadro de tarefas; **não executa** |
+| `/multitask` | planeja/executa o quadro, com checagens e correção |
+
+O nome canônico do quadro é `/quadro`; `/tarefas` pode existir como alias,
+mas `/tasks` não. O quadro é o mesmo `data/runs/<id>/board.json` usado pelo
+multitask — um estado, várias views. Decisão registrada em
+[decisoes.md](decisoes.md).
+
 ## Como a execução funciona
 
 1. **Plano.** Em objetivo livre, o papel `planner` (modelo secundário) recebe
