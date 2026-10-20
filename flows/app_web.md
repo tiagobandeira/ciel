@@ -1,0 +1,68 @@
+## flow: app_web
+objetivo: criar um app web local com interface, persistência e critérios de aceite
+formato: markdown
+como_testar: abra data/user/app_web/index.html no navegador, crie uma nota, recarregue e confira se ela continua listada
+
+## task: spec
+fase: Especificação
+tools: create_directory, write_file, read_file, list_directory
+objetivo: transformar a ideia em uma spec pequena e verificável
+ações:
+- criar a pasta data/user/app_web [tool: create_directory]
+- escrever data/user/app_web/SPEC.md com: objetivo, requisitos, não-objetivos e critérios de aceite
+- limitar o escopo: app local, um usuário, sem backend/login/sync
+- listar os critérios de aceite que as próximas tasks devem cumprir
+resultado esperado: SPEC.md existe, tem escopo e critérios de aceite
+checagem: [{"tipo": "arquivo", "path": "data/user/app_web/SPEC.md", "contem": "aceite"}, {"tipo": "arquivo", "path": "data/user/app_web/SPEC.md", "tamanho_min": 300}]
+
+## task: estrutura
+fase: Estrutura
+depende_de: spec
+tools: create_directory, write_file, read_file, list_directory
+objetivo: criar os arquivos base do app
+ações:
+- criar data/user/app_web/index.html com HTML5, menu, editor e área de preview
+- criar data/user/app_web/style.css com layout de duas colunas e lista de notas
+- criar data/user/app_web/app.js vazio com um comentário de TODO
+resultado esperado: index.html, style.css e app.js existem
+checagem: [{"tipo": "arquivo", "path": "data/user/app_web/index.html"}, {"tipo": "arquivo", "path": "data/user/app_web/style.css"}, {"tipo": "arquivo", "path": "data/user/app_web/app.js"}]
+
+## task: editor
+fase: Implementação
+depende_de: estrutura
+agente: frontend
+tools: read_file, write_file, edit_file, list_directory
+objetivo: implementar criar, editar, salvar, listar, abrir e excluir notas
+ações:
+- implementar em app.js o estado das notas e a persistência em localStorage
+- implementar criar nota, editar título/conteúdo, salvar e excluir
+- renderizar a lista de notas no menu e abrir a nota selecionada
+- manter tudo no navegador; não usar backend
+resultado esperado: o app salva e recarrega notas do localStorage
+checagem: [{"tipo": "arquivo", "path": "data/user/app_web/app.js", "contem": "localStorage"}, {"tipo": "arquivo", "path": "data/user/app_web/app.js", "contem": "addEventListener"}, {"tipo": "arquivo", "path": "data/user/app_web/index.html", "contem": "app.js"}]
+
+## task: preview
+fase: Implementação
+depende_de: editor
+tools: read_file, write_file, edit_file, list_directory
+objetivo: adicionar preview de Markdown e acabamento da interface
+ações:
+- implementar um preview simples de Markdown (títulos, negrito, listas e código)
+- atualizar o preview enquanto o usuário edita
+- estilizar o editor, a lista e o preview para ficarem legíveis
+- exibir uma mensagem quando não houver notas
+resultado esperado: o preview reflete o conteúdo da nota
+checagem: [{"tipo": "arquivo", "path": "data/user/app_web/app.js", "contem": "preview"}, {"tipo": "arquivo", "path": "data/user/app_web/style.css", "tamanho_min": 500}]
+
+## task: verificar
+fase: Verificação
+depende_de: preview
+tools: read_file, list_directory, run_script
+objetivo: validar a estrutura e o comportamento básico do app por código
+ações:
+- listar data/user/app_web [tool: list_directory]
+- verificar se index.html importa style.css e app.js
+- verificar se app.js usa localStorage e tem os handlers principais
+- escrever um relatório curto em data/user/app_web/VERIFICACAO.md
+resultado esperado: VERIFICACAO.md existe e os arquivos estão integrados
+checagem: [{"tipo": "arquivo", "path": "data/user/app_web/VERIFICACAO.md", "tamanho_min": 100}, {"tipo": "arquivo", "path": "data/user/app_web/app.js", "contem": "localStorage"}]

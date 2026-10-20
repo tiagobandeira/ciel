@@ -6,6 +6,11 @@ para não rediscutir o mesmo ponto depois.
 
 Data de referência: 2026-10-19.
 
+> **Nota de terminologia:** as decisões D-001 a D-008 usam “build” para o
+> perfil de modelo. A D-010 renomeia esse perfil para **nuvem** e reserva
+> **build** para o modo de construção. Onde ler “perfil build” nas decisões
+> antigas, entenda “perfil nuvem”.
+
 ---
 
 ## D-001 — Perfil e modo são eixos diferentes
@@ -44,27 +49,30 @@ explícita.
 
 ---
 
-## D-003 — `/quadro` é o nome canônico do quadro
+## D-003 — `/quadro` fica adiado; `/task` e `/multitask` não mudam
 
-**Decisão:** o comando de visão/gestão do quadro é **`/quadro`**.
-`/tarefas` pode existir como alias opcional, mas não como comando principal.
-`/tasks` é rejeitado.
+**Decisão:** não implementar `/quadro` (CRUD manual do quadro) agora. O quadro
+continua sendo **estado interno** do motor multitask. Se um dia for exposto
+como comando, o nome canônico será `/quadro`, `/tarefas` poderá ser alias e
+`/tasks` continua rejeitado.
 
-**Por quê:** `/task` e `/tarefas` diferem por uma letra e têm significados
-diferentes; `/tasks` piora a colisão. `/quadro` não colide com `/task` nem com
-`/multitask`, é o termo do roadmap (“quadro de tarefas”) e comunica estado, não
-execução.
+**Por quê:** `/task` é uma unidade isolada, `/multitask` é o motor que executa
+um plano. Um `/quadro` com CRUD é útil só se o usuário criar/editar tarefas
+fora do plano com frequência — caso contrário, vira superfície e engenharia
+sem demanda. Antes de decidir, vamos testar o multitask em projetos reais
+(notebook, jogo, artigo, landing page).
 
-**Semântica dos comandos:**
+**Semântica atual (sem `/quadro`):**
 
 | Comando | O que faz |
 |---|---|
 | `/task <arquivo>` | executa **uma** task `.md` (unidade isolada) |
-| `/quadro` | lista tarefas e status do quadro atual; **não executa** |
-| `/quadro nova <título>` | cria uma tarefa no quadro |
-| `/quadro concluir <id>` | atualiza o status de uma tarefa |
 | `/multitask <fluxo\|objetivo>` | planeja/executa o quadro, com checagens e correção |
+| `/multitask --listar` | lista execuções e status |
 | `/multitask --retomar <id>` | retoma uma execução pausada |
+
+**Status:** adiado. Reavaliar depois dos testes práticos descritos em
+[testes-multitask.md](testes-multitask.md).
 
 ---
 
@@ -77,8 +85,10 @@ execução.
 fazem o usuário perguntar por que uma tarefa criada no chat não aparece no
 `/multitask --listar`. Um quadro, várias views.
 
-**Consequência:** `/quadro` é visão/gestão; `/multitask` é execução. As tasks
-criadas no build podem ser executadas depois pelo multitask sem migração.
+**Consequência:** se `/quadro` for implementado no futuro, ele lê/escreve o
+mesmo arquivo; hoje o quadro é interno ao runner e visível pelo relatório do
+`/multitask`. As tasks criadas no build podem ser executadas depois pelo
+multitask sem migração.
 
 ---
 
@@ -120,17 +130,120 @@ exato, sem a pasta com timestamp.
 implementadas. O núcleo do multitask funciona: fluxo, plano livre, quadro,
 checagens, correção e retomada.
 
-**Ainda não implementado:**
+**Ainda não implementado / adiado:**
 
-- `/quadro` e tools de gestão de tarefas;
+- **adiado:** `/quadro` e tools de gestão manual de tarefas;
+- **próximo:** status do run atual no `/multitask` e `--retomar` capaz de
+  refazer tasks falhas (com confirmação);
 - auto-execução de plano no build (por tool, não por mensagem);
 - perfil build no `--task` headless, server e bots;
 - imagens no build;
 - Fase 4 (fluxo `web_projeto` + entrevista) e Fase 5 (TUI, revisão por fase,
   replanejamento automático).
 
-**Ordem recomendada:** `/quadro` + tools de tarefa; depois decidir a tool de
-execução de plano; depois Fase 4/5.
+**Ordem recomendada:** testar o multitask nos casos reais de
+[testes-multitask.md](testes-multitask.md); corrigir o que falhar; depois
+status/retomada com refazer falhas; só então reavaliar `/quadro`. Fase 4/5
+depois disso.
+
+---
+
+## D-008 — Limites de execução do build
+
+**Decisão:** o `max_tokens` do `ciel_config.json` vale também para o cliente
+do build (antes só o `secondary_model` usava). No build, o orçamento padrão é
+12 steps por task; se os steps esgotarem e a checagem por código passar, a
+task é aceita (o trabalho estava pronto, só não houve `done`).
+
+**Por quê:** o log da primeira execução real mostrou três coisas: JSON de
+`write_file` grande quebrando, 9 steps insuficientes para uma redação longa e
+uma task de artigo grande demais. O `↑tokens` do relatório é a soma das
+chamadas, não o contexto de uma única chamada; o problema era granularidade +
+limite de steps, não necessariamente janela de contexto.
+
+**Consequência:** escritas longas devem ser divididas em tasks menores (o
+fluxo `artigo_matematica` virou 5 tasks). Tasks podem declarar `tools:` para
+reduzir o schema (de ~20k para ~1,3k caracteres nos fluxos de texto). O
+`read_file` ganhou `offset`/`limit` e existe `edit_file` para correções pontuais,
+evitando scripts de leitura/edição. Respostas DSML do DeepSeek são convertidas
+para tool call como fallback; o parser também aceita prosa/múltiplos JSONs e
+pega o primeiro objeto completo. No multitask, steps esgotados não pedem
+proposta de tool: a checagem da task decide (evita o status `needs_tool` sem
+handler). Ainda não há compactação automática de histórico; se uma task
+legítima passar de ~12 steps, o próximo passo é implementar compactação ou um
+`max_steps` por task.
+
+---
+
+## D-009 — Custo de tarefa longa: uma escrita por arquivo
+
+**Experimento:** o mesmo artigo (5 tasks, tema “introdução à teoria dos
+grupos”) foi executado em uma cópia isolada do fluxo (`artigo_bench`, paths
+`data/user/artigos_bench`) para medir custo sem tocar no artigo do usuário.
+
+| Versão | Chamadas | Tokens | Resultado |
+|---|---:|---:|---|
+| Loop por ação, chunks de 2k | ~34 | ~320k | 5/5 |
+| Lote + chunks de 2k | ~45 | ~499k | 5/5 (pior) |
+| Uma escrita por arquivo + compactação | 19 | **146,4k** | 5/5, 1m36 |
+
+**Decisão:** a maior alavanca não foi batch, foi **não fatiar cada arquivo em
+chunks de 2.000**. O modelo deve escrever cada seção/arquivo em uma chamada
+quando couber em ~8.000 caracteres. Batch de leituras continua disponível
+(`actions`, até 4), mas o modelo não é obrigado a usar. A compactação de
+histórico (30k caracteres, últimas 6 mensagens) fica como rede de segurança.
+
+**Consequência:** para artigo/site, o custo fica na casa de 150k, não 300k+.
+O próximo passo só se precisar: `write_files` (manifesto) para criar vários
+arquivos em uma chamada, ou compactação mais agressiva. Não aumentar steps.
+
+---
+
+---
+
+## D-010 — Perfil `nuvem`, modo `build`, processos nativos
+
+**Decisão:** separar definitivamente as três camadas:
+
+| Camada | Valores | Papel |
+|---|---|---|
+| Perfil | `local`, `nuvem` | quem executa (Ollama ou API) |
+| Modo | `chat`, `build` | como executa |
+| Processo | `app_web`, `landing_page`… | o que está sendo construído |
+
+`build` deixa de ser perfil e passa a ser o **modo de construção**. O perfil
+antigo `build` vira `nuvem` (aliases `build`/`cloud` continuam aceitos).
+`multitask` deixa de ser comando de usuário e vira motor interno dos processos.
+
+**Por quê:** o usuário precisa lembrar se está no Ollama ou numa API externa
+(perfil), mas “build” deve significar construção — escolher um processo,
+gerar spec, executar e verificar. O nome anterior misturava as duas coisas.
+
+**Consequência:** `/processo` e o modo build por linguagem natural passam a
+ser a superfície; o `/multitask` some da ajuda. O modo build exige perfil
+nuvem. A saída final de um processo é um resumo curto; o detalhe fica em
+`data/runs/<id>/`.
+
+---
+
+---
+
+## D-011 — O caso econômico é verificação, não geração
+
+**Experimento:** `corrigir_bug` em um demo com `media([])` quebrada.
+
+| Caso | Tokens | Resultado |
+|---|---:|---|
+| App greenfield (`app_web`) | ~1,5M | funciona, mas inviável |
+| Bugfix (`corrigir_bug`) | **~50k** | 3/3, correção mínima validada |
+
+**Decisão:** processos de verificação/correção (bugfix, testes, auditoria,
+migração) são o caso de uso econômico do motor. Greenfield continua possível,
+mas exige scaffold/manifesto e orçamento — não é o caso que valida o modo.
+
+**Consequência:** o próximo processo nativo deve ser de verificação
+(`corrigir_bug` já entrou; depois `gerar_testes`/`auditar_repo`), não outro
+gerador de app.
 
 ---
 

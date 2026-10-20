@@ -31,6 +31,9 @@ from rich.markup import escape
 from rich.live import Live
 from rich.prompt import Prompt
 from rich.spinner import Spinner
+
+from llm.roles import PERFIL_NUVEM, normalize_perfil
+from processes import detect_process, get_process, list_processes
 from rich.theme import Theme
 from rich.markdown import Markdown
 from prompt_toolkit import prompt as pt_prompt
@@ -62,6 +65,7 @@ DEFAULT_MODEL    = "gemma4:cloud" #ou local "gemma4:e2b-it-qat"
 DEFAULT_AGENT    = "general"
 MAX_STEPS        = 6
 MAX_STEPS_TASK   = 9   # +3 para tasks 
+MAX_STEPS_TASK_NUVEM = 12  # escrita longa no perfil nuvem; 12 + checagem no limite
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 
 
@@ -92,10 +96,13 @@ CLR_WARN    = "warn"
 console = Console(theme=CIEL_THEME)
 
 # ── perfil da sessão ─────────────────────────────────────────────────────────
-# "local" = orquestrador no Ollama (comportamento histórico)
-# "build" = orquestrador no provider secundário (sem tool secondary_model)
+# perfil: "local" = orquestrador no Ollama (comportamento histórico)
+#         "nuvem" = orquestrador no provider secundário (sem secondary_model)
+# modo:   "chat" = conversa/tarefa normal
+#         "build" = construção: escolhe um processo nativo e executa com checks
 _SESSION = {
     "perfil": "local",
+    "modo": "chat",
     "label": DEFAULT_MODEL,
     "client": None,
     "roles": None,
@@ -110,11 +117,11 @@ def _resolve_session_roles(
     from llm.roles import load_roles
 
     roles = load_roles(local_model, perfil=perfil)
-    if roles.perfil == "build":
+    if roles.perfil == PERFIL_NUVEM:
         spec = roles.orchestrator
         if spec is None or spec.is_local:
             raise RuntimeError(
-                "perfil build exige um provider secundário configurado "
+                "perfil nuvem exige um provider secundário configurado "
                 "(use /connect ou inicie com --perfil local)"
             )
         return roles, spec.client(), spec.label
@@ -129,7 +136,7 @@ def _run_agent_session(
     agent_info: dict,
     **kwargs,
 ):
-    """run_agent com o modelo/perfil da sessão (local ou build)."""
+    """run_agent com o modelo/perfil da sessão (local ou nuvem)."""
     client = _SESSION.get("client")
     if client is not None:
         model = ""
@@ -138,6 +145,62 @@ def _run_agent_session(
         user_input, tools, schema, model, agent_info,
         model_client=client, **kwargs,
     )
+
+def _process_summary(result, process_id: str) -> str:
+    """Resumo curto de um processo: o log fica no run, não na resposta."""
+    board = result.board
+    tasks = board.tasks()
+    ok = [t for t in tasks if t.status == "concluida"]
+    fail = [t for t in tasks if t.status == "falhou"]
+    process = get_process(process_id)
+    titulo = process.titulo if process else process_id
+    status_label = {
+        "concluida": "concluída",
+        "falhou": "falhou",
+        "pausada": "pausada",
+    }.get(result.status, result.status)
+
+    lines = [
+        f"**{titulo}** — {status_label} · {len(ok)}/{len(tasks)} tasks",
+    ]
+
+    if ok:
+        lines.append("")
+        lines.append("**O que foi feito:**")
+        for task in ok[:8]:
+            resumo = (task.resumo or "").splitlines()[0][:160]
+            lines.append(f"- **{task.titulo}** — {resumo}")
+
+    artifacts = []
+    for task in tasks:
+        for item in task.artefatos:
+            path = str(item.get("path", ""))
+            if path and path not in artifacts:
+                artifacts.append(path)
+    if artifacts:
+        lines.append("")
+        lines.append("**Arquivos:**")
+        lines.extend(f"- `{path}`" for path in artifacts[:12])
+
+    checks_ok = sum(1 for t in tasks if t.checagem_ok is True)
+    checks_total = sum(1 for t in tasks if t.checagem is not None)
+    if checks_total:
+        lines.append("")
+        lines.append(f"**Verificação:** {checks_ok}/{checks_total} tasks com check ok")
+
+    como_testar = str(board.meta.get("como_testar") or "").strip()
+    if como_testar:
+        lines.append("")
+        lines.append(f"**Como testar:** {como_testar}")
+
+    if fail:
+        lines.append("")
+        lines.append("**Falhas:** " + ", ".join(t.titulo for t in fail))
+
+    lines.append("")
+    lines.append(f"Detalhes: `data/runs/{board.id}/`")
+    return "\n".join(lines)
+
 
 # ── nome da ferramenta ────────────────────────────────────────────────────────
 NAME = "Ciel CLI"   # altere aqui quando decidir o nome definitivo
@@ -166,6 +229,7 @@ def header(model: str, agent_name: str, tools: dict, safe: bool = False, clear: 
 
     safe_badge = "  [tool]⚠ modo seguro[/tool]\n" if safe else ""
     perfil = _SESSION.get("perfil", "local")
+    modo = _SESSION.get("modo", "chat")
     display_model = _SESSION.get("label") or model
 
     ws = get_workspace()
@@ -192,7 +256,8 @@ def header(model: str, agent_name: str, tools: dict, safe: bool = False, clear: 
         f"\n"
         f"{safe_badge}"
         f"  [muted]agent:[/muted] [user]{agent_name}[/user]   "
-        f"[muted]perfil:[/muted] [white]{perfil}[/white]\n"
+        f"[muted]perfil:[/muted] [white]{perfil}[/white]   "
+        f"[muted]modo:[/muted] [white]{modo}[/white]\n"
         f"  [muted]model:[/muted] [white]{display_model}[/white]\n"
         f"  [muted]tools:[/muted] [tool]{tools_line}[/tool]\n"
         f"  [muted]workspace:[/muted] [white]{ws_display}[/white]{ws_extra}\n"
@@ -764,8 +829,8 @@ def _reload_tools(agent_info: dict, safe: bool) -> tuple[dict, list]:
     all_tools = load_tools()
     tools     = filter_tools(all_tools, agent_info["allowed_tools"])
     tools     = filter_unsafe(tools, safe)
-    if _SESSION.get("perfil") == "build":
-        # no build o próprio orquestrador é o modelo cloud; chamar o
+    if normalize_perfil(_SESSION.get("perfil")) == PERFIL_NUVEM:
+        # no perfil nuvem o próprio orquestrador é o modelo da API; chamar o
         # secondary_model seria chamar a si mesmo.
         tools.pop("secondary_model", None)
     return tools, tools_schema(tools)
@@ -1113,6 +1178,8 @@ def run_task_headless(task_path: Path, args) -> int:
     tools     = filter_tools(all_tools, agent_info["allowed_tools"])
 
     tools = filter_unsafe(tools, args.safe)
+    if normalize_perfil(_SESSION.get("perfil")) == PERFIL_NUVEM:
+        tools.pop("secondary_model", None)
 
     # ── MCP: conecta só os servidores do agente ───────────────────────────
     mcp_manager = MCPManager()
@@ -1174,8 +1241,10 @@ def run_task_headless(task_path: Path, args) -> int:
 def main():
     parser = argparse.ArgumentParser(description="Agent CLI")
     parser.add_argument("--model",       default=DEFAULT_MODEL,  help="modelo Ollama (perfil local)")
-    parser.add_argument("--perfil",      choices=["local", "build"], default=None,
-                        help="perfil de modelo da sessão (default: ciel_config.json)")
+    parser.add_argument("--perfil",      choices=["local", "nuvem", "cloud", "build"], default=None,
+                        help="perfil de modelo da sessão: local | nuvem (default: ciel_config.json)")
+    parser.add_argument("--modo",        choices=["chat", "build"], default=None,
+                        help="modo da sessão: chat | build (build exige perfil nuvem)")
     parser.add_argument("--agent",       default=DEFAULT_AGENT,  help="persona do agente (nome do .md em /agents)")
     parser.add_argument("--safe",        action="store_true",    help="desabilita tools de execução arbitrária")
     parser.add_argument("--auto",         action="store_true",    help="não pede confirmação antes de create_tool/create_temp_tool rodarem (mesmo que escolher auto no prompt)")
@@ -1204,16 +1273,28 @@ def main():
     # Pulado em --list-agents (não precisa do Ollama) e --task headless (tem seu próprio tratamento).
     _env_warnings: list[str] = []
     if not args.list_agents and not args.task:
+        _modo = args.modo or "chat"
+        _perfil_arg = args.perfil
+        if _modo == "build" and _perfil_arg is None:
+            _perfil_arg = "nuvem"
         try:
             _roles, _client, _label = _resolve_session_roles(
-                args.model, args.perfil
+                args.model, _perfil_arg
             )
         except RuntimeError as exc:
             console.print(f"  [{CLR_ERR}]✗ {escape(str(exc))}[/{CLR_ERR}]\n")
             sys.exit(1)
 
+        if _modo == "build" and _roles.perfil != PERFIL_NUVEM:
+            console.print(
+                "  [err]✗[/err] o modo build exige o perfil nuvem.\n"
+                "  [muted]use --perfil nuvem (ou /perfil nuvem) e tente de novo.[/muted]\n"
+            )
+            sys.exit(1)
+
         _SESSION.update({
             "perfil": _roles.perfil,
+            "modo": _modo,
             "label": _label,
             "client": _client,
             "roles": _roles,
@@ -1255,7 +1336,7 @@ def main():
     tools = filter_tools(all_tools, agent_info["allowed_tools"])
 
     tools = filter_unsafe(tools, args.safe)
-    if _SESSION["perfil"] == "build":
+    if _SESSION["perfil"] == PERFIL_NUVEM:
         tools.pop("secondary_model", None)
 
     # ── aviso de tools opcionais sem dependência (EXTRA = True) ──────────────
@@ -1334,7 +1415,7 @@ def main():
     # ── prompt_toolkit: autocomplete ──────────────────────────────────────────
     CMDS = [
         "/sair", "/limpar", "/novo", "/criar", "/criar agente", "/criar task", "/criar canal whatsapp", "/task", "/tools", "/agente",
-        "/multitask", "/multitask --listar", "/multitask --fluxos", "/multitask --retomar",
+        "/modo chat", "/modo build", "/processo", "/processo app_web", "/processo landing_page", "/processo --retomar",
         "/source", "/source --listar","/source --remover","/source --global","/source --limpar-orfas","/skill", "/limpar-temp",
         "/promover ", "/copiar", "/tokens", "/ajuda",
         "/history", "/history salvar", "/history exportar",
@@ -1363,7 +1444,7 @@ def main():
     while True:
         try:
             user_input = pt_prompt(
-                f"{_SESSION['perfil']} ❯ ",
+                f"{'build' if _SESSION.get('modo') == 'build' else _SESSION['perfil']} ❯ ",
                 completer=completer, style=pt_style,
             ).strip()
         except (KeyboardInterrupt, EOFError):
@@ -1372,6 +1453,22 @@ def main():
 
         if not user_input:
             continue
+
+        # ── modo build: linguagem natural escolhe um processo nativo ──────
+        if _SESSION.get("modo") == "build" and not user_input.startswith("/"):
+            _processo = detect_process(user_input)
+            if _processo is not None:
+                _SESSION["processo_ativo"] = _processo.id
+                console.print(
+                    f"  [tool]processo:[/tool] [white]{_processo.titulo}[/white]  "
+                    f"[muted]{_processo.descricao}[/muted]\n"
+                )
+                user_input = f"/multitask {_processo.flow} {user_input}"
+            else:
+                console.print(
+                    "  [muted]build: nenhum processo reconhecido; "
+                    "respondendo como chat.[/muted]\n"
+                )
 
         if user_input == "/sair":
             # pergunta se quer salvar antes de sair (só se tiver histórico não salvo)
@@ -1473,7 +1570,42 @@ def main():
             console.print()
             continue
 
-        # ── /perfil — alterna entre orquestrador local e build ────────────
+        # ── /modo — alterna chat normal e construção com processos ────────
+        if user_input.startswith("/modo"):
+            partes = user_input.split(None, 1)
+            arg_modo = partes[1].strip().lower() if len(partes) > 1 else ""
+            if not arg_modo:
+                console.print(Panel(
+                    f"  [muted]modo atual:[/muted] "
+                    f"[white]{_SESSION.get('modo', 'chat')}[/white]\n"
+                    f"  [muted]perfil:[/muted] [white]{_SESSION['perfil']}[/white]\n\n"
+                    "  [tool]/modo chat[/tool]   conversa e tarefas normais\n"
+                    "  [tool]/modo build[/tool]  construção: escolhe um processo nativo\n\n"
+                    "  [muted]build exige perfil nuvem. Use /perfil nuvem.[/muted]",
+                    title="[tool]modo[/tool]",
+                    border_style=CLR_BORDER,
+                    padding=(0, 1),
+                    expand=False,
+                ))
+                console.print()
+                continue
+            if arg_modo not in ("chat", "build"):
+                console.print("  [tool]uso:[/tool] /modo chat  ·  /modo build\n")
+                continue
+            if arg_modo == "build" and _SESSION["perfil"] != PERFIL_NUVEM:
+                console.print(
+                    "  [warn]modo build exige perfil nuvem. "
+                    "Use /perfil nuvem primeiro.[/warn]\n"
+                )
+                continue
+            _SESSION["modo"] = arg_modo
+            console.print(
+                f"  [{CLR_OK}]✓[/{CLR_OK}] modo: "
+                f"[white]{arg_modo}[/white]\n"
+            )
+            continue
+
+        # ── /perfil — alterna entre orquestrador local e nuvem ────────────
         if user_input.startswith("/perfil"):
             partes = user_input.split(None, 1)
             arg_perfil = partes[1].strip().lower() if len(partes) > 1 else ""
@@ -1483,15 +1615,17 @@ def main():
                 spec = getattr(roles, "orchestrator", None)
                 body = [
                     f"  [muted]perfil atual:[/muted] "
-                    f"[white]{_SESSION['perfil']}[/white]",
+                    f"[white]{_SESSION['perfil']}[/white]   "
+                    f"[muted]modo:[/muted] [white]{_SESSION.get('modo', 'chat')}[/white]",
                     f"  [muted]modelo:[/muted] "
                     f"{_SESSION.get('label') or args.model}",
                     "",
                     "  [tool]/perfil local[/tool]   Ollama local + tool secondary_model",
-                    "  [tool]/perfil build[/tool]   orquestrador no provider secundário",
+                    "  [tool]/perfil nuvem[/tool]   orquestrador no provider de API",
+                    "  [tool]/modo build[/tool]     construção com processos nativos",
                     "",
                     "  [muted]a troca vale para esta sessão; para iniciar em "
-                    "build use --perfil build[/muted]",
+                    "nuvem use --perfil nuvem[/muted]",
                 ]
                 if spec is not None:
                     body.insert(2, f"  [muted]orquestrador:[/muted] {spec.label}")
@@ -1505,15 +1639,16 @@ def main():
                 console.print()
                 continue
 
-            if arg_perfil not in ("local", "build"):
+            if arg_perfil not in ("local", "nuvem", "cloud", "build"):
                 console.print(
-                    "  [tool]uso:[/tool] /perfil local  ·  /perfil build\n"
+                    "  [tool]uso:[/tool] /perfil local  ·  /perfil nuvem\n"
                 )
                 continue
 
+            arg_norm = normalize_perfil(arg_perfil)
             try:
                 _roles, _client, _label = _resolve_session_roles(
-                    args.model, arg_perfil
+                    args.model, arg_norm
                 )
             except RuntimeError as exc:
                 console.print(
@@ -1527,6 +1662,11 @@ def main():
                 "client": _client,
                 "roles": _roles,
             })
+            if _roles.perfil != PERFIL_NUVEM and _SESSION.get("modo") == "build":
+                _SESSION["modo"] = "chat"
+                console.print(
+                    "  [warn]modo build exige perfil nuvem — voltando para chat.[/warn]"
+                )
 
             tools, schema = _reload_tools(agent_info, args.safe)
             _apply_mcp_tools(tools, mcp_manager, agent_info)
@@ -1542,7 +1682,7 @@ def main():
                 f"[white]{_SESSION['perfil']}[/white]  ·  "
                 f"[muted]{escape(str(_SESSION['label']))}[/muted]"
             )
-            if _SESSION["perfil"] == "build":
+            if _SESSION["perfil"] == PERFIL_NUVEM:
                 console.print(
                     "  [muted]secondary_model oculto nesta sessão; "
                     "o chat usa o provider cloud como orquestrador.[/muted]"
@@ -2215,8 +2355,8 @@ def main():
 
             # /skill <nome> <prompt> — delega ao agente com skill ativa
 
-            if _SESSION.get("perfil") == "build":
-                # no build o orquestrador é o modelo principal: a skill
+            if _SESSION.get("perfil") == PERFIL_NUVEM:
+                # no perfil nuvem o orquestrador é o modelo principal: a skill
                 # entra no prompt dele, não numa chamada ao secondary_model.
                 from skill_loader import load_text
 
@@ -2304,8 +2444,10 @@ def main():
                 "  [tool]/history salvar[/tool]          salva/atualiza sessão atual\n"
                 "  [tool]/history exportar[/tool]        exporta sessão atual como .md\n"
                 "  [tool]/model[/tool]                   exibe e configura modelos local e secundário\n"
-                "  [tool]/perfil[/tool]                  mostra o perfil atual (local/build)\n"
-                "  [tool]/perfil [white]local|build[/white][/tool]    troca o orquestrador da sessão\n"
+                "  [tool]/perfil[/tool]                  mostra o perfil atual (local/nuvem)\n"
+                "  [tool]/perfil [white]local|nuvem[/white][/tool]    troca o orquestrador da sessão\n"
+                "  [tool]/modo [white]chat|build[/white][/tool]      modo da sessão (build exige nuvem)\n"
+                "  [tool]/processo[/tool]                lista e executa processos nativos do Ciel\n"
                 "  [tool]/tools-extras[/tool]            tools opcionais e exemplos disponíveis\n"
                 "  [tool]/ajuda[/tool]                   este menu",
                 title="[white]comandos[/white]",
@@ -2445,7 +2587,11 @@ def main():
                 task_prompt, tools, schema, args.model, agent_info,
                 history=history[:-1],
                 session_id=str(current_session_id) if current_session_id else None,
-                max_steps=MAX_STEPS_TASK,
+                max_steps=(
+                    MAX_STEPS_TASK_NUVEM
+                    if _SESSION.get("client") is not None
+                    else MAX_STEPS_TASK
+                ),
                 mcp_manager=mcp_manager,
                 **_run_agent_callbacks(session_flags),
             )
@@ -2472,7 +2618,47 @@ def main():
             continue
 
         # ── /multitask — execução de fluxo em tasks ───────────────────────────
+        # ── /processo — receitas nativas (usa o motor multitask por baixo) ─
+        if user_input.startswith("/processo"):
+            arg_processo = user_input[len("/processo"):].strip()
+            if not arg_processo or arg_processo in ("--listar", "listar"):
+                tbl = Table(box=None, show_header=True, padding=(0, 1))
+                tbl.add_column("processo", style="tool", no_wrap=True)
+                tbl.add_column("o que faz", style="muted")
+                for p in list_processes():
+                    tbl.add_row(p.id, p.descricao)
+                console.print()
+                console.print(tbl)
+                console.print(
+                    "\n  [muted]uso:[/muted] /processo <nome> \"objetivo\"  "
+                    "·  no modo build, fale em linguagem natural\n"
+                )
+                continue
+
+            if arg_processo.startswith("--retomar"):
+                _SESSION["processo_ativo"] = "retomada"
+                user_input = f"/multitask {arg_processo}"
+            else:
+                partes = arg_processo.split(None, 1)
+                _processo = get_process(partes[0])
+                if _processo is None:
+                    console.print(
+                        f"  [err]processo '{escape(partes[0])}' não existe.[/err]\n"
+                        "  [muted]use /processo para listar.[/muted]\n"
+                    )
+                    continue
+
+                _objetivo = (
+                    partes[1].strip() if len(partes) > 1 else _processo.descricao
+                )
+                _SESSION["processo_ativo"] = _processo.id
+                console.print(
+                    f"  [tool]processo:[/tool] [white]{_processo.titulo}[/white]\n"
+                )
+                user_input = f"/multitask {_processo.flow} {_objetivo}"
+
         if user_input.startswith("/multitask"):
+            _proc_ativo = _SESSION.pop("processo_ativo", None)
             from board import (
                 BoardError, BoardLocked, BoardNotFound, BoardStore,
                 RUN_CONCLUIDA, RUN_FALHOU, RUN_PAUSADA,
@@ -2698,9 +2884,12 @@ def main():
                     args.model,
                     perfil=board.perfil or _SESSION.get("perfil") or None,
                 )
-                effective_perfil = board.perfil or roles.perfil
+                effective_perfil = (
+                    normalize_perfil(board.perfil)
+                    if board.perfil else roles.perfil
+                )
                 use_cloud = (
-                    effective_perfil == "build"
+                    effective_perfil == PERFIL_NUVEM
                     and roles.worker is not None
                     and not roles.worker.is_local
                 )
@@ -2893,7 +3082,11 @@ def main():
                     session_id=(
                         str(current_session_id) if current_session_id else None
                     ),
-                    max_steps_per_task=MAX_STEPS_TASK,
+                    max_steps_per_task=(
+                        MAX_STEPS_TASK_NUVEM
+                        if effective_perfil == PERFIL_NUVEM
+                        else MAX_STEPS_TASK
+                    ),
                     mcp_manager=mcp_manager,
                     callbacks=_callbacks,
                     on_event=on_multitask_event,
@@ -2922,20 +3115,31 @@ def main():
                 p_in = p_out = 0
 
             ts = datetime.now().strftime("%a %H:%M")
-            history.append({"role": "agent", "content": mt_result.message, "ts": ts})
+            try:
+                (runs.run_dir(mt_result.board.id) / "relatorio.md").write_text(
+                    mt_result.message, encoding="utf-8"
+                )
+            except Exception:
+                pass
+            _out_msg = (
+                _process_summary(mt_result, _proc_ativo)
+                if _proc_ativo
+                else mt_result.message
+            )
+            history.append({"role": "agent", "content": _out_msg, "ts": ts})
             print_history_entry(
-                "agent", mt_result.message, ts,
+                "agent", _out_msg, ts,
                 t_in + p_in, t_out + p_out,
             )
             print_turn_separator()
 
             if current_session_id is not None:
-                store.append_turn(current_session_id, "agent", mt_result.message, ts)
+                store.append_turn(current_session_id, "agent", _out_msg, ts)
 
             if mt_result.status == RUN_PAUSADA:
                 console.print(
                     f"  [muted]para retomar:[/muted] "
-                    f"/multitask --retomar {mt_result.board.id}\n"
+                    f"/processo --retomar {mt_result.board.id}\n"
                 )
             elif mt_result.status == RUN_FALHOU:
                 console.print(
@@ -3050,7 +3254,11 @@ def main():
                     task_prompt, tools, schema, args.model, agent_info,
                     history=history[:-1],
                     session_id=str(current_session_id) if current_session_id else None,
-                    max_steps=MAX_STEPS_TASK,
+                    max_steps=(
+                        MAX_STEPS_TASK_NUVEM
+                        if _SESSION.get("client") is not None
+                        else MAX_STEPS_TASK
+                    ),
                     mcp_manager=mcp_manager,
                     **_run_agent_callbacks(session_flags),
                 )
@@ -3109,9 +3317,9 @@ def main():
                 continue
 
             prompt_final  = img_texto or "Analise esta imagem e descreva o conteúdo relevante."
-            if _SESSION.get("perfil") == "build":
+            if _SESSION.get("perfil") == PERFIL_NUVEM:
                 console.print(
-                    "  [warn]imagens no perfil build ainda não são suportadas; "
+                    "  [warn]imagens no perfil nuvem ainda não são suportadas; "
                     "use /perfil local para analisar imagens.[/warn]\n"
                 )
                 continue
@@ -3185,9 +3393,9 @@ def main():
             history_content = format_image_hint(img_path_token, inline_texto)
             run_input       = inline_texto or "Analise esta imagem e descreva o conteúdo relevante."
             run_img_b64     = inline_img_b64
-            if _SESSION.get("perfil") == "build":
+            if _SESSION.get("perfil") == PERFIL_NUVEM:
                 console.print(
-                    "  [warn]imagens no perfil build ainda não são suportadas — "
+                    "  [warn]imagens no perfil nuvem ainda não são suportadas — "
                     "seguindo só com o texto. Use /perfil local para visão.[/warn]\n"
                 )
                 run_img_b64 = None

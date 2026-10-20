@@ -188,6 +188,7 @@ class TaskState:
     artefatos: list[dict] = field(default_factory=list)
     decisoes: list[str] = field(default_factory=list)
     agente: str = ""
+    tools: list[str] | None = None
     depende_de: list[str] = field(default_factory=list)
     tentativas: int = 0
     correcoes: int = 0
@@ -203,6 +204,8 @@ class TaskState:
         self.depende_de = [str(d) for d in (self.depende_de or [])]
         self.decisoes = [str(d) for d in (self.decisoes or [])]
         self.acoes = [str(a) for a in (self.acoes or [])]
+        if self.tools is not None:
+            self.tools = [str(t) for t in self.tools]
 
         normalized: list[dict] = []
         for item in self.artefatos or []:
@@ -369,6 +372,7 @@ class Board:
         resultado_esperado: str = "",
         checagem: Any = None,
         agente: str = "",
+        tools: list[str] | None = None,
         depende_de: list[str] | None = None,
         status: str = TASK_PENDENTE,
         task_id: str | None = None,
@@ -394,6 +398,7 @@ class Board:
             resultado_esperado=resultado_esperado,
             checagem=checagem,
             agente=agente,
+            tools=list(tools) if tools is not None else None,
             depende_de=list(depende_de or []),
         )
         phase.tasks.append(task)

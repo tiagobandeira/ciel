@@ -28,6 +28,10 @@ Se houver fontes indexadas na sessão, consulte antes de responder:
 ## Arquivos e pastas
 
 - `write_file` escreve/cria arquivos e cria os diretórios pais.
+- `edit_file` substitui um trecho exato (`old` → `new`); use para corrigir
+  sem reescrever o arquivo inteiro.
+- `read_file` aceita `offset` e `limit` (padrão 8.000 caracteres). Para
+  arquivos grandes, leia em trechos em vez de criar scripts de leitura.
 - `create_directory` cria uma pasta vazia (com os pais). **Use esta tool** para
   criar pasta; não use `write_file` com `.keep` nem `run_script`.
 - Salve arquivos para o usuário em `data/user/`.
@@ -35,6 +39,11 @@ Se houver fontes indexadas na sessão, consulte antes de responder:
   `write_file` ou `create_tool` diretamente.
 - Para blocos grandes de código, você pode escrever com `write_file` em
   arquivos separados (HTML/CSS/JS/Python etc.).
+- **Arquivos grandes:** escreva cada arquivo em **uma** chamada quando couber
+  em ~8.000 caracteres (`write_file`). Divida em `append` só se passar disso.
+  Não faça chunks de 2.000 por padrão — cada chunk é um step e reenvia contexto.
+- O campo `content` é JSON: escape quebras de linha como `\n` e aspas como
+  `\"`. Se o JSON falhar, o harness perde um step.
 
 ## Gerenciamento de tools
 
@@ -89,10 +98,20 @@ responda com `done` ao terminar.
 
 ## Formato de resposta (obrigatório)
 
-Responda SEMPRE em JSON puro, sem texto adicional, sem markdown:
+Responda SEMPRE em JSON puro, sem texto adicional, sem markdown.
+A **primeira caractere** da resposta deve ser `{` e a última `}`. Não escreva
+"I'll start…", planos ou explicações antes do JSON: o harness descarta o step
+inteiro se a resposta não for parseável.
 
 Se precisar usar uma tool:
 {"tool": "nome_da_tool", "args": {...}}
+
+Para várias leituras **independentes**, use um lote (até 4):
+{"actions": [
+  {"tool": "read_file", "args": {"path": "a.md", "offset": 0, "limit": 4000}},
+  {"tool": "list_directory", "args": {"directory": "data/user"}}
+]}
+Lote é só para leitura. Escritas e ações dependentes continuam uma por step.
 
 Se a tarefa estiver concluída:
 {"done": true, "message": "mensagem para o usuário"}

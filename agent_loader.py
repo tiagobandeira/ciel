@@ -16,6 +16,8 @@ Formato do .md:
 import re
 from pathlib import Path
 
+from llm.roles import PERFIL_NUVEM, normalize_perfil
+
 AGENTS_DIR = Path(__file__).parent / "agents"
 
 # Formato padrão injetado se o .md não tiver "## Formato de resposta"
@@ -142,14 +144,15 @@ def _build_skills_block(skills: list[dict], profile: str = "local") -> str:
     Monta o bloco de texto injetado no system prompt do orquestrador.
     Retorna string vazia se não houver skills.
 
-    No perfil build o orquestrador é o modelo principal e não existe a tool
+    No perfil nuvem o orquestrador é o modelo principal e não existe a tool
     `secondary_model`; as skills entram como contexto/capacidade, não como
     chamada de delegação.
     """
+    profile = normalize_perfil(profile)
     if not skills:
         return ""
 
-    if profile == "build":
+    if profile == PERFIL_NUVEM:
         lines = ["## Skills desta persona"]
         lines.append(
             "Você é o modelo principal desta sessão; não existe a tool "
@@ -211,6 +214,7 @@ def load_agent(agent_name: str, *, profile: str = "local") -> dict:
         "skills": list[dict],        ← [{"name": str, "level": str}, ...]
       }
     """
+    profile = normalize_perfil(profile)
     path = AGENTS_DIR / f"{agent_name}.md"
     if not path.exists():
         available = list_agents()
@@ -235,6 +239,14 @@ def load_agent(agent_name: str, *, profile: str = "local") -> dict:
     allowed_mcp_servers = _parse_allowed_mcp_servers(mcp_raw)
     skills              = _parse_skills(skills_raw)
     skills_block        = _build_skills_block(skills, profile=profile)
+
+    # No build não existe secondary_model; remove regras de persona que
+    # mandam delegar para ele (ex.: agents/frontend.md).
+    if profile == PERFIL_NUVEM and behavior:
+        behavior = "\n".join(
+            line for line in behavior.splitlines()
+            if "secondary_model" not in line.lower()
+        ).strip()
 
     # Monta o system prompt
     parts = [f"# {name}\n"]
@@ -264,7 +276,7 @@ def load_agent(agent_name: str, *, profile: str = "local") -> dict:
 
 # Tools sempre disponíveis em qualquer agente — não precisam ser listadas no .md
 CORE_TOOLS = {
-    "read_file", "write_file", "list_directory", "create_directory", "search_files",
+    "read_file", "write_file", "edit_file", "list_directory", "create_directory", "search_files",
     "list_sources", "search_knowledge", "read_source",
     "calculator", "get_local_datetime",
     "create_tool", "run_script", "install_tool", "http_request",

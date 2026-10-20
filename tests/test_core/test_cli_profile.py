@@ -47,12 +47,12 @@ class TestRunAgentSession:
             return AgentResult("done", "ok")
 
         monkeypatch.setattr(cli, "run_agent", fake_run_agent)
-        cli._SESSION.update(perfil="build", client=sentinel)
+        cli._SESSION.update(perfil="nuvem", client=sentinel)
 
         cli._run_agent_session("oi", {}, [], "gemma4:cloud", {"id": "x"})
 
         assert calls["model"] == ""
-        assert calls["kwargs"]["profile"] == "build"
+        assert calls["kwargs"]["profile"] == "nuvem"
         assert calls["kwargs"]["model_client"] is sentinel
 
 
@@ -63,7 +63,7 @@ class TestToolsDoPerfil:
             "secondary_model": {"fn": lambda: "", "description": "delega"},
         }
         monkeypatch.setattr(cli, "load_tools", lambda: all_tools)
-        cli._SESSION.update(perfil="build")
+        cli._SESSION.update(perfil="nuvem")
 
         tools, schema = cli._reload_tools({"allowed_tools": None}, safe=False)
 
@@ -83,10 +83,10 @@ class TestToolsDoPerfil:
         assert "secondary_model" in tools
 
 
-class TestEnvironmentBuild:
-    def test_build_nao_verifica_ollama(self, monkeypatch):
+class TestEnvironmentNuvem:
+    def test_nuvem_nao_verifica_ollama(self, monkeypatch):
         roles = SimpleNamespace(
-            perfil="build",
+            perfil="nuvem",
             orchestrator=SimpleNamespace(is_local=False, label="cloud"),
         )
         monkeypatch.setattr("llm.roles.load_roles", lambda *a, **k: roles)
@@ -97,15 +97,15 @@ class TestEnvironmentBuild:
             lambda: chamou.update(ollama=True) or (False, []),
         )
 
-        assert environment.check_environment("modelo", profile="build") == []
+        assert environment.check_environment("modelo", profile="nuvem") == []
         assert chamou["ollama"] is False
 
-    def test_build_sem_provider_sai(self, monkeypatch):
+    def test_nuvem_sem_provider_sai(self, monkeypatch):
         roles = SimpleNamespace(
-            perfil="build",
+            perfil="nuvem",
             orchestrator=SimpleNamespace(is_local=True, label="local"),
         )
         monkeypatch.setattr("llm.roles.load_roles", lambda *a, **k: roles)
 
         with pytest.raises(SystemExit):
-            environment.check_environment("modelo", profile="build")
+            environment.check_environment("modelo", profile="nuvem")

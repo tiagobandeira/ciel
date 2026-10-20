@@ -140,7 +140,7 @@ class TestPerfilBuild:
             "base_url": "https://integrate.api.nvidia.com/v1",
         })
         roles = load_roles("gemma4:cloud", config_path=cfg, secrets_manager=NV_SECRETS)
-        assert roles.perfil == "build"
+        assert roles.perfil == "nuvem"
         assert roles.orchestrator.provider == "nvidia"
         assert roles.worker.provider == "nvidia"
         assert roles.planner.provider == "nvidia"
@@ -166,7 +166,7 @@ class TestPerfilBuild:
             "gemma4:cloud", config_path=cfg, secrets_manager=NV_SECRETS,
             perfil="build",
         )
-        assert roles.perfil == "build"
+        assert roles.perfil == "nuvem"
         assert roles.worker.provider == "nvidia"
 
     def test_parametro_local_vence_config_build(self, tmp_path):

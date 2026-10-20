@@ -61,7 +61,7 @@ class TestLoadFlow:
         flow = load_flow("site_teste", flows_dir=flows_dir)
         assert flow.name == "site_teste"
         assert flow.objetivo == "criar um site de teste"
-        assert flow.perfil == "build"
+        assert flow.perfil == "nuvem"
         assert flow.formato == "resumo"
         assert flow.como_testar == "abra index.html"
         assert flow.meta["idioma"] == "pt-BR"
@@ -111,7 +111,7 @@ class TestBuildBoard:
 
         assert board.objetivo == "criar um site de teste"
         assert board.fluxo == "site_teste"
-        assert board.perfil == "build"
+        assert board.perfil == "nuvem"
         assert board.entrega == {
             "formato": "resumo",
             "como_testar": "abra index.html",
@@ -184,7 +184,7 @@ class TestBuildBoard:
     def test_override_de_perfil(self, flows_dir):
         flow = load_flow("site_teste", flows_dir=flows_dir)
         board = build_board(flow, perfil="build")
-        assert board.perfil == "build"
+        assert board.perfil == "nuvem"
 
 
 class TestListFlows:

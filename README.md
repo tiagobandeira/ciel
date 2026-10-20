@@ -97,13 +97,14 @@ python ciel.py --tui                       # força TUI (requer Textual)
 python ciel.py --agent dev_helper          # agente específico
 python ciel.py --model gemma4:e2b-it-qat   # modelo local
 python ciel.py --safe                      # sem tools de execução arbitrária
-python ciel.py --perfil build              # orquestrador no provider secundário
+python ciel.py --perfil nuvem              # orquestrador no provider de API
+python ciel.py --cli --modo build          # construção com processos nativos
 python ciel.py --auto                      # pula confirmação de create_tool (confia na sessão inteira)
 python ciel.py --list-agents               # lista personas disponíveis
 python server.py                           # versão server local
 ```
 
-> Todas as flags (`--agent`, `--model`, `--safe`, `--auto`, `--list-agents`) funcionam tanto no modo CLI quanto TUI.  
+> Todas as flags (`--agent`, `--model`, `--perfil`, `--modo`, `--safe`, `--auto`, `--list-agents`) funcionam tanto no modo CLI quanto TUI — exceto `--modo build`, que por enquanto é só CLI.  
 > `--task` (modo headless) é exclusivo do modo CLI — use `python ciel.py --cli --task tasks/minha_task.md`.
 
 ---
@@ -131,12 +132,12 @@ python server.py                           # versão server local
 | `/task` | lista todas as tasks disponíveis |
 | `/task <nome>` | executa task pelo nome (parcial ou exato) |
 | `/task <arquivo.md>` | executa task pelo caminho direto |
-| `/multitask` | lista fluxos e execuções |
-| `/multitask <fluxo> <objetivo>` | executa um fluxo em tasks com quadro e status |
-| `/multitask <objetivo>` | objetivo livre: o planejador (modelo secundário) monta o plano |
-| `/multitask --fluxos` | lista fluxos disponíveis em `flows/` |
-| `/multitask --listar` | lista execuções e status |
-| `/multitask --retomar <id>` | retoma execução pausada |
+| `/modo` | mostra o modo atual (chat/build) |
+| `/modo chat\|build` | alterna chat e construção |
+| `/processo` | lista os processos nativos do Ciel |
+| `/processo <nome> <objetivo>` | executa um processo com spec, quadro e checks |
+| `/processo --retomar <id>` | retoma um processo pausado |
+| `/processo app_web` | app local com interface, persistência e critérios de aceite |
 | `/skill` | lista skills disponíveis |
 | `/skill <nome>` | exibe conteúdo da skill |
 | `/skill <nome> <prompt>` | executa prompt usando a skill |
@@ -144,8 +145,8 @@ python server.py                           # versão server local
 | `/tokens` | mostra tokens gastos na sessão atual |
 | `/copiar` | copia última resposta do agente |
 | `/model` | exibe modelo local/secundário e lista providers configurados; escolher um número ativa |
-| `/perfil` | mostra o perfil da sessão (local/build) |
-| `/perfil <local\|build>` | troca o orquestrador da sessão |
+| `/perfil` | mostra o perfil da sessão (local/nuvem) e o modo |
+| `/perfil <local\|nuvem>` | troca o orquestrador da sessão |
 | `/model <nome>` | troca o modelo local (Ollama) direto |
 | `/connect` | conecta ou atualiza um provider do modelo secundário |
 | `/tools-extras` | tools opcionais disponíveis e status de instalação |
@@ -289,19 +290,35 @@ O agente executa a task e encerra. Sem prompt, sem sessão interativa.
 
 ---
 
-## Multitask (em desenvolvimento)
+## Processos nativos (modo build)
 
-O modo multitask executa um **fluxo** — um plano em várias tasks — com estado em
-disco, status por task e uma mensagem final formatada. Diferente de `/task`
-(que executa ações em ordem), o multitask decide a ordem pelo quadro, isola o
-contexto de cada task e pode ser retomado depois.
+O modo `build` executa **processos** — receitas nativas do Ciel para tarefas
+com critério de aceite. Por baixo, ele usa o motor de quadro/checks/retomada
+(o antigo multitask), mas o usuário não precisa conhecer esse motor.
 
-```bash
-/multitask --fluxos                       # fluxos disponíveis em flows/
-/multitask exemplo_site                   # executa o fluxo
-/multitask exemplo_site meu objetivo      # sobrescreve o objetivo do fluxo
-/multitask --listar                       # execuções e status
-/multitask --retomar <id>                 # retoma uma execução pausada
+```text
+/modo build
+quero um app de notas em markdown com preview e salvamento local
+```
+
+O Ciel detecta `app_web`, mostra a spec/plano e executa. Também dá para ser
+explícito:
+
+```text
+/processo                         # lista os processos
+/processo app_web "app de notas"
+/processo landing_page
+```
+
+O detalhe fica no log (`data/runs/<id>/`); a resposta final é curta: arquivos,
+como testar e verificação. O motor multitask continua interno — não é mais um
+comando de usuário.
+
+Para testar o lado de **verificação**, há o processo `corrigir_bug`, com um
+demo de teste falhando em `data/user/bugfix_demo/`:
+
+```text
+/processo corrigir_bug
 ```
 
 Um fluxo é um `.md` em `flows/` com cabeçalho e tasks no formato nativo:
@@ -337,14 +354,14 @@ runner tenta uma correção com o erro e os arquivos envolvidos, até o limite
 configurado. O relatório final é montado a partir do quadro — não depende de o
 modelo lembrar do que fez.
 
-**Plano livre:** `/multitask <objetivo>` usa o papel `planner` (modelo
-secundário) para montar o plano. O harness valida o JSON por código, devolve
-os erros ao modelo se necessário e pede sua aprovação antes de executar —
-inclusive com opção de refazer o plano com um ajuste. Sem secundário
-configurado, use um fluxo. A TUI dedicada ainda não entrou; use
-`python ciel.py --cli` por enquanto.
+Processos são implementados como fluxos em `flows/` (formato acima) e
+registrados em `processes.py`. O modo build escolhe o processo pela intenção;
+`/processo` força um processo específico. A TUI ainda não executa o modo build;
+use `python ciel.py --cli`.
 
-→ **[Documentação: docs/multitask.md](docs/multitask.md)**
+→ **[Processos: docs/processos.md](docs/processos.md)**  
+→ **[Motor interno: docs/multitask.md](docs/multitask.md)**  
+→ **[Casos de teste: docs/testes-multitask.md](docs/testes-multitask.md)**
 
 ---
 
@@ -431,26 +448,28 @@ O projeto inclui um servidor MCP para **Telegram** (`mcp/telegram/`) pronto para
 
 ---
 
-## Perfis de modelo (local / build)
+## Perfis de modelo (local / nuvem)
 
 | Perfil | Orquestrador | `secondary_model` | Ollama |
 |---|---|---|---|
 | `local` (padrão) | Ollama (`--model`) | disponível | obrigatório |
-| `build` | provider configurado com `/connect` | oculto | não necessário |
+| `nuvem` | provider configurado com `/connect` | oculto | não necessário |
 
-- `--perfil build` inicia a sessão no build; `/perfil build` troca na hora.
-- Banner e prompt mostram o perfil (`build ❯`), para não esquecer em qual modo
-  você está.
+- `--perfil nuvem` inicia a sessão no provider de API; `/perfil nuvem` troca
+  na hora.
+- Banner mostra `perfil: nuvem · modo: build`; o prompt mostra `build ❯` no
+  modo de construção.
 - O padrão vem de `"perfil"` em `ciel_config.json`; `--perfil` e `/perfil`
   sobrescrevem só a sessão.
-- No build, o core prompt vira `system/core_build.md`: você é o modelo
-  principal, não delega para o `secondary_model`. Skills `obrigatoria` da
-  persona entram no prompt; `sugerida`/`opcional` podem ser carregadas com
-  `/skill` (o conteúdo é injetado no orquestrador).
-- Ainda têm suporte parcial no build: imagens (`/img`), server e bots. O foco
-  atual é CLI/TUI.
+- No perfil nuvem, o core prompt vira `system/core_build.md`: o modelo da API
+  é o principal, não delega para o `secondary_model`.
+- O perfil não é o modo: `nuvem` é *quem executa*; `build` é *como executa*
+  (com processos nativos), e exige o perfil nuvem.
+- Ainda têm suporte parcial: imagens (`/img`) e server/bots no perfil nuvem.
+  O foco atual é CLI/TUI.
 
-→ Decisões de arquitetura e nomenclatura: [docs/decisoes.md](docs/decisoes.md)
+→ Decisões de arquitetura e nomenclatura: [docs/decisoes.md](docs/decisoes.md)  
+→ Perfis, modos e processos: [docs/processos.md](docs/processos.md)
 
 ---
 

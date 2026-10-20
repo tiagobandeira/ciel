@@ -329,6 +329,12 @@ frontend-visual: obrigatoria
         # conteúdo real da skill skills/frontend-visual.md
         assert "Frontend Visual Rico" in info["system_prompt"]
 
+    def test_build_remove_regra_de_persona_que_chama_secondary(self):
+        info = al.load_agent("frontend", profile="build")
+        prompt = info["system_prompt"]
+        assert "Sempre que a tarefa envolver criação de site" not in prompt
+        assert "Frontend Visual Rico" in prompt
+
     def test_sem_skills_retorna_lista_vazia(self, agents_dir):
         write_agent(agents_dir, "minimo", AGENT_MINIMO)
         info = al.load_agent("minimo")

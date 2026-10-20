@@ -57,6 +57,7 @@ class TestLoadTask:
         assert task["grupo"] == ""
         assert task["fase"] == ""
         assert task["agente"] == ""
+        assert task["tools"] == []
         assert task["depende_de"] == []
         assert task["checagem"] is None
 
@@ -65,12 +66,14 @@ class TestLoadTask:
 
 fase: backend
 agente: dev_helper
+tools: read_file, write_file, list_directory
 depende_de: t1, t2
 checagem: {"tipo": "http", "url": "/", "esperado": 200}
 """
         task = load_task(write(tasks_dir, "t.md", text))
         assert task["fase"] == "backend"
         assert task["agente"] == "dev_helper"
+        assert task["tools"] == ["read_file", "write_file", "list_directory"]
         assert task["depende_de"] == ["t1", "t2"]
         assert task["checagem"] == {
             "tipo": "http", "url": "/", "esperado": 200,

@@ -13,6 +13,8 @@ Uso:
 
 import json
 import os
+
+from llm.roles import PERFIL_NUVEM, normalize_perfil
 import sys
 from pathlib import Path
 
@@ -120,7 +122,7 @@ def check_environment(model: str = "gemma4:cloud", profile: str = "local") -> li
     """
     Verifica o ambiente antes de iniciar o Ciel.
 
-    Perfil `build`: não exige Ollama; exige um provider secundário
+    Perfil `nuvem`: não exige Ollama; exige um provider secundário
     configurado (o orquestrador é o modelo cloud).
     Perfil `local`: comportamento histórico — Ollama é bloqueante.
 
@@ -128,15 +130,16 @@ def check_environment(model: str = "gemma4:cloud", profile: str = "local") -> li
     o chamador exibir após o header principal. Lista vazia = sem avisos.
     Cada string é uma linha única — sem quebras internas.
     """
-    if profile == "build":
+    profile = normalize_perfil(profile)
+    if profile == PERFIL_NUVEM:
         try:
             from llm.roles import load_roles
 
-            roles = load_roles(model, perfil="build")
+            roles = load_roles(model, perfil=PERFIL_NUVEM)
             spec = roles.orchestrator
         except Exception as exc:
             _console.print(Panel(
-                f"[err]✗[/err] não foi possível resolver o perfil build\n"
+                f"[err]✗[/err] não foi possível resolver o perfil nuvem\n"
                 f"\n  [muted]{exc}[/muted]",
                 border_style="err",
                 padding=(0, 2),
@@ -145,7 +148,7 @@ def check_environment(model: str = "gemma4:cloud", profile: str = "local") -> li
 
         if spec is None or spec.is_local:
             _console.print(Panel(
-                "[err]✗[/err] perfil build exige um provider secundário\n"
+                "[err]✗[/err] perfil nuvem exige um provider secundário\n"
                 "\n"
                 "  Configure com [muted]/connect[/muted] (ou variável de "
                 "ambiente) e tente de novo.\n"

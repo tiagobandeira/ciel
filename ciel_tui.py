@@ -87,6 +87,7 @@ from textual.widgets.option_list import Option
 
 # ── integração com o loop agêntico ───────────────────────────────────────────
 from agent_loop import run_agent, AgentResult
+from llm.roles import PERFIL_NUVEM, normalize_perfil
 from tools_registry import load_tools, tools_schema
 from agent_loader import load_agent, filter_tools, filter_mcp_tools, list_agents
 from tool_dispatch import UNSAFE_TOOLS, filter_unsafe, get_path_checks
@@ -324,8 +325,8 @@ COMMANDS: list[tuple[str, str]] = [
     ("/agente",            "troca persona interativo      [F4]"),
     ("/agente <nome>",     "troca persona diretamente"),
     ("/model",             "modelos — local e secundário  [F5]"),
-    ("/perfil",            "perfil local/build da sessão"),
-    ("/perfil <local|build>", "troca o orquestrador da sessão"),
+    ("/perfil",            "perfil local/nuvem da sessão"),
+    ("/perfil <local|nuvem>", "troca o orquestrador da sessão"),
     ("/model <nome>",      "troca modelo Ollama direto"),
     ("/connect",           "configura provedor do modelo secundário"),
     ("/novo",              "nova sessão"),
@@ -2711,6 +2712,7 @@ class CielTUI(App):
         initial_agent: str = "general",
         initial_model: str = "gemma4:cloud",
         initial_perfil: str = "local",
+        initial_modo: str = "chat",
         safe_mode: bool = False,
         **kwargs,
     ) -> None:
@@ -2719,11 +2721,14 @@ class CielTUI(App):
         self.current_model        = initial_model
         self._local_model         = initial_model
         self.perfil               = "local"
+        self.modo                 = initial_modo if initial_modo in ("chat", "build") else "chat"
         self._model_client        = None
         self._model_label         = initial_model
         self.safe_mode            = safe_mode
         self._trust_tool_creation = False  # True após o usuário escolher "auto"
         self._configure_perfil(initial_perfil, initial_model)
+        if self.modo == "build" and self.perfil != PERFIL_NUVEM:
+            self.modo = "chat"
 
     def _configure_perfil(self, perfil: str, local_model: str | None = None) -> str:
         """
@@ -2732,6 +2737,7 @@ class CielTUI(App):
         """
         from llm.roles import load_roles
 
+        perfil = normalize_perfil(perfil)
         local_model = local_model or self._local_model or "gemma4:cloud"
         try:
             roles = load_roles(local_model, perfil=perfil)
@@ -2742,7 +2748,7 @@ class CielTUI(App):
             self._model_label = local_model
             return f"não foi possível resolver o perfil: {exc}"
 
-        if roles.perfil == "build":
+        if roles.perfil == PERFIL_NUVEM:
             spec = roles.orchestrator
             if spec is None or spec.is_local:
                 self.perfil = "local"
@@ -2750,10 +2756,10 @@ class CielTUI(App):
                 self.current_model = local_model
                 self._model_label = local_model
                 return (
-                    "perfil build exige provider secundário configurado "
+                    "perfil nuvem exige provider secundário configurado "
                     "(use /connect); mantendo local."
                 )
-            self.perfil = "build"
+            self.perfil = PERFIL_NUVEM
             self._model_client = spec.client()
             self.current_model = spec.model
             self._model_label = spec.label
@@ -2832,7 +2838,7 @@ class CielTUI(App):
         all_tools = load_tools()
         tools = filter_tools(all_tools, self._agent_info.get("allowed_tools"))
         tools = filter_unsafe(tools, self.safe_mode)
-        if self.perfil == "build":
+        if self.perfil == PERFIL_NUVEM:
             tools.pop("secondary_model", None)
 
         self._tools  = tools
@@ -3115,8 +3121,8 @@ class CielTUI(App):
         self._log_write(msg_sep())
         self._log_write(msg_system(
             f"persona: {self.current_agent}  │  perfil: {self.perfil}"
-            f"  │  modelo: {self._model_label}", "info"))
-        if self.perfil == "build":
+            f"  │  modo: {self.modo}  │  modelo: {self._model_label}", "info"))
+        if self.perfil == PERFIL_NUVEM:
             self._log_write(msg_system(
                 f"orquestrador cloud: {self._model_label}", "ok"))
         else:
@@ -3526,8 +3532,8 @@ class CielTUI(App):
                 ("/agente <nome>",        "troca persona diretamente"),
                 ("/model",                "modelos — local e secundário  [F5]"),
                 ("/model <nome>",         "troca modelo local direto"),
-                ("/perfil",               "perfil local/build da sessão"),
-                ("/perfil <local|build>", "troca o orquestrador da sessão"),
+                ("/perfil",               "perfil local/nuvem da sessão"),
+                ("/perfil <local|nuvem>", "troca o orquestrador da sessão"),
                 ("/connect",             "configura provedor do modelo secundário"),
                 ("/novo",                 "nova sessão"),
                 ("/limpar",               "limpa display"),
@@ -3654,7 +3660,7 @@ class CielTUI(App):
                     self._log_write(t)
                 else:
                     # /skill <nome> <prompt> — injeta instrução e executa
-                    if self.perfil == "build":
+                    if self.perfil == PERFIL_NUVEM:
                         from skill_loader import load_text
                         skill_text = load_text(skill_name) or ""
                         injected = (
@@ -3692,28 +3698,33 @@ class CielTUI(App):
             arg = parts[1].lower() if len(parts) > 1 else ""
             if not arg:
                 self._log_write(msg_system(
-                    f"perfil atual: {self.perfil}  ·  {self._model_label}",
+                    f"perfil atual: {self.perfil}  ·  modo: {self.modo}"
+                    f"  ·  {self._model_label}",
                     "info",
                 ))
-            elif arg not in ("local", "build"):
+            elif arg not in ("local", "nuvem", "cloud", "build"):
                 self._log_write(msg_system(
-                    "uso: /perfil local  ·  /perfil build", "warn"
+                    "uso: /perfil local  ·  /perfil nuvem", "warn"
                 ))
             else:
                 warning = self._configure_perfil(arg)
+                if self.perfil != PERFIL_NUVEM and self.modo == "build":
+                    self.modo = "chat"
+                    warning = warning or "modo build exige nuvem; voltando para chat."
                 self._reload_tools(log)
                 self.query_one("#top-bar", TopBar).update_state(
                     model=self.current_model
                 )
                 self.query_one("#info-panel", InfoPanel).update_state(
                     model=self.current_model,
-                    model2=self._model_label if self.perfil == "build" else "",
+                    model2=self._model_label if self.perfil == PERFIL_NUVEM else "",
                 )
                 if warning:
                     self._log_write(msg_system(warning, "warn"))
                 else:
                     self._log_write(msg_system(
-                        f"perfil: {self.perfil}  ·  {self._model_label}",
+                        f"perfil: {self.perfil}  ·  modo: {self.modo}"
+                        f"  ·  {self._model_label}",
                         "ok",
                     ))
 
@@ -4193,7 +4204,7 @@ class CielTUI(App):
         new_tools = load_tools()
         filtered  = filter_tools(new_tools, self._agent_info.get("allowed_tools"))
         filtered  = filter_unsafe(filtered, self.safe_mode)
-        if self.perfil == "build":
+        if self.perfil == PERFIL_NUVEM:
             filtered.pop("secondary_model", None)
         self._tools  = filtered
         self._schema = tools_schema(filtered)

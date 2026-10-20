@@ -45,8 +45,21 @@ class TestReadFile:
         conteudo = "x" * 9_000
         f.write_text(conteudo, encoding="utf-8")
         result = read_file(str(f))
-        assert "truncado" in result
+        assert "trecho" in result or "truncado" in result
         assert len(result) < 9_000 + 200  # margem para a mensagem de truncagem
+
+    def test_offset_e_limit(self, tmp_path):
+        f = tmp_path / "trecho.txt"
+        f.write_text("0123456789abcdefghij", encoding="utf-8")
+        result = read_file(str(f), offset=5, limit=5)
+        assert result.startswith("56789")
+        assert "trecho 5–10 de 20" in result
+
+    def test_offset_alem_do_fim(self, tmp_path):
+        f = tmp_path / "curto.txt"
+        f.write_text("abc", encoding="utf-8")
+        result = read_file(str(f), offset=99)
+        assert "trecho 3–3 de 3" in result
 
     def test_arquivo_vazio_retorna_string_vazia(self, tmp_path):
         f = tmp_path / "vazio.txt"

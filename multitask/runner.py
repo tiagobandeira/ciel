@@ -25,6 +25,7 @@ from typing import Any, Callable
 
 from agent_loader import load_agent
 from agent_loop import OLLAMA_URL, run_agent
+from llm.roles import PERFIL_NUVEM, normalize_perfil
 from board import (
     RUN_CONCLUIDA,
     RUN_EM_ANDAMENTO,
@@ -108,11 +109,12 @@ class RunResult:
 
 # ── utilidades públicas ───────────────────────────────────────────────────
 
-def build_task_context(board: Board, task, phase: str) -> str:
+def build_task_context(board: Board, task, phase: str, profile: str = "local") -> str:
     """
     Contexto mínimo de uma task: objetivo geral, a própria task, as
     dependências que ela declarou e o que já foi concluído na fase.
     """
+    profile = normalize_perfil(profile)
     lines = [
         "## Execução multitask",
         f"Objetivo geral: {board.objetivo}",
@@ -163,13 +165,34 @@ def build_task_context(board: Board, task, phase: str) -> str:
         "",
         "## Instruções",
         "- Execute SOMENTE esta task. Não antecipe as tasks seguintes.",
+        "- Use APENAS as tools disponíveis neste schema; ignore menções a tools "
+        "ausentes no prompt.",
         "- Use as tools disponíveis para inspecionar e alterar o workspace real.",
         "- Não invente caminhos de arquivo: confirme o que existe antes de agir.",
         "- Para criar pastas use create_directory; não use write_file com .keep "
         "nem run_script para isso.",
-        "- Se usar secondary_model com mode=\"code\", passe output_dir com o "
-        "caminho exato pedido; sem output_dir a tool cria "
-        "data/user/<folder>_<timestamp>.",
+    ]
+    if profile == PERFIL_NUVEM:
+        lines.append(
+            "- A tool secondary_model não existe nesta sessão; crie e edite "
+            "arquivos diretamente com write_file/edit_file."
+        )
+    else:
+        lines.append(
+            "- Se usar secondary_model com mode=\"code\", passe output_dir com o "
+            "caminho exato pedido; sem output_dir a tool cria "
+            "data/user/<folder>_<timestamp>."
+        )
+    lines += [
+        "- Arquivos grandes: escreva cada arquivo em UMA chamada quando couber "
+        "em ~8.000 caracteres; divida só se passar. Não faça chunks de 2.000 "
+        "por padrão.",
+        "- Para ler/editar arquivo grande use read_file com offset/limit e "
+        "edit_file; não crie scripts de leitura ou correção.",
+        "- Não releia o arquivo inteiro depois de escrever; finalize a task. "
+        "Só leia de novo se a checagem falhar.",
+        "- Leituras independentes podem ir em um único actions (até 4); "
+        "não agrupe escritas nem ações dependentes.",
         "- Ao terminar, responda com done e uma message curta contendo: "
         "o que foi feito, arquivos criados/alterados e decisões tomadas.",
     ]
@@ -567,6 +590,25 @@ def _max_same_check_failures(board: Board) -> int:
         return 2
 
 
+def _tools_for_task(task, tools: dict, schema: list) -> tuple[dict, list]:
+    """
+    Restringe o schema às tools declaradas na task (`tools:` no fluxo).
+
+    Menos tools = menos tokens por step e menos distração. Sem `tools:`,
+    mantém o conjunto global (comportamento histórico).
+    """
+    allowed = getattr(task, "tools", None)
+    if not allowed:
+        return tools, schema
+
+    selected = {name: spec for name, spec in tools.items() if name in allowed}
+    selected_schema = [
+        item for item in schema
+        if isinstance(item, dict) and item.get("name") in selected
+    ]
+    return selected, selected_schema
+
+
 def _execute_task(
     board: Board,
     task,
@@ -606,8 +648,9 @@ def _execute_task(
     last_check_message = ""
     same_check_failures = 0
 
-    base_context = build_task_context(board, task, phase)
+    base_context = build_task_context(board, task, phase, profile=profile)
     context = base_context
+    task_tools, task_schema = _tools_for_task(task, tools, schema)
 
     task_agent = agent_info
     if task.agente:
@@ -641,8 +684,8 @@ def _execute_task(
 
         result = run_agent(
             context,
-            tools,
-            schema,
+            task_tools,
+            task_schema,
             model,
             task_agent,
             history=[],
@@ -651,6 +694,7 @@ def _execute_task(
             ollama_url=ollama_url,
             mcp_manager=mcp_manager,
             model_client=model_client,
+            allow_tool_proposal=False,
             **callbacks,
         )
 
@@ -658,6 +702,52 @@ def _execute_task(
         tokens_out += result.tokens_out
 
         if result.status != "done":
+            # Steps esgotados não significam necessariamente trabalho
+            # incompleto: se a checagem por código passar, aceita a task.
+            if result.status in ("limit", "needs_tool") and task.checagem is not None:
+                limit_check = run_checks(task.checagem, workspace_root=root)
+                if limit_check.ok and limit_check.verificado:
+                    duration = time.monotonic() - task_clock
+                    resumo = (
+                        f"{result.message or 'steps esgotados'} "
+                        f"— aceita pela checagem: {limit_check.mensagem}"
+                    )
+                    artifacts = collect_artifacts(root, task_started)
+                    board.record_task_result(
+                        task.id, TASK_CONCLUIDA,
+                        resumo=resumo,
+                        tokens_in=tokens_in,
+                        tokens_out=tokens_out,
+                        duracao_s=duration,
+                        correcoes=corrections,
+                        checagem_ok=True,
+                        checagem_resumo=limit_check.mensagem,
+                    )
+                    for artifact in artifacts:
+                        board.add_artifact(
+                            task.id, artifact["path"],
+                            mtime=artifact["mtime"],
+                        )
+                    store.save(board)
+                    _emit(
+                        store, board, on_event, "task_concluida",
+                        task=task.id, titulo=task.titulo, fase=phase,
+                        resumo=resumo[:500],
+                        tokens_in=tokens_in,
+                        tokens_out=tokens_out,
+                        duracao_s=round(duration, 2),
+                        artefatos=[a["path"] for a in artifacts],
+                        correcoes=corrections,
+                        checagem=limit_check.mensagem,
+                        checagem_ok=True,
+                        limite=True,
+                    )
+                    return _TaskOutcome(
+                        "done",
+                        tokens_in=tokens_in,
+                        tokens_out=tokens_out,
+                    )
+
             duration = time.monotonic() - task_clock
             erro = result.message or f"status {result.status}"
             _finish_failed(

@@ -16,13 +16,13 @@ configurado via `/connect`. Nada muda sem configuração explícita.
 
 Configuração opcional em `ciel_config.json`:
 
-    "perfil": "build",          // "local" (default) | "build"
+    "perfil": "nuvem",          // "local" (default) | "nuvem" (antes "build")
     "roles": {
       "worker":  {"provider": "nvidia", "model": "deepseek-ai/..."},
       "planner": {"provider": "nvidia", "model": "nvidia/nemotron-..."}
     }
 
-"perfil": "build" usa o provider secundário também como orquestrador/worker;
+"perfil": "nuvem" usa o provider secundário também como orquestrador/worker;
 qualquer override em `roles` vence o perfil. Chaves nunca entram em repr,
 log ou `to_dict()`.
 """
@@ -33,6 +33,18 @@ import json
 import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+
+PERFIL_LOCAL = "local"
+PERFIL_NUVEM = "nuvem"
+
+
+def normalize_perfil(value) -> str:
+    """Canoniza o perfil: `build`/`cloud` são aliases antigos de `nuvem`."""
+    raw = str(value or os.environ.get("CIEL_PERFIL", "") or "local").strip().lower()
+    if raw in ("nuvem", "cloud", "build"):
+        return PERFIL_NUVEM
+    return PERFIL_LOCAL
+
 from typing import Any
 from urllib.parse import urlparse
 
@@ -102,6 +114,7 @@ class ModelSpec:
             api_key=self.api_key,
             model=self.model,
             timeout=self.timeout,
+            max_tokens=self.max_tokens,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -405,7 +418,7 @@ def load_roles(
     Resolve todos os papéis para a sessão.
 
     `perfil` sobrescreve o `perfil` do config (usado por um fluxo que declara
-    `perfil: build` sem exigir mudar o `ciel_config.json`).
+    `perfil: nuvem` sem exigir mudar o `ciel_config.json`).
 
     Nunca levanta por config ausente/inválida: no pior caso devolve só o
     orquestrador local, que é o comportamento histórico do Ciel.
@@ -424,9 +437,7 @@ def load_roles(
 
     secondary = _secondary_spec(cfg, sm, env=env)
     perfil_raw = perfil if perfil is not None else cfg.get("perfil")
-    perfil = str(perfil_raw or "local").strip().lower()
-    if perfil not in ("local", "build"):
-        perfil = "local"
+    perfil = normalize_perfil(perfil_raw)
 
     overrides = cfg.get("roles")
     if not isinstance(overrides, dict):
@@ -444,7 +455,7 @@ def load_roles(
 
         if spec is None:
             if role in ("orchestrator", "worker"):
-                if perfil == "build" and secondary is not None:
+                if perfil == PERFIL_NUVEM and secondary is not None:
                     spec = replace(secondary, role=role)
                 else:
                     spec = replace(local, role=role)
@@ -481,6 +492,9 @@ __all__ = [
     "ROLE_NAMES",
     "ModelSpec",
     "RoleConfig",
+    "PERFIL_LOCAL",
+    "PERFIL_NUVEM",
+    "normalize_perfil",
     "load_roles",
     "secondary_spec",
     "DEFAULT_LOCAL_MODEL",

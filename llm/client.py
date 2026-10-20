@@ -149,10 +149,12 @@ class OllamaClient(BaseClient):
         *,
         timeout: float = DEFAULT_OLLAMA_TIMEOUT,
         chat_path: str = "/api/chat",
+        max_tokens: int | None = None,
     ):
         self.base_url = _normalize_ollama_base(base_url)
         self.chat_path = chat_path if chat_path.startswith("/") else f"/{chat_path}"
         self.timeout = timeout
+        self.max_tokens = max_tokens
 
     @property
     def endpoint(self) -> str:
@@ -182,8 +184,9 @@ class OllamaClient(BaseClient):
         options: dict[str, Any] = {}
         if temperature is not None:
             options["temperature"] = temperature
-        if max_tokens is not None:
-            options["num_predict"] = max_tokens
+        effective_max = max_tokens if max_tokens is not None else self.max_tokens
+        if effective_max is not None:
+            options["num_predict"] = effective_max
         if options:
             payload["options"] = options
 
@@ -235,12 +238,14 @@ class OpenAICompatClient(BaseClient):
         model: str = "",
         timeout: float = DEFAULT_OPENAI_TIMEOUT,
         extra_headers: dict | None = None,
+        max_tokens: int | None = None,
     ):
         self.base_url = _normalize_openai_base(base_url)
         self.api_key = api_key or ""
         self.model = model or ""
         self.timeout = timeout
         self.extra_headers = dict(extra_headers or {})
+        self.max_tokens = max_tokens
 
     @property
     def endpoint(self) -> str:
@@ -272,8 +277,9 @@ class OpenAICompatClient(BaseClient):
         }
         if temperature is not None:
             payload["temperature"] = temperature
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
+        effective_max = max_tokens if max_tokens is not None else self.max_tokens
+        if effective_max is not None:
+            payload["max_tokens"] = effective_max
 
         headers = {"Content-Type": "application/json"}
         if self.api_key:
@@ -323,6 +329,7 @@ def make_client(
     api_key: str = "",
     model: str = "",
     timeout: float | None = None,
+    max_tokens: int | None = None,
     **kwargs,
 ) -> BaseClient:
     """
@@ -338,6 +345,7 @@ def make_client(
         return OllamaClient(
             base_url=base_url or DEFAULT_OLLAMA_BASE,
             timeout=timeout or DEFAULT_OLLAMA_TIMEOUT,
+            max_tokens=max_tokens,
             **kwargs,
         )
     return OpenAICompatClient(
@@ -345,6 +353,7 @@ def make_client(
         api_key=api_key,
         model=model,
         timeout=timeout or DEFAULT_OPENAI_TIMEOUT,
+        max_tokens=max_tokens,
         **kwargs,
     )
 

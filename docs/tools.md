@@ -11,8 +11,9 @@ Presentes em todo agente, independente do caso de uso.
 
 | Tool | O que faz |
 |---|---|
-| `read_file.py` | lê arquivos de texto locais |
+| `read_file.py` | lê arquivos de texto; aceita `offset` e `limit` para trechos |
 | `write_file.py` | escreve/cria arquivos de texto |
+| `edit_file.py` | substitui um trecho exato (`old` → `new`) sem reescrever o arquivo |
 | `list_directory.py` | lista arquivos de um diretório com filtro por extensão e modo recursivo |
 | `create_directory.py` | cria uma pasta (com os pais) — use isto em vez de `.keep`/`run_script` |
 | `list_sources.py` | RAG — lista fontes indexadas com IDs |
@@ -66,8 +67,8 @@ Candidatas ao marketplace de tools instaláveis via `install_tool`.
 Estado atual — o que falta são `search_files` e `install_tool`:
 
 ```
-read_file         write_file        list_directory    create_directory
-search_files(*)
+read_file         write_file        edit_file         list_directory
+create_directory  search_files(*)
 list_sources      search_knowledge  read_source
 calculator        get_local_datetime
 http_request      create_tool       run_script        install_tool(*)

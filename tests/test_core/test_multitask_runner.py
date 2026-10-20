@@ -84,6 +84,7 @@ def make_fake(responses, calls=None, on_call=None):
         if calls is not None:
             calls.append({
                 "prompt": prompt, "model": model,
+                "tools": tools, "schema": schema,
                 "agent_info": agent_info, "kwargs": kwargs,
             })
         if on_call is not None:
@@ -208,6 +209,44 @@ class TestExecucaoFeliz:
 
         load.assert_called_once_with("frontend", profile="local")
         assert calls[0]["agent_info"] is persona
+
+    def test_tools_da_task_filtram_schema(self, store, workspace):
+        board = Board.new("x", run_id="run-tools")
+        board.add_task(
+            "f", "t", acoes=["a"],
+            tools=["read_file"],
+        )
+        tools = {
+            "read_file": {"fn": lambda: "", "description": "lê"},
+            "write_file": {"fn": lambda: "", "description": "escreve"},
+        }
+        schema = [{"name": "read_file"}, {"name": "write_file"}]
+        calls = []
+
+        with patch(
+            "multitask.runner.run_agent",
+            side_effect=make_fake([done("ok")], calls=calls),
+        ):
+            run_board(
+                board, tools, schema, AGENT,
+                store=store, workspace_root=workspace,
+            )
+
+        assert set(calls[0]["tools"]) == {"read_file"}
+        assert [item["name"] for item in calls[0]["schema"]] == ["read_file"]
+
+    def test_contexto_build_nao_manda_usar_secondary(self):
+        from multitask.runner import build_task_context
+
+        board = Board.new("x", run_id="run-contexto")
+        task = board.add_task("f", "t", acoes=["a"])
+
+        local = build_task_context(board, task, "f", profile="local")
+        build = build_task_context(board, task, "f", profile="build")
+
+        assert "Se usar secondary_model" in local
+        assert "secondary_model não existe" in build
+        assert "Se usar secondary_model" not in build
 
 
 class TestFalhaEPausa:
@@ -527,3 +566,36 @@ class TestChecagensECorrecao:
         assert task.correcoes == 0
         assert task.tentativas == 1
         assert "orçamento" in task.erro
+
+    def test_limit_com_checagem_ok_aceita_task(self, store, workspace):
+        (workspace / "pronto.txt").write_text("ok", encoding="utf-8")
+        board = self._board({"tipo": "arquivo", "path": "pronto.txt"})
+        limite = AgentResult(
+            "limit", "Limite de steps", tokens_in=10, tokens_out=5, steps=9,
+        )
+
+        with patch("multitask.runner.run_agent", side_effect=make_fake([limite])):
+            result = run_board(board, {}, [], AGENT, store=store, workspace_root=workspace)
+
+        task = board.task("t1")
+        assert result.status == RUN_CONCLUIDA
+        assert task.status == TASK_CONCLUIDA
+        assert task.checagem_ok is True
+        assert "aceita pela checagem" in task.resumo
+        eventos = [
+            e for e in store.read_events(board.id)
+            if e["tipo"] == "task_concluida"
+        ]
+        assert eventos and eventos[0].get("limite") is True
+
+    def test_limit_com_checagem_falha_falha_task(self, store, workspace):
+        board = self._board({"tipo": "arquivo", "path": "nunca.txt"})
+        limite = AgentResult(
+            "limit", "Limite de steps", tokens_in=10, tokens_out=5, steps=9,
+        )
+
+        with patch("multitask.runner.run_agent", side_effect=make_fake([limite])):
+            result = run_board(board, {}, [], AGENT, store=store, workspace_root=workspace)
+
+        assert result.status == RUN_FALHOU
+        assert board.task("t1").status == TASK_FALHOU

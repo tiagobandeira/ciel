@@ -11,7 +11,8 @@ Uso:
     python ciel.py --cli        # força CLI
     python ciel.py --agent dev_helper
     python ciel.py --model gemma4:cloud
-    python ciel.py --perfil build
+    python ciel.py --perfil nuvem
+    python ciel.py --modo build
     python ciel.py --safe
     python ciel.py --list-agents
 
@@ -82,16 +83,27 @@ def _launch_tui(extra_argv: list[str]) -> None:
     p = argparse.ArgumentParser(prog="ciel --tui", add_help=True)
     p.add_argument("--agent",  default="general",      metavar="NOME")
     p.add_argument("--model",  default="gemma4:cloud", metavar="MODELO")
-    p.add_argument("--perfil", choices=["local", "build"], default="local",
-                   help="perfil de modelo da sessão")
+    p.add_argument("--perfil", choices=["local", "nuvem", "cloud", "build"], default="local",
+                   help="perfil de modelo da sessão: local | nuvem")
+    p.add_argument("--modo", choices=["chat", "build"], default="chat",
+                   help="modo da sessão: chat | build")
     p.add_argument("--safe",   action="store_true",    default=False)
     args = p.parse_args(extra_argv)
+
+    if args.modo == "build":
+        print(
+            "  modo build está disponível na CLI por enquanto.\n"
+            "  use: python ciel.py --cli --modo build",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     from ciel_tui import CielTUI
     app = CielTUI(
         initial_agent=args.agent,
         initial_model=args.model,
         initial_perfil=args.perfil,
+        initial_modo=args.modo,
         safe_mode=args.safe,
     )
     app.run()
@@ -113,6 +125,15 @@ def _launch_bot(extra_argv: list[str]) -> None:
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
+def _wants_build_mode(argv: list[str]) -> bool:
+    for index, token in enumerate(argv):
+        if token == "--modo" and index + 1 < len(argv):
+            return argv[index + 1] == "build"
+        if token.startswith("--modo="):
+            return token.split("=", 1)[1] == "build"
+    return False
+
+
 def main() -> None:
     mode, rest = _parse_mode()
 
@@ -123,7 +144,7 @@ def main() -> None:
     elif mode == "cli":
         _launch_cli(rest)
     else:  # auto
-        if _has_textual():
+        if _has_textual() and not _wants_build_mode(rest):
             _launch_tui(rest)
         else:
             _launch_cli(rest)

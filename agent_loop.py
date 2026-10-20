@@ -44,6 +44,7 @@ from typing import Callable
 import requests
 
 from llm.client import LLMError, OllamaClient
+from llm.roles import PERFIL_NUVEM, normalize_perfil
 from trust.input_verifier import InputVerifier
 
 # ── config padrão (pode ser sobrescrita pelo chamador) ────────────────────────
@@ -70,11 +71,107 @@ def _call(cb, *args):
         cb(*args)
 
 
+def _parse_dsml_invoke(name: str, body: str) -> dict | None:
+    # remove o fechamento do invoke, se existir
+    body = re.split(
+        r"<[^>]*DSML[^>]*/\s*invoke\s*>", body, maxsplit=1, flags=re.IGNORECASE
+    )[0]
+
+    params = re.findall(
+        r"<[^>]*DSML[^>]*parameter\b[^>]*\bname\s*=\s*[\"']([^\"']+)[\"'][^>]*>"
+        r"(.*?)</[^>]*DSML[^>]*parameter\s*>",
+        body,
+        re.DOTALL | re.IGNORECASE,
+    )
+
+    args: dict = {}
+    if params:
+        for pname, raw in params:
+            raw = raw.strip()
+            if pname.lower() in ("args", "arguments"):
+                try:
+                    value = json.loads(raw)
+                except (ValueError, TypeError):
+                    return None
+                if not isinstance(value, dict):
+                    return None
+                args.update(value)
+                continue
+            try:
+                args[pname] = json.loads(raw)
+            except (ValueError, TypeError):
+                args[pname] = raw
+    else:
+        try:
+            value = json.loads(body.strip())
+        except (ValueError, TypeError):
+            return None
+        if not isinstance(value, dict):
+            return None
+        args = value
+
+    return {"tool": name, "args": args}
+
+
+def _parse_dsml_response(text: str) -> dict | None:
+    """
+    Adaptador para modelos DeepSeek que emitem tool calls no formato DSML
+    (``<｜｜DSML｜｜ invoke ...>``) em vez do JSON do Ciel.
+
+    Suporta mais de um invoke: devolve ``{"actions": [...]}`` para o loop
+    executar em lote. Se não houver DSML reconhecível, devolve None.
+    """
+    if "dsml" not in text.lower():
+        return None
+
+    invokes = re.findall(
+        r"<[^>]*DSML[^>]*invoke\b[^>]*\bname\s*=\s*[\"']([^\"']+)[\"'][^>]*>"
+        r"(.*?)(?=<[^>]*DSML[^>]*invoke\b|\Z)",
+        text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    if not invokes:
+        return None
+
+    actions = []
+    for name, body in invokes:
+        action = _parse_dsml_invoke(name, body)
+        if action is not None:
+            actions.append(action)
+    if not actions:
+        return None
+    if len(actions) == 1:
+        return actions[0]
+    return {"actions": actions}
+
+
+def _first_json_object(text: str) -> dict | None:
+    """Extrai o primeiro objeto JSON completo, mesmo com prosa/múltiplos JSONs."""
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            value, _ = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
+    return None
+
+
 def _parse_response(text: str) -> dict:
+    if "dsml" in text.lower():
+        dsml = _parse_dsml_response(text)
+        if dsml is not None:
+            return dsml
     try:
         return json.loads(text.strip())
     except json.JSONDecodeError:
         pass
+    first = _first_json_object(text)
+    if first is not None:
+        return first
     match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
     if match:
         try:
@@ -88,6 +185,174 @@ def _parse_response(text: str) -> dict:
         except json.JSONDecodeError:
             pass
     return {"error": f"resposta não parseável: {text[:200]}"}
+
+
+# ── lote de leituras e compactação (build) ─────────────────────────────────────
+
+BATCH_SAFE_TOOLS = frozenset({
+    "read_file", "list_directory", "search_files",
+    "list_sources", "search_knowledge", "read_source",
+    "list_skills", "get_local_datetime", "calculator",
+})
+MAX_BATCH_ACTIONS = 4
+MAX_BATCH_RESULT_CHARS = 12_000
+
+HISTORY_MAX_CHARS = 30_000
+HISTORY_KEEP_LAST = 6
+
+
+def _extract_actions(parsed: dict) -> list[dict]:
+    """Normaliza `{"actions": [...]}`; devolve [] se não houver lote."""
+    raw = parsed.get("actions")
+    if not isinstance(raw, list):
+        return []
+    actions = []
+    for item in raw[:MAX_BATCH_ACTIONS]:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("tool") or item.get("name")
+        args = item.get("args")
+        if isinstance(name, str) and isinstance(args, dict):
+            actions.append({"tool": name, "args": args})
+    return actions
+
+
+def _batch_allowed(actions: list[dict], tools: dict) -> bool:
+    """Só ferramentas de leitura, existentes no schema da task."""
+    return bool(actions) and all(
+        action["tool"] in BATCH_SAFE_TOOLS and action["tool"] in tools
+        for action in actions
+    )
+
+
+def _compact_arg(value):
+    """Encolhe strings grandes de um args de tool para o histórico."""
+    if isinstance(value, str):
+        if len(value) > 150:
+            return value[:100] + f"... [omitido {len(value)} chars]"
+        return value
+    if isinstance(value, dict):
+        return {k: _compact_arg(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_compact_arg(v) for v in value]
+    return value
+
+
+def _compact_message_content(content: str) -> str:
+    """Compacta uma mensagem antiga, preservando tool/path."""
+    if not isinstance(content, str):
+        content = str(content)
+    if content.startswith(("Resultado da tool:", "Resultado do lote:")):
+        return content[:400] + "\n[... resultado antigo compactado ...]"
+    try:
+        obj = json.loads(content)
+    except (ValueError, TypeError):
+        return content[:400] + ("\n[... compactado ...]" if len(content) > 400 else "")
+    if not isinstance(obj, dict):
+        return content[:400]
+    if "tool" in obj:
+        obj = {"tool": obj["tool"], "args": _compact_arg(obj.get("args") or {})}
+    elif "actions" in obj and isinstance(obj["actions"], list):
+        obj = {
+            "actions": [
+                {
+                    "tool": item.get("tool", ""),
+                    "args": _compact_arg(item.get("args") or {}),
+                }
+                for item in obj["actions"]
+                if isinstance(item, dict)
+            ]
+        }
+    else:
+        return content[:600]
+    return json.dumps(obj, ensure_ascii=False)
+
+
+def _compact_history(
+    messages: list[dict],
+    *,
+    max_chars: int = HISTORY_MAX_CHARS,
+    keep_last: int = HISTORY_KEEP_LAST,
+) -> None:
+    """
+    Resume resultados/chamadas antigas quando o histórico fica grande.
+
+    Mantém o system prompt (0), o prompt inicial da task (1) e as últimas
+    `keep_last` mensagens. O resto vira um resumo compacto — o conteúdo
+    completo dos arquivos continua no disco.
+    """
+    if len(messages) <= keep_last + 2:
+        return
+    total = sum(len(str(m.get("content", ""))) for m in messages)
+    if total <= max_chars:
+        return
+
+    end = len(messages) - keep_last
+    for index in range(2, end):
+        msg = messages[index]
+        msg["content"] = _compact_message_content(msg.get("content", ""))
+
+
+def _execute_read_batch(
+    actions: list[dict],
+    tools: dict,
+    step: int,
+    on_step,
+    on_confirm_path,
+) -> str:
+    """
+    Executa um lote de leituras independentes e devolve um único resultado.
+
+    Só é chamado quando todas as tools são de leitura; qualquer escrita
+    continua uma por step.
+    """
+    from tool_dispatch import get_path_checks
+    from workspace import get_workspace
+
+    _call(on_step, step, "lote", f"{len(actions)} leituras independentes", "tool")
+    parts: list[str] = []
+
+    for index, action in enumerate(actions, start=1):
+        name = action["tool"]
+        args = dict(action["args"])
+        blocked = False
+
+        for arg_name, need_write in get_path_checks(name, tools):
+            raw_path = args.get(arg_name)
+            if not raw_path:
+                continue
+            _, err = get_workspace().check(raw_path, need_write)
+            if err:
+                allowed = on_confirm_path(raw_path, need_write) if on_confirm_path else False
+                if not allowed:
+                    parts.append(
+                        f"## {index}. {name}\nAcesso a '{raw_path}' negado."
+                    )
+                    blocked = True
+                    break
+        if blocked:
+            continue
+
+        try:
+            result = tools[name]["fn"](**args)
+            text = str(result)
+            if len(text) > MAX_BATCH_RESULT_CHARS:
+                text = (
+                    text[:MAX_BATCH_RESULT_CHARS]
+                    + f"\n[... truncado em {MAX_BATCH_RESULT_CHARS} caracteres ...]"
+                )
+            parts.append(f"## {index}. {name}\n{text}")
+            _call(on_step, step, "resultado", f"{name}: {text[:100]}", "done")
+        except TypeError as exc:
+            sig = inspect.signature(tools[name]["fn"])
+            parts.append(
+                f"## {index}. {name}\nArgs inválidos: {exc}. "
+                f"Assinatura correta: {name}{sig}"
+            )
+        except Exception as exc:
+            parts.append(f"## {index}. {name}\nErro: {exc}")
+
+    return "\n\n".join(parts)
 
 
 def _call_model(messages: list, model: str, ollama_url: str) -> tuple[str, int, int]:
@@ -131,7 +396,7 @@ def _build_system_prompt(
     profile: str = "local",
 ) -> str:
     core_prompt = ""
-    core_name = "core_build.md" if profile == "build" else "core_prompt.md"
+    core_name = "core_build.md" if profile == PERFIL_NUVEM else "core_prompt.md"
     core_path = Path("system") / core_name
     if not core_path.exists():          # fallback: instalação sem o arquivo
         core_path = Path("system/core_prompt.md")
@@ -282,8 +547,12 @@ def run_agent(
     # atual. O runner do modo build injeta um cliente cloud aqui.
     model_client=None,
     # perfil define o core prompt: "local" (orquestrador + secondary_model)
-    # ou "build" (o próprio modelo é o principal).
+    # ou "nuvem" (o próprio modelo é o principal).
     profile: str = "local",
+    # Em multitask, steps esgotados não devem pedir proposta de nova tool:
+    # quem decide é a checagem da task. Evita uma chamada extra e o status
+    # "needs_tool" sem handler.
+    allow_tool_proposal: bool = True,
 ) -> AgentResult:
     """
     Executa o loop agêntico e retorna um AgentResult.
@@ -291,6 +560,7 @@ def run_agent(
     Não imprime nada — todo feedback vai pelos callbacks.
     Compatível com execução em thread (Textual @work).
     """
+    profile = normalize_perfil(profile)
     total_in  = 0
     total_out = 0
 
@@ -330,7 +600,25 @@ def run_agent(
         first_msg,
     ]
 
+    nudge_sent = False
     for step in range(1, max_steps + 1):
+        if (
+            profile == PERFIL_NUVEM
+            and not nudge_sent
+            and max_steps >= 5
+            and step == max_steps - 2
+        ):
+            messages.append({
+                "role": "user",
+                "content": (
+                    "[sistema] Restam poucos steps. Finalize a task agora: "
+                    "responda com done e um resumo curto do que já foi feito. "
+                    "Não inicie novas correções longas nem crie scripts."
+                ),
+            })
+            nudge_sent = True
+        if profile == PERFIL_NUVEM:
+            _compact_history(messages)
         _call(on_model_start, step)
         _call(on_step, step, "modelo", "aguardando…", "model")
 
@@ -375,8 +663,51 @@ def run_agent(
             })
             continue
 
+        # ── lote de leituras independentes ────────────────────────────────────
+        if "actions" in parsed:
+            actions = _extract_actions(parsed)
+            if not actions:
+                feedback = (
+                    "Lote inválido: use {\"actions\": [{\"tool\": ..., "
+                    "\"args\": {...}}, ...]}."
+                )
+                _call(on_step, step, "lote", feedback, "error")
+                messages.append({"role": "assistant", "content": raw})
+                messages.append({"role": "user", "content": feedback})
+                continue
+
+            if not _batch_allowed(actions, tools):
+                feedback = (
+                    "Lote recusado: `actions` é só para leituras independentes "
+                    f"({', '.join(sorted(BATCH_SAFE_TOOLS))}). "
+                    "Escritas e ações dependentes continuam uma por step."
+                )
+                _call(on_step, step, "lote", feedback, "error")
+                messages.append({"role": "assistant", "content": raw})
+                messages.append({"role": "user", "content": feedback})
+                continue
+
+            batch_feedback = _execute_read_batch(
+                actions, tools, step, on_step, on_confirm_path
+            )
+            messages.append({"role": "assistant", "content": raw})
+            messages.append({
+                "role": "user",
+                "content": f"Resultado do lote:\n{batch_feedback}",
+            })
+            continue
+
         # ── tool call ─────────────────────────────────────────────────────────
         tool_name = parsed.get("tool", "")
+        if not tool_name:
+            feedback = (
+                "Resposta sem tool, actions ou done. Responda em JSON puro: "
+                '{"tool": "...", "args": {...}} ou {"done": true, ...}.'
+            )
+            _call(on_step, step, "parse error", feedback, "parse_error")
+            messages.append({"role": "assistant", "content": raw})
+            messages.append({"role": "user", "content": feedback})
+            continue
         args      = parsed.get("args", {})
 
         _call(on_step, step, f"tool › {tool_name}", json.dumps(args, ensure_ascii=False)[:80], "tool")
@@ -475,7 +806,7 @@ def run_agent(
                             mcp_manager.all_tools(),
                             agent_info.get("allowed_mcp_servers"),
                         ))
-                    if profile == "build":
+                    if profile == PERFIL_NUVEM:
                         tools.pop("secondary_model", None)
                     schema.clear()
                     schema.extend(tools_schema(tools))
@@ -489,7 +820,7 @@ def run_agent(
                         mcp_manager.all_tools(),
                         agent_info.get("allowed_mcp_servers"),
                     ))
-                    if profile == "build":
+                    if profile == PERFIL_NUVEM:
                         tools.pop("secondary_model", None)
                     schema.clear()
                     schema.extend(tools_schema(tools))
@@ -501,7 +832,7 @@ def run_agent(
                     removed_name = feedback.split("'")[1] if "'" in str(feedback) else ""
                     if removed_name:
                         mcp_manager.remove_server_tools(removed_name, tools)
-                    if profile == "build":
+                    if profile == PERFIL_NUVEM:
                         tools.pop("secondary_model", None)
                     schema.clear()
                     schema.extend(tools_schema(tools))
@@ -525,9 +856,11 @@ def run_agent(
         messages.append({"role": "user", "content": f"Resultado da tool: {tool_content}"})
 
     # ── steps esgotados ───────────────────────────────────────────────────────
-    proposal = _ask_model_for_tool_proposal(
-        messages, model, ollama_url, model_client=model_client
-    )
+    proposal = None
+    if allow_tool_proposal:
+        proposal = _ask_model_for_tool_proposal(
+            messages, model, ollama_url, model_client=model_client
+        )
 
     if proposal:
         _call(on_limit, max_steps, total_in, total_out)

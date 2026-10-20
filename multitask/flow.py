@@ -9,7 +9,7 @@ Formato:
 
     ## flow: exemplo_site
     objetivo: criar um site estático mínimo
-    perfil: local                 # opcional (local | build)
+    perfil: local                 # opcional (local | nuvem)
     formato: markdown             # markdown | resumo | whatsapp | bullets
     como_testar: abra index.html
 
@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from board import Board, BoardError
+from llm.roles import normalize_perfil
 from task_defs import load_tasks
 
 DEFAULT_FLOWS_DIR = Path("flows")
@@ -146,9 +147,8 @@ def load_flow(
     if formato not in VALID_FORMATS:
         formato = "markdown"
 
-    perfil = (meta.get("perfil") or "").strip().lower()
-    if perfil not in ("", "local", "build"):
-        perfil = ""
+    perfil_raw = (meta.get("perfil") or "").strip().lower()
+    perfil = normalize_perfil(perfil_raw) if perfil_raw else ""
 
     return Flow(
         name=name,
@@ -256,8 +256,10 @@ def build_board(
     board = Board.new(
         objective,
         fluxo=flow.name,
-        # vazio = herda o perfil do ciel_config.json (local/build)
-        perfil=(perfil or flow.perfil or ""),
+        # vazio = herda o perfil do ciel_config.json (local/nuvem)
+        perfil=(
+            normalize_perfil(perfil) if perfil else (flow.perfil or "")
+        ),
         entrega={
             "formato": formato_efetivo,
             "como_testar": flow.como_testar,
@@ -285,6 +287,7 @@ def build_board(
                 resultado_esperado=task.get("resultado", ""),
                 checagem=task.get("checagem"),
                 agente=task.get("agente", ""),
+                tools=task.get("tools") or None,
             )
         except BoardError as exc:
             raise FlowError(str(exc)) from exc

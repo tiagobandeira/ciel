@@ -38,7 +38,7 @@ TASKS_DIR_DEFAULT = Path("tasks")
 # e o formato antigo continua funcionando sem nenhuma mudança.
 TASK_KEYS = (
     "nome", "objetivo", "acoes", "resultado", "grupo",
-    "fase", "agente", "depende_de", "checagem",
+    "fase", "agente", "tools", "depende_de", "checagem",
 )
 
 
@@ -80,6 +80,7 @@ def parse_task_text(text: str) -> dict | None:
     grupo     = ""
     fase      = ""
     agente    = ""
+    tools: list[str] = []
     depende_de: list[str] = []
     checagem  = None
     section   = None
@@ -99,6 +100,9 @@ def parse_task_text(text: str) -> dict | None:
             section = None
         elif stripped.startswith("agente:"):
             agente  = stripped.split(":", 1)[1].strip()
+            section = None
+        elif stripped.startswith("tools:") or stripped.startswith("ferramentas:"):
+            tools = _parse_depende(stripped.split(":", 1)[1])
             section = None
         elif stripped.startswith("depende_de:") or stripped.startswith("depende de:"):
             raw = stripped.split(":", 1)[1]
@@ -126,6 +130,7 @@ def parse_task_text(text: str) -> dict | None:
         "grupo": grupo,
         "fase": fase,
         "agente": agente,
+        "tools": tools,
         "depende_de": depende_de,
         "checagem": checagem,
     }

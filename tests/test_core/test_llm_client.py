@@ -106,6 +106,11 @@ class TestOllamaClient:
         assert (result.tokens_in, result.tokens_out) == (0, 0)
         assert result.text == "x"
 
+    def test_max_tokens_default_vai_para_options(self, monkeypatch):
+        calls = install_post(monkeypatch, [FakeResponse({"message": {"content": "x"}})])
+        OllamaClient("http://localhost:11434", max_tokens=77).chat([], model="m")
+        assert calls[0]["json"]["options"]["num_predict"] == 77
+
     def test_model_obrigatorio(self):
         with pytest.raises(LLMError):
             OllamaClient("http://localhost:11434").chat([], model="")
@@ -150,6 +155,15 @@ class TestOpenAICompatClient:
             "https://x.test/v1/chat/completions", model="m"
         )
         assert client.endpoint == "https://x.test/v1/chat/completions"
+
+    def test_max_tokens_default_no_payload(self, monkeypatch):
+        calls = install_post(monkeypatch, [FakeResponse({
+            "choices": [{"message": {"content": "ok"}}],
+        })])
+        OpenAICompatClient(
+            "https://x.test/v1", model="m", max_tokens=321
+        ).chat([{"role": "user", "content": "oi"}])
+        assert calls[0]["json"]["max_tokens"] == 321
 
     def test_content_em_lista_de_partes(self, monkeypatch):
         install_post(monkeypatch, [FakeResponse({
@@ -214,3 +228,13 @@ class TestMakeClient:
             provider="ollama", base_url="http://localhost:11434/api/chat"
         )
         assert client.endpoint == "http://localhost:11434/api/chat"
+
+    def test_max_tokens_repassado(self):
+        client = make_client(
+            provider="nvidia",
+            base_url="https://x.test/v1",
+            api_key="k",
+            model="m",
+            max_tokens=99,
+        )
+        assert client.max_tokens == 99

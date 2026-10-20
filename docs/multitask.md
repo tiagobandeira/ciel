@@ -1,10 +1,12 @@
-# Multitask
+# Multitask (motor interno)
 
-Modo de execução que divide um objetivo em tasks, mantém o progresso em um
-quadro em disco e entrega uma mensagem final formatada.
+Motor de execução que divide um objetivo em tasks, mantém o progresso em um
+quadro em disco e entrega um relatório. **Não é mais um comando de usuário**:
+ele roda por baixo dos processos nativos (`/processo`) e do modo `build`.
 
-> **Estado:** Fase 1. O plano vem de um fluxo escrito à mão. Planejador com
-> modelo secundário, checagens automáticas e TUI dedicada ainda não entraram.
+> **Superfície atual:** `/processo` / modo build. Ver
+> [processos.md](processos.md). `/multitask` continua existindo apenas como
+> alias interno/deprecated para debug e testes.
 
 ## Conceitos
 
@@ -22,13 +24,14 @@ quadro em disco e entrega uma mensagem final formatada.
 ```markdown
 ## flow: exemplo_site
 objetivo: criar um site estático mínimo
-perfil: local                 # local | build (opcional)
+perfil: local                 # local | nuvem (opcional)
 formato: markdown             # markdown | resumo | whatsapp | bullets
 como_testar: abra index.html
 
 ## task: estrutura
 fase: estrutura               # default: "geral"
 agente: dev_helper            # persona opcional
+tools: read_file, write_file, list_directory, create_directory
 objetivo: criar os arquivos base
 ações:
 - criar index.html
@@ -45,9 +48,14 @@ ações:
 resultado esperado: a listagem contém os arquivos
 ```
 
-Campos aceitos em cada task: `fase`, `agente`, `objetivo`, `ações`,
+Campos aceitos em cada task: `fase`, `agente`, `tools`, `objetivo`, `ações`,
 `resultado esperado`, `depende_de`, `checagem`. O parser é o mesmo de
 `tasks/*.md` (`task_defs.parse_task_text`).
+
+`tools:` é opcional. Quando presente, só essas tools entram no schema da task
+— menos tokens por step e menos distração. Sem ele, valem todas as tools do
+agente. Use `read_file` com `offset`/`limit` e `edit_file` em vez de scripts
+para ler/corrigir arquivos grandes.
 
 O `formato:` do cabeçalho define a mensagem final. Se o objetivo do usuário
 pedir explicitamente ("em tópicos", "um resumo", "no WhatsApp"), o formato é
@@ -77,13 +85,13 @@ tratado como objetivo livre e vai para o planejador.
 | Comando | Papel |
 |---|---|
 | `/task <arquivo>` | executa **uma** task `.md` (unidade isolada, sem quadro) |
-| `/quadro` | lista/gerencia o quadro de tarefas; **não executa** |
 | `/multitask` | planeja/executa o quadro, com checagens e correção |
+| `/quadro` | **adiado** — futura visão/gestão do quadro, sem executar |
 
-O nome canônico do quadro é `/quadro`; `/tarefas` pode existir como alias,
-mas `/tasks` não. O quadro é o mesmo `data/runs/<id>/board.json` usado pelo
-multitask — um estado, várias views. Decisão registrada em
-[decisoes.md](decisoes.md).
+O quadro é o mesmo `data/runs/<id>/board.json` usado pelo multitask; hoje ele
+é estado interno, exposto pelo relatório e por `--listar`/`--retomar`. `/tarefas`
+seria alias de `/quadro` se ele for implementado; `/tasks` não. Decisão
+registrada em [decisoes.md](decisoes.md).
 
 ## Como a execução funciona
 
@@ -172,14 +180,15 @@ de `flows/` pedem confirmação na CLI e avisam quando há checagens de comando.
 
 ## Perfis de modelo
 
-O fluxo pode declarar `perfil: build` para usar o provider secundário como
+O fluxo pode declarar `perfil: nuvem` para usar o provider configurado como
 executor (o mesmo salvo por `/connect`). Sem provider configurado, cai no
 Ollama local. O perfil `local` usa o modelo de `--model`.
 
-Na CLI/TUI, `--perfil build` (ou `/perfil build`) também muda o orquestrador
-da sessão para o provider secundário; nesse caso o chat normal já roda no
-modelo grande, sem a tool `secondary_model`. O perfil da sessão e o `perfil:`
-do fluxo usam a mesma resolução de papéis.
+Na CLI, `--perfil nuvem` (ou `/perfil nuvem`) muda o orquestrador da sessão
+para o provider de API; nesse caso o chat normal já roda no modelo maior, sem
+a tool `secondary_model`. O perfil da sessão e o `perfil:` do fluxo usam a
+mesma resolução de papéis. O modo `build` é outra camada: ele escolhe o
+processo e usa este motor por baixo.
 
 ## Limites desta fase
 
