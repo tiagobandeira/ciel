@@ -90,7 +90,7 @@ correção mínima e valida por comando.
 Para rodar de novo depois de corrigido:
 
 ```text
-python scripts/reset_bugfix_demo.py
+python examples/reset_bugfix_demo.py
 ```
 
 Resultado do primeiro teste: **3/3 tasks, ~50k tokens** (47,4k input + 2,4k
