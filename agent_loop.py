@@ -273,24 +273,27 @@ def _compact_history(
     *,
     max_chars: int = HISTORY_MAX_CHARS,
     keep_last: int = HISTORY_KEEP_LAST,
-) -> None:
+) -> bool:
     """
     Resume resultados/chamadas antigas quando o histórico fica grande.
 
     Mantém o system prompt (0), o prompt inicial da task (1) e as últimas
     `keep_last` mensagens. O resto vira um resumo compacto — o conteúdo
     completo dos arquivos continua no disco.
+
+    Retorna True se compactou.
     """
     if len(messages) <= keep_last + 2:
-        return
+        return False
     total = sum(len(str(m.get("content", ""))) for m in messages)
     if total <= max_chars:
-        return
+        return False
 
     end = len(messages) - keep_last
     for index in range(2, end):
         msg = messages[index]
         msg["content"] = _compact_message_content(msg.get("content", ""))
+    return True
 
 
 def _execute_read_batch(
@@ -485,6 +488,11 @@ class AgentResult:
         tokens_in: int = 0,
         tokens_out: int = 0,
         steps: int = 0,
+        parse_errors: int = 0,
+        compactions: int = 0,
+        context_peak_chars: int = 0,
+        tool_calls: int = 0,
+        batch_calls: int = 0,
     ):
         self.status   = status
         self.message  = message
@@ -492,6 +500,11 @@ class AgentResult:
         self.tokens_in  = tokens_in
         self.tokens_out = tokens_out
         self.steps    = steps
+        self.parse_errors = parse_errors
+        self.compactions = compactions
+        self.context_peak_chars = context_peak_chars
+        self.tool_calls = tool_calls
+        self.batch_calls = batch_calls
 
     @property
     def ok(self) -> bool:
@@ -553,6 +566,9 @@ def run_agent(
     # quem decide é a checagem da task. Evita uma chamada extra e o status
     # "needs_tool" sem handler.
     allow_tool_proposal: bool = True,
+    # Orçamento de tokens desta task (0 = sem limite). Se estourar, o loop
+    # devolve status "limit"; o runner decide pela checagem.
+    budget_tokens: int = 0,
 ) -> AgentResult:
     """
     Executa o loop agêntico e retorna um AgentResult.
@@ -563,6 +579,20 @@ def run_agent(
     profile = normalize_perfil(profile)
     total_in  = 0
     total_out = 0
+    parse_errors = 0
+    compactions = 0
+    context_peak_chars = 0
+    tool_calls = 0
+    batch_calls = 0
+
+    def _mk(status: str, message: str = "", proposal=None, steps: int = 0) -> AgentResult:
+        return AgentResult(
+            status, message, proposal,
+            tokens_in=total_in, tokens_out=total_out, steps=steps,
+            parse_errors=parse_errors, compactions=compactions,
+            context_peak_chars=context_peak_chars,
+            tool_calls=tool_calls, batch_calls=batch_calls,
+        )
 
     def _system_prompt() -> str:
         """System prompt atual; reaplicado quando o registry recarrega."""
@@ -618,7 +648,12 @@ def run_agent(
             })
             nudge_sent = True
         if profile == PERFIL_NUVEM:
-            _compact_history(messages)
+            if _compact_history(messages):
+                compactions += 1
+        context_peak_chars = max(
+            context_peak_chars,
+            sum(len(str(m.get("content", ""))) for m in messages),
+        )
         _call(on_model_start, step)
         _call(on_step, step, "modelo", "aguardando…", "model")
 
@@ -628,15 +663,22 @@ def run_agent(
             )
             total_in  += t_in
             total_out += t_out
+            if budget_tokens and total_in + total_out >= budget_tokens:
+                _call(on_limit, step, total_in, total_out)
+                return _mk(
+                    "limit",
+                    f"⚠ Orçamento de tokens da task atingido ({budget_tokens}).",
+                    steps=step,
+                )
         except LLMError as e:
             msg = f"Erro no cliente de modelo: {e}"
             _call(on_error, "connection", str(e))
-            return AgentResult("error", msg, tokens_in=total_in, tokens_out=total_out, steps=step)
+            return _mk("error", msg, steps=step)
         except requests.RequestException as e:
             target = "o cliente de modelo" if model_client is not None else "Ollama"
             msg = f"Erro de conexão com {target}: {e}"
             _call(on_error, "connection", str(e))
-            return AgentResult("error", msg, tokens_in=total_in, tokens_out=total_out, steps=step)
+            return _mk("error", msg, steps=step)
         finally:
             _call(on_model_end, step)
 
@@ -647,10 +689,11 @@ def run_agent(
             msg = parsed.get("message", "Concluído.")
             _call(on_step, step, "done", msg, "done")
             _call(on_done, msg, step, total_in, total_out)
-            return AgentResult("done", msg, tokens_in=total_in, tokens_out=total_out, steps=step)
+            return _mk("done", msg, steps=step)
 
         # ── parse error ───────────────────────────────────────────────────────
         if "error" in parsed:
+            parse_errors += 1
             _call(on_step, step, "parse error", parsed["error"], "parse_error")
             messages.append({"role": "assistant", "content": raw})
             messages.append({
@@ -687,6 +730,8 @@ def run_agent(
                 messages.append({"role": "user", "content": feedback})
                 continue
 
+            tool_calls += len(actions)
+            batch_calls += 1
             batch_feedback = _execute_read_batch(
                 actions, tools, step, on_step, on_confirm_path
             )
@@ -700,6 +745,7 @@ def run_agent(
         # ── tool call ─────────────────────────────────────────────────────────
         tool_name = parsed.get("tool", "")
         if not tool_name:
+            parse_errors += 1
             feedback = (
                 "Resposta sem tool, actions ou done. Responda em JSON puro: "
                 '{"tool": "...", "args": {...}} ou {"done": true, ...}.'
@@ -708,6 +754,7 @@ def run_agent(
             messages.append({"role": "assistant", "content": raw})
             messages.append({"role": "user", "content": feedback})
             continue
+        tool_calls += 1
         args      = parsed.get("args", {})
 
         _call(on_step, step, f"tool › {tool_name}", json.dumps(args, ensure_ascii=False)[:80], "tool")
@@ -864,19 +911,7 @@ def run_agent(
 
     if proposal:
         _call(on_limit, max_steps, total_in, total_out)
-        return AgentResult(
-            "needs_tool",
-            proposal=proposal,
-            tokens_in=total_in,
-            tokens_out=total_out,
-            steps=max_steps,
-        )
+        return _mk("needs_tool", proposal=proposal, steps=max_steps)
 
     _call(on_limit, max_steps, total_in, total_out)
-    return AgentResult(
-        "limit",
-        "⚠ Limite de steps atingido sem conclusão.",
-        tokens_in=total_in,
-        tokens_out=total_out,
-        steps=max_steps,
-    )
+    return _mk("limit", "⚠ Limite de steps atingido sem conclusão.", steps=max_steps)

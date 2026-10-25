@@ -103,6 +103,30 @@ class TestParsePlan:
         assert tasks[1].depende_de == ["t1"]
         assert board.validate() == []
 
+    def test_tools_e_max_steps_da_task(self):
+        plan = valid_plan()
+        plan["fases"][0]["tasks"][0]["tools"] = ["read_file", "write_file"]
+        plan["fases"][0]["tasks"][0]["max_steps"] = 7
+        board, errors = parse_plan(plan, objetivo_usuario="x")
+        assert errors == []
+        task = board.task("t1")
+        assert task.tools == ["read_file", "write_file"]
+        assert task.max_steps == 7
+
+    def test_tools_default_por_tipo(self):
+        plan = valid_plan()
+        board, errors = parse_plan(plan, objetivo_usuario="x")
+        assert errors == []
+        # t1 cria arquivo => preset de escrita; t2 só lê => leitura
+        assert "write_file" in board.task("t1").tools
+        assert "read_file" in board.task("t2").tools
+
+    def test_max_steps_invalido(self):
+        plan = valid_plan()
+        plan["fases"][0]["tasks"][0]["max_steps"] = 99
+        _, errors = parse_plan(plan, objetivo_usuario="x")
+        assert any("max_steps" in e for e in errors)
+
     def test_sem_resultado_esperado(self):
         plan = valid_plan()
         del plan["fases"][0]["tasks"][0]["resultado_esperado"]

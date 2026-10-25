@@ -123,6 +123,7 @@ def default_orcamento() -> dict:
         "max_correcoes_por_task": 3,
         "max_falhas_iguais": 2,
         "max_tokens": 0,
+        "max_tokens_por_task": 100000,
     }
 
 
@@ -189,6 +190,7 @@ class TaskState:
     decisoes: list[str] = field(default_factory=list)
     agente: str = ""
     tools: list[str] | None = None
+    max_steps: int = 0
     depende_de: list[str] = field(default_factory=list)
     tentativas: int = 0
     correcoes: int = 0
@@ -206,6 +208,7 @@ class TaskState:
         self.acoes = [str(a) for a in (self.acoes or [])]
         if self.tools is not None:
             self.tools = [str(t) for t in self.tools]
+        self.max_steps = _coerce_int(self.max_steps)
 
         normalized: list[dict] = []
         for item in self.artefatos or []:
@@ -373,6 +376,7 @@ class Board:
         checagem: Any = None,
         agente: str = "",
         tools: list[str] | None = None,
+        max_steps: int = 0,
         depende_de: list[str] | None = None,
         status: str = TASK_PENDENTE,
         task_id: str | None = None,
@@ -399,6 +403,7 @@ class Board:
             checagem=checagem,
             agente=agente,
             tools=list(tools) if tools is not None else None,
+            max_steps=max_steps,
             depende_de=list(depende_de or []),
         )
         phase.tasks.append(task)

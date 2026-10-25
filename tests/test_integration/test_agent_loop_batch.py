@@ -76,6 +76,9 @@ def test_run_agent_executa_lote_em_um_step():
 
     assert result.status == "done"
     assert result.steps == 2
+    assert result.tool_calls == 2
+    assert result.batch_calls == 1
+    assert result.context_peak_chars > 0
     assert calls == ["1+1"]
     assert fake.calls == 2
 
@@ -120,6 +123,20 @@ def test_dsml_multiplos_invokes_vira_lote():
         {"tool": "read_file", "args": {"path": "a.txt"}},
         {"tool": "list_directory", "args": {"directory": "."}},
     ]
+
+
+def test_budget_tokens_interrompe_a_task():
+    class HighClient:
+        def chat(self, messages, **kwargs):
+            return ChatResult(_done(), 10, 10)
+
+    result = run_agent(
+        "oi", {}, [], "", AGENT,
+        model_client=HighClient(), max_steps=4, budget_tokens=5,
+    )
+
+    assert result.status == "limit"
+    assert "Orçamento" in result.message
 
 
 def test_compact_history_preserva_inicio_e_fim():

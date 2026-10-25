@@ -36,6 +36,13 @@ DEFAULT_PROMPT_PATH = (
 MAX_ACTIONS_PER_TASK = 6
 MAX_PLAN_ATTEMPTS = 5
 DEFAULT_MAX_TOKENS = 8192
+MAX_STEPS_PER_TASK = 20
+
+TOOLS_LEITURA = ["read_file", "list_directory", "search_files"]
+TOOLS_ESCRITA = [
+    "read_file", "write_file", "edit_file", "list_directory", "create_directory",
+]
+TOOLS_CODIGO = TOOLS_ESCRITA + ["run_script"]
 
 _ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 _EMPTY_AGENT = {"", "none", "nenhum", "-"}
@@ -157,6 +164,24 @@ def _normalize_list(value: Any) -> list[str] | None:
     if not isinstance(value, (list, tuple)):
         return None
     return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _default_tools(actions: list[str], check: Any) -> list[str]:
+    """Preset de tools quando o planner não declara `tools` explicitamente."""
+    text = " ".join(actions).lower()
+    check_text = str(check or "").lower()
+    if (
+        "test" in text or "test" in check_text
+        or "script" in text or "comando" in check_text
+        or "pytest" in text
+    ):
+        return list(TOOLS_CODIGO)
+    if any(
+        word in text
+        for word in ("escrev", "criar", "editar", "corrig", "implement", "gerar")
+    ):
+        return list(TOOLS_ESCRITA)
+    return list(TOOLS_LEITURA)
 
 
 def _format_tools(tools: dict | None, limit: int = 80) -> str:
@@ -425,6 +450,24 @@ def parse_plan(
                 else:
                     deps.append(resolved)
 
+            tools_raw = _normalize_list(task.get("tools"))
+            if tools_raw is None:
+                task_errors.append(f"task {task_id}: 'tools' deve ser lista")
+                tools_raw = []
+            if not tools_raw:
+                tools_raw = _default_tools(actions, check)
+
+            max_steps_raw = task.get("max_steps", task.get("steps"))
+            try:
+                task_max_steps = int(max_steps_raw or 0)
+            except (TypeError, ValueError):
+                task_errors.append(f"task {task_id}: 'max_steps' deve ser inteiro")
+                task_max_steps = 0
+            if task_max_steps < 0 or task_max_steps > MAX_STEPS_PER_TASK:
+                task_errors.append(
+                    f"task {task_id}: max_steps fora de 0..{MAX_STEPS_PER_TASK}"
+                )
+
             if task_errors:
                 errors.extend(task_errors)
                 continue
@@ -438,6 +481,8 @@ def parse_plan(
                     resultado_esperado=expected,
                     checagem=check,
                     agente=agent,
+                    tools=tools_raw,
+                    max_steps=task_max_steps,
                     depende_de=deps,
                     task_id=task_id,
                 )

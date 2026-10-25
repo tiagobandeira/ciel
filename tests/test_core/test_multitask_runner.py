@@ -194,6 +194,34 @@ class TestExecucaoFeliz:
             )
         assert all(c["kwargs"]["model_client"] is sentinel for c in calls)
 
+    def test_max_steps_e_budget_da_task(self, store, workspace):
+        board = Board.new("x", run_id="run-budget")
+        board.add_task("f", "t", acoes=["a"], max_steps=5)
+        calls = []
+        with patch(
+            "multitask.runner.run_agent",
+            side_effect=make_fake([done("ok")], calls=calls),
+        ):
+            run_board(board, {}, [], AGENT, store=store, workspace_root=workspace)
+
+        assert calls[0]["kwargs"]["max_steps"] == 5
+        assert calls[0]["kwargs"]["budget_tokens"] == 100000
+
+    def test_metricas_por_task(self, store, workspace):
+        board = make_board()
+        with patch(
+            "multitask.runner.run_agent",
+            side_effect=make_fake([done("ok")]),
+        ):
+            run_board(board, {}, [], AGENT, store=store, workspace_root=workspace)
+
+        metricas = board.meta.get("metricas", {}).get("t1")
+        assert metricas is not None
+        assert metricas["steps"] == 1
+        assert metricas["tokens_in"] == 10
+        assert metricas["tokens_out"] == 5
+        assert "context_peak_chars" in metricas
+
     def test_persona_por_task(self, store, workspace):
         board = Board.new("x", run_id="run-persona")
         board.add_task("f", "t", agente="frontend", acoes=["a"])

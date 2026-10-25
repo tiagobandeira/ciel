@@ -36,6 +36,8 @@ sem explicação antes ou depois.
             "tipo": "arquivo",
             "path": "data/user/meu-projeto/index.html"
           },
+          "tools": ["read_file", "write_file", "list_directory"],
+          "max_steps": 6,
           "agente": "",
           "depende_de": []
         }
@@ -57,6 +59,13 @@ sem explicação antes ou depois.
   **anteriores** (ids já definidos acima). Não crie ciclos.
 - `acoes`: 1 a 6 ações concretas em linguagem natural. Se uma ação usar uma
   tool específica, escreva `[tool: nome_da_tool]`.
+- `tools`: 2 a 6 tools que a task realmente usa. Presets:
+  - leitura: `read_file`, `list_directory`, `search_files`;
+  - escrita: leitura + `write_file`, `edit_file`, `create_directory`;
+  - código: escrita + `run_script`.
+  Não peça todas as tools; schema grande custa tokens e distrai.
+- `max_steps`: 1 a 12. Tasks pequenas devem ficar em 4–8. O executor usa isso
+  como orçamento de passos da task.
 - `resultado_esperado`: obrigatório e verificável. Descreva o estado final,
   não o processo ("arquivo X existe e contém Y", "comando retorna 0",
   "GET / responde 200").
@@ -74,6 +83,8 @@ sem explicação antes ou depois.
   `data/user/<folder>_<timestamp>` e chamadas repetidas criam pastas novas.
   Prefira `write_file`/`create_directory` para arquivos pequenos e tarefas
   mecânicas; reserve o `secondary_model` para blocos grandes.
+- **Perfil nuvem:** a tool `secondary_model` não existe; nesse caso planeje
+  `write_file`/`edit_file` diretamente.
 - Não crie tasks que peçam informação ao usuário no meio da execução. Se
   faltar um dado, assuma um default razoável e registre a suposição na task.
 - Não repita a mesma ação em tasks diferentes sem necessidade.
@@ -132,7 +143,7 @@ O `como_testar` deve ser acionável (comando, caminho ou URL curta).
 
 Você receberá, junto com o objetivo:
 
-- orçamento (`max_tasks`, `max_correcoes_por_task`);
+- orçamento (`max_tasks`, `max_correcoes_por_task`, `max_tokens_por_task`);
 - tools disponíveis no executor;
 - pessoas/agentes disponíveis;
 - formato sugerido pelo pedido do usuário;

@@ -590,6 +590,11 @@ def _max_same_check_failures(board: Board) -> int:
         return 2
 
 
+def _record_task_metrics(board: Board, task, metrics: dict) -> None:
+    """Guarda métricas por task em board.meta (não em TaskState)."""
+    board.meta.setdefault("metricas", {})[task.id] = dict(metrics)
+
+
 def _tools_for_task(task, tools: dict, schema: list) -> tuple[dict, list]:
     """
     Restringe o schema às tools declaradas na task (`tools:` no fluxo).
@@ -647,6 +652,17 @@ def _execute_task(
     max_same = _max_same_check_failures(board)
     last_check_message = ""
     same_check_failures = 0
+    metrics = {
+        "steps": 0,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "parse_errors": 0,
+        "compactions": 0,
+        "context_peak_chars": 0,
+        "tool_calls": 0,
+        "batch_calls": 0,
+    }
+    max_steps = int(getattr(task, "max_steps", 0) or 0) or max_steps
 
     base_context = build_task_context(board, task, phase, profile=profile)
     context = base_context
@@ -682,6 +698,10 @@ def _execute_task(
                 indice=index, total=total,
             )
 
+        task_budget = int(board.orcamento.get("max_tokens_por_task") or 0)
+        budget_left = (
+            max(1, task_budget - tokens_in - tokens_out) if task_budget else 0
+        )
         result = run_agent(
             context,
             task_tools,
@@ -695,11 +715,23 @@ def _execute_task(
             mcp_manager=mcp_manager,
             model_client=model_client,
             allow_tool_proposal=False,
+            budget_tokens=budget_left,
             **callbacks,
         )
 
         tokens_in += result.tokens_in
         tokens_out += result.tokens_out
+        metrics["steps"] += int(getattr(result, "steps", 0) or 0)
+        metrics["tokens_in"] += int(getattr(result, "tokens_in", 0) or 0)
+        metrics["tokens_out"] += int(getattr(result, "tokens_out", 0) or 0)
+        metrics["parse_errors"] += int(getattr(result, "parse_errors", 0) or 0)
+        metrics["compactions"] += int(getattr(result, "compactions", 0) or 0)
+        metrics["context_peak_chars"] = max(
+            metrics["context_peak_chars"],
+            int(getattr(result, "context_peak_chars", 0) or 0),
+        )
+        metrics["tool_calls"] += int(getattr(result, "tool_calls", 0) or 0)
+        metrics["batch_calls"] += int(getattr(result, "batch_calls", 0) or 0)
 
         if result.status != "done":
             # Steps esgotados não significam necessariamente trabalho
@@ -728,6 +760,7 @@ def _execute_task(
                             task.id, artifact["path"],
                             mtime=artifact["mtime"],
                         )
+                    _record_task_metrics(board, task, metrics)
                     store.save(board)
                     _emit(
                         store, board, on_event, "task_concluida",
@@ -750,6 +783,7 @@ def _execute_task(
 
             duration = time.monotonic() - task_clock
             erro = result.message or f"status {result.status}"
+            _record_task_metrics(board, task, metrics)
             _finish_failed(
                 board, store, task, on_event,
                 erro=erro, tokens_in=tokens_in, tokens_out=tokens_out,
@@ -785,6 +819,7 @@ def _execute_task(
                 board.add_artifact(
                     task.id, artifact["path"], mtime=artifact["mtime"]
                 )
+            _record_task_metrics(board, task, metrics)
             store.save(board)
 
             if corrections:
@@ -832,6 +867,7 @@ def _execute_task(
                 f"erro — verifique se o critério de aceite está correto: "
                 f"{check.mensagem}"
             )
+            _record_task_metrics(board, task, metrics)
             _finish_failed(
                 board, store, task, on_event,
                 erro=erro, tokens_in=tokens_in, tokens_out=tokens_out,
@@ -846,6 +882,7 @@ def _execute_task(
         if corrections >= max_corrections:
             duration = time.monotonic() - task_clock
             erro = f"checagem falhou: {check.mensagem}"
+            _record_task_metrics(board, task, metrics)
             _finish_failed(
                 board, store, task, on_event,
                 erro=erro, tokens_in=tokens_in, tokens_out=tokens_out,
@@ -864,6 +901,7 @@ def _execute_task(
         ):
             duration = time.monotonic() - task_clock
             erro = "orçamento de tokens esgotado durante a correção"
+            _record_task_metrics(board, task, metrics)
             _finish_failed(
                 board, store, task, on_event,
                 erro=erro, tokens_in=tokens_in, tokens_out=tokens_out,

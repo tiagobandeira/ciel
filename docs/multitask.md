@@ -190,6 +190,32 @@ a tool `secondary_model`. O perfil da sessão e o `perfil:` do fluxo usam a
 mesma resolução de papéis. O modo `build` é outra camada: ele escolhe o
 processo e usa este motor por baixo.
 
+## Custo e orçamento
+
+O runner mede custo por task em `board.meta["metricas"][task.id]`:
+
+```json
+{"steps": 6, "tokens_in": 24000, "tokens_out": 2000,
+ "parse_errors": 0, "compactions": 1,
+ "context_peak_chars": 18000, "tool_calls": 5, "batch_calls": 1}
+```
+
+- `orcamento.max_tokens_por_task` (default 100.000) limita uma task; ao
+  estourar, o loop devolve `limit` e a checagem decide se aceita.
+- `orcamento.max_tokens` continua sendo o limite do run (0 = sem limite).
+- O planner declara `tools` e `max_steps` por task; quando não declara, o
+  harness usa presets de leitura/escrita/código.
+- Use essas métricas para descobrir se o custo está em steps, contexto,
+  parse error ou correção — antes de aumentar qualquer orçamento.
+
+Exemplo real do `corrigir_bug` (3 tasks, 54k tokens):
+
+| Task | steps | tokens_in | tokens_out | parse | compact | batch |
+|---|---:|---:|---:|---:|---:|---:|
+| diagnosticar | 4 | 16.706 | 732 | 0 | 0 | 1 |
+| corrigir | 3 | 13.054 | 437 | 0 | 0 | 0 |
+| verificar | 5 | 21.943 | 1.131 | 0 | 0 | 0 |
+
 ## Limites desta fase
 
 - O planejador exige um provider secundário configurado (`/connect`). Sem
