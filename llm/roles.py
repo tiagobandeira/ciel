@@ -91,6 +91,7 @@ class ModelSpec:
     timeout: float | None = None
     max_tokens: int | None = None
     temperature: float | None = None
+    native_tools: bool = False
     source: str = ""          # local | secondary | config
 
     @property
@@ -115,6 +116,7 @@ class ModelSpec:
             model=self.model,
             timeout=self.timeout,
             max_tokens=self.max_tokens,
+            native_tools=self.native_tools,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -127,6 +129,7 @@ class ModelSpec:
             "timeout": self.timeout,
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
+            "native_tools": self.native_tools,
             "source": self.source,
         }
 
@@ -333,6 +336,7 @@ def _secondary_spec(
         timeout=float(cfg.get("timeout") or DEFAULT_OPENAI_TIMEOUT),
         max_tokens=cfg.get("max_tokens"),
         temperature=cfg.get("temperature"),
+        native_tools=bool(cfg.get("native_tools") or False),
         source="secondary",
     )
 
@@ -367,6 +371,7 @@ def _spec_from_entry(
             timeout=entry.get("timeout", local.timeout),
             max_tokens=entry.get("max_tokens"),
             temperature=entry.get("temperature"),
+            native_tools=bool(entry.get("native_tools") or cfg.get("native_tools") or False),
             source="config",
         )
 
@@ -399,6 +404,7 @@ def _spec_from_entry(
         timeout=float(entry.get("timeout") or cfg.get("timeout") or DEFAULT_OPENAI_TIMEOUT),
         max_tokens=entry.get("max_tokens", cfg.get("max_tokens")),
         temperature=entry.get("temperature"),
+        native_tools=bool(entry.get("native_tools") or cfg.get("native_tools") or False),
         source="config",
     )
 
@@ -432,6 +438,7 @@ def load_roles(
         model=(local_model or cfg.get("local_model") or DEFAULT_LOCAL_MODEL).strip(),
         base_url=ollama_url or cfg.get("ollama_url") or DEFAULT_OLLAMA_BASE,
         timeout=float(cfg.get("local_timeout") or DEFAULT_OLLAMA_TIMEOUT),
+        native_tools=bool(cfg.get("native_tools") or False),
         source="local",
     )
 

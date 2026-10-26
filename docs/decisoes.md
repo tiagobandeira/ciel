@@ -305,6 +305,23 @@ Nada de despejar todo o relatório técnico. O detalhe completo continua em
 
 ---
 
+---
+
+## D-015 — Tool calls nativos atrás de flag
+
+**Decisão:** clientes OpenAI-compatible podem enviar `tools` nativos e ler
+`message.tool_calls` quando `native_tools: true` está no config. Por enquanto,
+o caminho nativo executa **apenas leituras independentes em lote**; escrita
+continua no JSON, com fallback automático.
+
+**Por quê:** reduz protocolo/round-trips sem apostar a qualidade de escrita em
+um suporte de provider que varia. JSON/DSML continua sendo o caminho padrão.
+
+**Consequência:** medir `tool_calls`/`batch_calls`/steps antes de expandir
+nativo para escrita.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

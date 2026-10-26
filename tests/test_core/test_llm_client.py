@@ -203,6 +203,44 @@ class TestOpenAICompatClient:
         assert result.text == "ok"
         assert len(calls) == 2
 
+    def test_native_tools_payload_e_parse(self, monkeypatch):
+        calls = install_post(monkeypatch, [FakeResponse({
+            "choices": [{
+                "message": {
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "read_file",
+                            "arguments": '{"path": "a.txt"}',
+                        },
+                    }],
+                },
+            }],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 2},
+        })])
+        tools = [{
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "description": "lê",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }]
+
+        result = OpenAICompatClient(
+            "https://x.test/v1", model="m", native_tools=True,
+        ).chat([], tools=tools)
+
+        payload = calls[0]["json"]
+        assert payload["tools"] == tools
+        assert payload["parallel_tool_calls"] is True
+        assert result.tool_calls[0]["name"] == "read_file"
+        assert result.tool_calls[0]["arguments"] == {"path": "a.txt"}
+        assert result.tool_calls[0]["arguments_raw"] == '{"path": "a.txt"}'
+
+
 
 # ── factory ───────────────────────────────────────────────────────────────
 

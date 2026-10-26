@@ -43,7 +43,8 @@ from typing import Callable
 
 import requests
 
-from llm.client import LLMError, OllamaClient
+from llm.client import ChatResult, LLMError, OllamaClient
+from llm.native_tools import to_openai_tools
 from llm.roles import PERFIL_NUVEM, normalize_perfil
 from trust.input_verifier import InputVerifier
 
@@ -302,7 +303,8 @@ def _execute_read_batch(
     step: int,
     on_step,
     on_confirm_path,
-) -> str:
+    return_parts: bool = False,
+) -> str | list[str]:
     """
     Executa um lote de leituras independentes e devolve um único resultado.
 
@@ -355,6 +357,8 @@ def _execute_read_batch(
         except Exception as exc:
             parts.append(f"## {index}. {name}\nErro: {exc}")
 
+    if return_parts:
+        return parts
     return "\n\n".join(parts)
 
 
@@ -370,25 +374,35 @@ def _call_model(messages: list, model: str, ollama_url: str) -> tuple[str, int, 
     return result.as_tuple()
 
 
+def _chat_completion_result(
+    client,
+    messages: list,
+    model: str,
+    ollama_url: str,
+    tools: list[dict] | None = None,
+) -> ChatResult:
+    """Chamada com suporte opcional a tools nativas; normaliza dublês."""
+    if client is None:
+        raw, t_in, t_out = _call_model(messages, model, ollama_url)
+        return ChatResult(raw, t_in, t_out)
+    result = client.chat(messages, model=model or None, tools=tools)
+    if isinstance(result, ChatResult):
+        return result
+    if hasattr(result, "as_tuple"):
+        raw, t_in, t_out = result.as_tuple()
+        return ChatResult(raw, t_in, t_out)
+    raw, t_in, t_out = result
+    return ChatResult(raw, t_in, t_out)
+
+
 def _chat_completion(
     client,
     messages: list,
     model: str,
     ollama_url: str,
 ) -> tuple[str, int, int]:
-    """
-    Uma chamada ao modelo, pelo cliente injetado ou pelo Ollama padrão.
-
-    `model` pode ser vazio quando o cliente já carrega o modelo (papéis do
-    modo build) — nesse caso o cliente decide.
-    """
-    if client is None:
-        return _call_model(messages, model, ollama_url)
-
-    result = client.chat(messages, model=model or None)
-    if hasattr(result, "as_tuple"):
-        return result.as_tuple()
-    return result  # compatibilidade com dublês que devolvem tupla
+    """Uma chamada ao modelo, pelo cliente injetado ou pelo Ollama padrão."""
+    return _chat_completion_result(client, messages, model, ollama_url).as_tuple()
 
 
 def _build_system_prompt(
@@ -650,6 +664,10 @@ def run_agent(
     prompt_chars = sum(len(str(m.get("content", ""))) for m in messages)
 
     nudge_sent = False
+    native_tools_enabled = bool(
+        model_client is not None
+        and getattr(model_client, "native_tools", False)
+    )
     for step in range(1, max_steps + 1):
         if (
             profile == PERFIL_NUVEM
@@ -677,9 +695,15 @@ def run_agent(
         _call(on_step, step, "modelo", "aguardando…", "model")
 
         try:
-            raw, t_in, t_out = _chat_completion(
-                model_client, messages, model, ollama_url
+            native_schema = (
+                to_openai_tools(schema)
+                if native_tools_enabled and schema else None
             )
+            completion = _chat_completion_result(
+                model_client, messages, model, ollama_url,
+                tools=native_schema,
+            )
+            raw, t_in, t_out = completion.as_tuple()
             total_in  += t_in
             total_out += t_out
             if budget_tokens and total_in + total_out >= budget_tokens:
@@ -700,6 +724,53 @@ def run_agent(
             return _mk("error", msg, steps=step)
         finally:
             _call(on_model_end, step)
+
+        # ── tool calls nativos (somente leituras em lote por enquanto) ───────
+        if completion.tool_calls:
+            actions = [
+                {"tool": call["name"], "args": call.get("arguments") or {}}
+                for call in completion.tool_calls
+            ]
+            if len(actions) <= MAX_BATCH_ACTIONS and _batch_allowed(actions, tools):
+                tool_calls += len(actions)
+                batch_calls += 1
+                parts = _execute_read_batch(
+                    actions, tools, step, on_step, on_confirm_path,
+                    return_parts=True,
+                )
+                messages.append({
+                    "role": "assistant",
+                    "content": raw or "",
+                    "tool_calls": [
+                        {
+                            "id": call["id"],
+                            "type": "function",
+                            "function": {
+                                "name": call["name"],
+                                "arguments": call.get("arguments_raw", "{}"),
+                            },
+                        }
+                        for call in completion.tool_calls
+                    ],
+                })
+                for call, part in zip(completion.tool_calls, parts):
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": call["id"],
+                        "content": str(part),
+                    })
+                continue
+
+            native_tools_enabled = False
+            feedback = (
+                "Tool calls nativos só são aceitos para leituras independentes "
+                f"({', '.join(sorted(BATCH_SAFE_TOOLS))}). Para escrita, use o "
+                "formato JSON normal."
+            )
+            _call(on_step, step, "nativo", feedback, "error")
+            messages.append({"role": "assistant", "content": raw or ""})
+            messages.append({"role": "user", "content": feedback})
+            continue
 
         parsed = _parse_response(raw)
 

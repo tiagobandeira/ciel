@@ -23,6 +23,7 @@ Nada aqui imprime, usa Rich ou lê `input()`.
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -50,11 +51,42 @@ class ChatResult:
     tokens_in: int = 0
     tokens_out: int = 0
     model: str = ""
+    tool_calls: list[dict] = field(default_factory=list)
     raw: dict | None = field(default=None, repr=False)
 
     def as_tuple(self) -> tuple[str, int, int]:
         """Compatibilidade com o antigo `_call_model` (texto, in, out)."""
         return self.text, self.tokens_in, self.tokens_out
+
+
+def _normalize_tool_calls(raw_calls) -> list[dict]:
+    """Normaliza tool_calls de OpenAI/Ollama para um formato interno."""
+    normalized: list[dict] = []
+    for index, item in enumerate(raw_calls or []):
+        if not isinstance(item, dict):
+            continue
+        function = item.get("function") or {}
+        name = function.get("name") or item.get("name") or ""
+        raw_args = function.get("arguments", item.get("arguments", {}))
+        if isinstance(raw_args, str):
+            raw_text = raw_args
+            try:
+                args = json.loads(raw_args) if raw_args.strip() else {}
+            except (json.JSONDecodeError, ValueError):
+                args = {}
+        else:
+            args = raw_args if isinstance(raw_args, dict) else {}
+            raw_text = json.dumps(args, ensure_ascii=False)
+        if not name:
+            continue
+        normalized.append({
+            "id": item.get("id") or f"call_{index + 1}",
+            "type": "function",
+            "name": name,
+            "arguments": args,
+            "arguments_raw": raw_text,
+        })
+    return normalized
 
 
 class BaseClient:
@@ -72,6 +104,8 @@ class BaseClient:
         max_tokens: int | None = None,
         timeout: float | None = None,
         retries: int = 0,
+        tools: list[dict] | None = None,
+        tool_choice: str | dict | None = None,
     ) -> ChatResult:
         raise NotImplementedError
 
@@ -150,11 +184,13 @@ class OllamaClient(BaseClient):
         timeout: float = DEFAULT_OLLAMA_TIMEOUT,
         chat_path: str = "/api/chat",
         max_tokens: int | None = None,
+        native_tools: bool = False,
     ):
         self.base_url = _normalize_ollama_base(base_url)
         self.chat_path = chat_path if chat_path.startswith("/") else f"/{chat_path}"
         self.timeout = timeout
         self.max_tokens = max_tokens
+        self.native_tools = native_tools
 
     @property
     def endpoint(self) -> str:
@@ -169,6 +205,8 @@ class OllamaClient(BaseClient):
         max_tokens: int | None = None,
         timeout: float | None = None,
         retries: int = 0,
+        tools: list[dict] | None = None,
+        tool_choice: str | dict | None = None,
     ) -> ChatResult:
         if not model:
             raise LLMError("OllamaClient.chat() precisa de um model")
@@ -178,6 +216,10 @@ class OllamaClient(BaseClient):
             "messages": messages,
             "stream": False,
         }
+        if tools:
+            payload["tools"] = tools
+            if tool_choice is not None:
+                payload["tool_choice"] = tool_choice
 
         # Só envia `options` quando o chamador pediu algo — mantém o payload
         # idêntico ao de `agent_loop._call_model` no caminho padrão.
@@ -204,6 +246,7 @@ class OllamaClient(BaseClient):
             tokens_in=int(data.get("prompt_eval_count", 0) or 0),
             tokens_out=int(data.get("eval_count", 0) or 0),
             model=model,
+            tool_calls=_normalize_tool_calls(message.get("tool_calls")),
             raw=data,
         )
 
@@ -239,6 +282,7 @@ class OpenAICompatClient(BaseClient):
         timeout: float = DEFAULT_OPENAI_TIMEOUT,
         extra_headers: dict | None = None,
         max_tokens: int | None = None,
+        native_tools: bool = False,
     ):
         self.base_url = _normalize_openai_base(base_url)
         self.api_key = api_key or ""
@@ -246,6 +290,7 @@ class OpenAICompatClient(BaseClient):
         self.timeout = timeout
         self.extra_headers = dict(extra_headers or {})
         self.max_tokens = max_tokens
+        self.native_tools = native_tools
 
     @property
     def endpoint(self) -> str:
@@ -265,6 +310,8 @@ class OpenAICompatClient(BaseClient):
         max_tokens: int | None = None,
         timeout: float | None = None,
         retries: int = 0,
+        tools: list[dict] | None = None,
+        tool_choice: str | dict | None = None,
     ) -> ChatResult:
         use_model = model or self.model
         if not use_model:
@@ -275,6 +322,11 @@ class OpenAICompatClient(BaseClient):
             "messages": messages,
             "stream": False,
         }
+        if tools:
+            payload["tools"] = tools
+            payload["parallel_tool_calls"] = True
+            if tool_choice is not None:
+                payload["tool_choice"] = tool_choice
         if temperature is not None:
             payload["temperature"] = temperature
         effective_max = max_tokens if max_tokens is not None else self.max_tokens
@@ -316,6 +368,7 @@ class OpenAICompatClient(BaseClient):
             tokens_in=int(usage.get("prompt_tokens", 0) or 0),
             tokens_out=int(usage.get("completion_tokens", 0) or 0),
             model=use_model,
+            tool_calls=_normalize_tool_calls(message.get("tool_calls")),
             raw=data,
         )
 
@@ -330,6 +383,7 @@ def make_client(
     model: str = "",
     timeout: float | None = None,
     max_tokens: int | None = None,
+    native_tools: bool = False,
     **kwargs,
 ) -> BaseClient:
     """
@@ -346,6 +400,7 @@ def make_client(
             base_url=base_url or DEFAULT_OLLAMA_BASE,
             timeout=timeout or DEFAULT_OLLAMA_TIMEOUT,
             max_tokens=max_tokens,
+            native_tools=native_tools,
             **kwargs,
         )
     return OpenAICompatClient(
@@ -354,6 +409,7 @@ def make_client(
         model=model,
         timeout=timeout or DEFAULT_OPENAI_TIMEOUT,
         max_tokens=max_tokens,
+        native_tools=native_tools,
         **kwargs,
     )
 
