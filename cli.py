@@ -3254,30 +3254,36 @@ def main():
             ts = datetime.now().strftime("%a %H:%M")
             history.append({"role": "user", "content": f"/task {task['nome']}", "ts": ts})
 
-            if _SESSION.get("client") is not None or getattr(args, "no_queue", False):
-                # build: o orquestrador é o modelo cloud; task_runner local
-                # não se aplica (a fila determinística é do modo local).
+            _callbacks = _make_run_callbacks(session_flags)
+            _on_queue = _callbacks.pop("_on_queue_action", None)
+            _use_client = _SESSION.get("client")
+            _task_model = "" if _use_client is not None else args.model
+            _task_steps = MAX_STEPS_TASK
+            _task_max = 0
+            try:
+                _task_max = int(task.get("max_steps") or 0)
+            except (TypeError, ValueError):
+                pass
+            if _task_max > 0:
+                _task_steps = _task_max
+            if getattr(args, "no_queue", False):
                 agent_result = _run_agent_session(
                     task_prompt, tools, schema, args.model, agent_info,
                     history=history[:-1],
                     session_id=str(current_session_id) if current_session_id else None,
-                    max_steps=(
-                        MAX_STEPS_TASK_NUVEM
-                        if _SESSION.get("client") is not None
-                        else MAX_STEPS_TASK
-                    ),
+                    max_steps=_task_steps,
                     mcp_manager=mcp_manager,
-                    **_run_agent_callbacks(session_flags),
+                    **_callbacks,
                 )
             else:
-                _callbacks = _make_run_callbacks(session_flags)
-                _on_queue = _callbacks.pop("_on_queue_action", None)
                 agent_result = run_task(
-                    task, tools, schema, args.model, agent_info,
+                    task, tools, schema, _task_model, agent_info,
                     history=history[:-1],
                     session_id=str(current_session_id) if current_session_id else None,
-                    max_steps=MAX_STEPS_TASK,
+                    max_steps=_task_steps,
                     mcp_manager=mcp_manager,
+                    model_client=_use_client,
+                    profile=_SESSION.get("perfil", "local"),
                     on_queue_action=_on_queue,
                     **_callbacks,
                 )

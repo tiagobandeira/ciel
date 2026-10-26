@@ -497,6 +497,29 @@ class TestRunTask:
             )
         assert result.status == "done"
 
+    def test_sem_grupo_repassa_client_profile_e_max_steps(
+        self, task_sem_grupo, tools, schema, agent_info
+    ):
+        from agent_loop import AgentResult
+        from task_runner import run_task
+
+        sentinel = object()
+        task = dict(task_sem_grupo)
+        task["max_steps"] = 4
+        with patch(
+            "task_runner.run_agent",
+            return_value=AgentResult("done", "ok"),
+        ) as fake:
+            run_task(
+                task, tools, schema, model="", agent_info=agent_info,
+                model_client=sentinel, profile="nuvem",
+            )
+
+        kwargs = fake.call_args.kwargs
+        assert kwargs["max_steps"] == 4
+        assert kwargs["model_client"] is sentinel
+        assert kwargs["profile"] == "nuvem"
+
     def test_com_grupo_usa_planner(
         self, task_com_grupo, tools, schema, agent_info
     ):

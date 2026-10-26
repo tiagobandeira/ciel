@@ -32,6 +32,7 @@ tasks/
 objetivo: descrição curta do que a task faz
 
 grupo: tudo                    # opcional — controla agrupamento de tools
+max_steps: 6                   # opcional — teto de steps desta task
 
 ações:
 - ação em linguagem natural
@@ -47,6 +48,10 @@ resultado esperado: o que deve ser entregue ao final
 - Sem `[tool:]`, o agente escolhe a tool mais adequada
 - `objetivo` e `resultado esperado` são opcionais mas ajudam o agente
 - `grupo` é opcional — omitir usa o comportamento padrão (uma chamada ao modelo por ação)
+- `max_steps` é opcional — sem ele, a task usa o teto global (9 no `/task`).
+  Use para tasks simples que não precisam de tantas leituras.
+- `grupo` e `max_steps` valem tanto no perfil local quanto no nuvem; o
+  `/task` do nuvem usa o mesmo `task_runner` (com model_client).
 
 ---
 

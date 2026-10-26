@@ -44,7 +44,7 @@ import requests
 from agent_loop import (
     AgentResult,
     run_agent,
-    _call_model,
+    _chat_completion,
     _build_system_prompt,
     _parse_response,
     OLLAMA_URL,
@@ -157,7 +157,12 @@ def _build_plan_prompt(task: dict) -> str:
     )
 
 
-def _request_plan(task: dict, model: str, ollama_url: str) -> list[dict] | None:
+def _request_plan(
+    task: dict,
+    model: str,
+    ollama_url: str,
+    model_client=None,
+) -> list[dict] | None:
     """
     Chama o modelo uma vez para obter o plano de execução.
     Retorna lista de actions ou None se falhar.
@@ -167,7 +172,7 @@ def _request_plan(task: dict, model: str, ollama_url: str) -> list[dict] | None:
         {"role": "user",   "content": _build_plan_prompt(task)},
     ]
     try:
-        raw, _, _ = _call_model(messages, model, ollama_url)
+        raw, _, _ = _chat_completion(model_client, messages, model, ollama_url)
         parsed = _parse_response(raw)
         actions = parsed.get("actions")
         if isinstance(actions, list) and actions:
@@ -378,6 +383,8 @@ def run_task(
     max_steps_per_model: int = 3,   # teto de steps por ação "model" individual
     ollama_url: str = OLLAMA_URL,
     mcp_manager=None,
+    model_client=None,
+    profile: str = "local",
     # callbacks — mesma assinatura do run_agent
     on_step: OnStep | None = None,
     on_model_start: OnModelStart | None = None,
@@ -404,6 +411,13 @@ def run_task(
     step      = 0   # incrementa APENAS em chamadas ao modelo
     action_idx = 0  # contador de sub-ações dentro do step atual (display)
 
+    try:
+        task_max_steps = int(task.get("max_steps") or 0)
+    except (TypeError, ValueError):
+        task_max_steps = 0
+    if task_max_steps > 0:
+        max_steps = task_max_steps
+
     # ── step 1: planejamento ──────────────────────────────────────────────────
     step += 1
     action_idx = 0
@@ -427,6 +441,8 @@ def run_task(
             max_steps=max_steps,
             ollama_url=ollama_url,
             mcp_manager=mcp_manager,
+            model_client=model_client,
+            profile=profile,
             on_step=on_step,
             on_model_start=on_model_start,
             on_model_end=on_model_end,
@@ -445,7 +461,7 @@ def run_task(
     )
 
     try:
-        actions = _request_plan(task, model, ollama_url)
+        actions = _request_plan(task, model, ollama_url, model_client=model_client)
     except requests.RequestException as e:
         _call(on_error, "connection", str(e))
         return AgentResult("error", f"Erro de conexão ao planejar: {e}", steps=step)
@@ -462,6 +478,8 @@ def run_task(
             max_steps=max_steps,
             ollama_url=ollama_url,
             mcp_manager=mcp_manager,
+            model_client=model_client,
+            profile=profile,
             on_step=on_step,
             on_model_start=on_model_start,
             on_model_end=on_model_end,
@@ -488,6 +506,8 @@ def run_task(
             max_steps=max_steps,
             ollama_url=ollama_url,
             mcp_manager=mcp_manager,
+            model_client=model_client,
+            profile=profile,
             on_step=on_step,
             on_model_start=on_model_start,
             on_model_end=on_model_end,
@@ -590,6 +610,8 @@ def run_task(
                 max_steps=sub_max,
                 ollama_url=ollama_url,
                 mcp_manager=mcp_manager,
+                model_client=model_client,
+                profile=profile,
                 on_step=on_step,
                 on_model_start=on_model_start,
                 on_model_end=on_model_end,
@@ -641,7 +663,9 @@ def run_task(
     )
 
     try:
-        system_prompt = _build_system_prompt(agent_info, schema, session_id=session_id)
+        system_prompt = _build_system_prompt(
+            agent_info, schema, session_id=session_id, profile=profile
+        )
         context: list[dict] = []
         for entry in (history or []):
             role = "user" if entry["role"] == "user" else "assistant"
@@ -652,7 +676,7 @@ def run_task(
             *context,
             {"role": "user",      "content": final_prompt},
         ]
-        raw, t_in, t_out = _call_model(messages, model, ollama_url)
+        raw, t_in, t_out = _chat_completion(model_client, messages, model, ollama_url)
         total_in  += t_in
         total_out += t_out
     except requests.RequestException as e:
