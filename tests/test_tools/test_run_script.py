@@ -63,6 +63,16 @@ class TestRunScriptSuccess:
         assert "falhou" not in result.lower()
         assert "exit" not in result.lower()
 
+    def test_resolve_script_relativo_ao_cwd(self, tmp_path):
+        script_dir = tmp_path / "projeto"
+        script_dir.mkdir()
+        (script_dir / "rodar.py").write_text(
+            'import os\nprint(os.path.basename(os.getcwd()))\n',
+            encoding="utf-8",
+        )
+        result = run_script("rodar.py", cwd=str(script_dir))
+        assert "projeto" in result
+
 
 # ── erros graciosos ───────────────────────────────────────────────────────────
 

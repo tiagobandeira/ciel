@@ -2,17 +2,24 @@
 
 PERMISSIONS = {"path": "write"}
 
+import json
 from pathlib import Path
 
 
-def run(path: str, content: str, mode: str = "overwrite") -> str:
+def run(path: str, content, mode: str = "overwrite") -> str:
     """
     path:    caminho do arquivo a escrever
-    content: texto a escrever
+    content: texto ou objeto JSON (dict/list) a serializar
     mode:    'overwrite' (padrão) | 'append'
     """
     if mode not in ("overwrite", "append"):
         return f"Erro: mode '{mode}' inválido. Use 'overwrite' ou 'append'."
+
+    if not isinstance(content, str):
+        try:
+            content = json.dumps(content, ensure_ascii=False, indent=2)
+        except (TypeError, ValueError) as exc:
+            return f"Erro: conteúdo não é texto nem JSON serializável: {exc}"
 
     p = Path(path)
     try:

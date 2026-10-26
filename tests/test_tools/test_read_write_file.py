@@ -133,6 +133,11 @@ class TestWriteFile:
         assert dest.exists()
         assert dest.read_text(encoding="utf-8") == "aninhado"
 
+    def test_serializa_dict_como_json(self, tmp_path):
+        dest = tmp_path / "alvo.json"
+        write_file(str(dest), {"alvo": "x", "modulo": "calc"})
+        assert '"alvo": "x"' in dest.read_text(encoding="utf-8")
+
     def test_mode_invalido_retorna_erro(self, tmp_path):
         dest = tmp_path / "qualquer.txt"
         result = write_file(str(dest), "texto", mode="destruir")

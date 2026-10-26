@@ -16,6 +16,10 @@ def run(script_path: str, args: list[str] = None, timeout: int = 120, cwd: str =
                  como o workspace atual — não precisa ser passado manualmente)
     """
     path = Path(script_path)
+    if not path.exists() and cwd:
+        candidate = Path(cwd) / script_path
+        if candidate.exists():
+            path = candidate
     if not path.exists():
         return f"Erro: arquivo '{script_path}' não encontrado."
     if path.suffix != ".py":

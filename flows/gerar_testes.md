@@ -35,12 +35,14 @@ checagem: [{"tipo": "arquivo", "path": "data/user/gerar_testes/tests/test_gerado
 fase: Execução
 depende_de: escrever
 tools: read_file, write_file, edit_file, apply_patch, list_directory, run_script
-max_steps: 8
+max_steps: 10
 objetivo: executar os testes, corrigir os testes e registrar o resultado
 ações:
 - escrever data/user/gerar_testes/rodar.py que lê ALVO.json, adiciona o alvo ao sys.path e roda pytest em tests/test_gerado.py
 - rodar rodar.py [tool: run_script]
-- se um teste falhar por bug do teste, corrigir o teste; se for bug real do código, registrar no RESULTADO.md sem alterar o fonte
+- se um teste falhar por bug do teste, corrigir o teste e rodar de novo
+- se for bug real do código, registrar no RESULTADO.md sem alterar o fonte
+- não repetir leituras já feitas; foque em rodar, corrigir e registrar
 - escrever data/user/gerar_testes/RESULTADO.md com comando, saída e limitações
 resultado esperado: rodar.py passa e RESULTADO.md registra o resultado
 checagem: [{"tipo": "arquivo", "path": "data/user/gerar_testes/rodar.py", "tamanho_min": 80}, {"tipo": "comando", "cmd": ["python", "rodar.py"], "cwd": "data/user/gerar_testes", "esperado": 0, "timeout": 60}, {"tipo": "arquivo", "path": "data/user/gerar_testes/RESULTADO.md", "tamanho_min": 80}]
