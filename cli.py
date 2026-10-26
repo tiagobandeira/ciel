@@ -2981,14 +2981,24 @@ def main():
         # ── /subagente — inspeciona resultados de subagentes ──────────────────
         if user_input.startswith("/subagente"):
             import json as _json
+            import re as _re
             from board import BoardStore
 
-            partes = user_input.split()
-            alvo = partes[1].strip() if len(partes) > 1 and partes[1] != "status" else ""
-            task_id = partes[2].strip() if len(partes) > 2 else ""
+            partes = user_input.split()[1:]
+            if partes and partes[0].lower() == "status":
+                partes = partes[1:]
             runs = BoardStore()
+
+            run_id = ""
+            chave = ""
+            if partes and runs.exists(partes[0]):
+                run_id = partes[0]
+                chave = partes[1] if len(partes) > 1 else ""
+            elif partes:
+                # /subagente <task> ou /subagente <algo> <task>
+                chave = partes[-1]
             try:
-                board_sub = runs.load(alvo) if alvo else runs.latest()
+                board_sub = runs.load(run_id) if run_id else runs.latest()
             except Exception:
                 board_sub = None
             if board_sub is None:
@@ -3000,37 +3010,56 @@ def main():
                     f"  [muted]nenhum subagente em {board_sub.id}.[/muted]\n"
                 )
                 continue
-            arquivos = sorted(sub_dir.glob("*.json"))
-            if task_id:
-                path = sub_dir / f"{task_id}.json"
-                if not path.exists():
-                    console.print(f"  [err]subagente '{task_id}' não encontrado.[/err]\n")
-                    continue
-                try:
-                    data = _json.loads(path.read_text(encoding="utf-8"))
-                except Exception as exc:
-                    console.print(f"  [err]erro ao ler {path}: {exc}[/err]\n")
-                    continue
-                console.print(Panel(
-                    escape(_json.dumps(data, ensure_ascii=False, indent=2)),
-                    title=f"[user]subagente {task_id}[/user]",
-                    border_style=CLR_USER,
-                    padding=(0, 1),
-                ))
-                continue
-            tbl = Table(box=None, show_header=True, padding=(0, 1))
-            tbl.add_column("task", style="tool")
-            tbl.add_column("agente")
-            tbl.add_column("status")
-            tbl.add_column("tok in/out")
-            tbl.add_column("par")
-            for path in arquivos:
+
+            registros = []
+            for path in sorted(sub_dir.glob("*.json")):
                 try:
                     data = _json.loads(path.read_text(encoding="utf-8"))
                 except Exception:
                     continue
+                registros.append((path, data))
+
+            def _slug(value: str) -> str:
+                raw = _re.sub(r"[^\w\-]+", "-", (value or "").lower())
+                return raw.strip("-")
+
+            if chave:
+                alvo = _slug(chave)
+                encontrado = None
+                for path, data in registros:
+                    candidatos = {
+                        str(data.get("id", path.stem)),
+                        str(data.get("titulo", "")),
+                    }
+                    if any(_slug(c) == alvo for c in candidatos if c):
+                        encontrado = (path, data)
+                        break
+                if encontrado is None:
+                    console.print(
+                        f"  [err]subagente '{chave}' não encontrado em "
+                        f"{board_sub.id}.[/err]\n"
+                    )
+                    continue
+                path, data = encontrado
+                console.print(Panel(
+                    escape(_json.dumps(data, ensure_ascii=False, indent=2)),
+                    title=f"[user]subagente {data.get('id', path.stem)}[/user]",
+                    border_style=CLR_USER,
+                    padding=(0, 1),
+                ))
+                continue
+
+            tbl = Table(box=None, show_header=True, padding=(0, 1))
+            tbl.add_column("task", style="tool")
+            tbl.add_column("titulo")
+            tbl.add_column("agente")
+            tbl.add_column("status")
+            tbl.add_column("tok in/out")
+            tbl.add_column("par")
+            for path, data in registros:
                 tbl.add_row(
                     str(data.get("id", path.stem)),
+                    str(data.get("titulo", "")),
                     str(data.get("agente", "")),
                     str(data.get("status", "")),
                     f"{data.get('tokens_in', 0)}/{data.get('tokens_out', 0)}",

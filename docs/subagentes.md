@@ -31,7 +31,10 @@ max_steps: 4
 ```text
 /subagente                  # lista da última execução
 /subagente <run_id>         # lista de uma execução
-/subagente <run_id> t1      # detalhe do subagente t1
+/subagente t1               # detalhe por id na última
+/subagente ler-readme       # detalhe por título na última
+/subagente <run_id> t1      # detalhe por id
+/subagente <run_id> ler-readme
 ```
 
 Cada task grava `data/runs/<id>/subagents/<task_id>.json`.
