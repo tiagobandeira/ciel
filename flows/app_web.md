@@ -60,7 +60,7 @@ checagem: [{"tipo": "arquivo", "path": "data/user/app_web/app.js", "contem": "pr
 ## task: verificar
 fase: Verificação
 depende_de: preview
-tools: read_file, list_directory, run_script
+tools: read_file, write_file, list_directory, run_script
 objetivo: validar a estrutura e o comportamento básico do app por código
 ações:
 - listar data/user/app_web [tool: list_directory]
