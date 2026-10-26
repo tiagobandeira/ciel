@@ -97,6 +97,13 @@ class TestListDirectoryRecursive:
         result = list_directory(str(dir_com_arquivos), recursive=True)
         assert "recursivo" in result.lower()
 
+    def test_saida_grande_e_truncada(self, tmp_path):
+        for i in range(510):
+            (tmp_path / f"a{i:03d}.txt").write_text("x")
+        result = list_directory(str(tmp_path), recursive=True)
+        assert "truncada" in result
+        assert result.count("[arq]") == 500
+
 
 # ── erros graciosos ───────────────────────────────────────────────────────────
 

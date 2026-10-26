@@ -34,24 +34,26 @@ checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/FORMALIZACAO.md", "tama
 ## task: implementar_script
 fase: Implementação
 depende_de: formalizar
-tools: write_file, read_file, list_directory, run_script
-max_steps: 10
-objetivo: escrever do zero e rodar um script de experimento enxuto
+tools: read_file, write_file, run_script
+max_steps: 6
+objetivo: escrever e rodar exatamente src/experimento.py, sem explorar o workspace
 ações:
-- ignorar src/experimento.py antigo; sobrescrever com write_file, sem edit_file
-- escrever data/labs/estudo/src/experimento.py pequeno e focado, com parâmetros, semente e saída em resultados/ e figuras/
-- rodar src/experimento.py [tool: run_script] logo depois de escrever, sem reler o script inteiro
+- ler SOMENTE data/labs/estudo/FORMALIZACAO.md; não use list_directory e não leia o artigo inteiro
+- escrever exatamente data/labs/estudo/src/experimento.py com write_file; não crie explora_definicao.py, não use edit_file
+- o script deve ser pequeno e focado: uma hipótese, parâmetros explícitos, semente e saída em resultados/ e figuras/
+- rodar data/labs/estudo/src/experimento.py logo após escrever [tool: run_script]
 - salvar a saída em resultados/saida_experimento.txt e resultados numéricos em resultados/resultados.json
-resultado esperado: script executou e gerou saída, dados e pelo menos um artefato
+resultado esperado: src/experimento.py executou e gerou saída/resultados
 checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/src/experimento.py", "tamanho_min": 150}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/saida_experimento.txt", "tamanho_min": 40}]
 
 ## task: implementar_notebook
 fase: Notebook
 depende_de: implementar_script
-tools: read_file, write_file, list_directory, write_notebook
-max_steps: 7
+tools: read_file, write_file, write_notebook
+max_steps: 6
 objetivo: montar o notebook Colab e o README a partir dos resultados
 ações:
+- ler somente resultados/saida_experimento.txt e resultados/resultados.json; não use list_directory
 - ignorar laboratorio.ipynb antigo; sobrescrever
 - criar data/labs/estudo/laboratorio.ipynb com write_notebook [tool: write_notebook], com células pequenas: hipótese, método, parâmetros, execução, tabela/gráfico e conclusão
 - o notebook deve ser compatível com Colab, usar caminhos relativos e não depender do Ciel; pode carregar resultados/ já gerados
@@ -62,8 +64,8 @@ checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/laboratorio.ipynb", "co
 ## task: executar
 fase: Execução
 depende_de: implementar_notebook
-tools: read_file, write_file, list_directory, run_script, run_notebook
-max_steps: 7
+tools: read_file, write_file, run_notebook
+max_steps: 5
 objetivo: executar o notebook e registrar a execução detalhada
 ações:
 - rodar laboratorio.ipynb com run_notebook, cwd data/labs/estudo e log_path resultados/execucao_notebook.log [tool: run_notebook]
@@ -75,11 +77,11 @@ checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/EXECUCAO.md", "tamanho_
 ## task: relatorio
 fase: Relatório
 depende_de: executar
-tools: read_file, write_file, list_directory
+tools: read_file, write_file
 max_steps: 6
 objetivo: produzir relatório e nota curta com o que foi aprendido
 ações:
-- ler FORMALIZACAO.md, EXECUCAO.md, resultados/ e figuras/
+- ler FORMALIZACAO.md, EXECUCAO.md e resultados/resultados.json; não use list_directory
 - escrever data/labs/estudo/RELATORIO.md com pergunta, método, resultados numéricos, evidências, limitações, o que confirma/refuta e próximos experimentos
 - escrever data/labs/estudo/NOTA.md com uma formalização curta: definições, conjectura/hipótese, evidência e possível nota/artigo
 - separar evidência de interpretação
@@ -89,12 +91,12 @@ checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/RELATORIO.md", "tamanho
 ## task: verificar
 fase: Verificação
 depende_de: relatorio
-tools: read_file, write_file, list_directory, run_notebook
-max_steps: 5
+tools: read_file, write_file, run_notebook
+max_steps: 4
 objetivo: validar notebook, artefatos e reprodutibilidade
 ações:
-- validar laboratorio.ipynb como JSON nbformat 4 com run_notebook e/ou leitura; não reescrever o notebook
-- rodar o notebook de novo com run_notebook [tool: run_notebook]
+- validar laboratorio.ipynb como JSON nbformat 4 e rodar o notebook com run_notebook [tool: run_notebook]
 - escrever data/labs/estudo/VERIFICACAO.md com comandos, resultados e como reproduzir
+- não reescrever o notebook e não usar list_directory
 resultado esperado: notebook válido, execução sem erro e VERIFICACAO.md existe
 checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/VERIFICACAO.md", "tamanho_min": 200}, {"tipo": "comando", "cmd": ["python", "-c", "import json; p='data/labs/estudo/laboratorio.ipynb'; d=json.load(open(p, encoding='utf-8')); assert d['nbformat']==4; assert any(c.get('cell_type')=='code' for c in d['cells']); print('ok')"], "cwd": ".", "esperado": 0, "timeout": 30}]

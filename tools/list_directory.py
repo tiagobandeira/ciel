@@ -5,6 +5,8 @@ PERMISSIONS = {"directory": "read"}
 import os
 from pathlib import Path
 
+MAX_ENTRIES = 500
+
 
 def run(directory: str = ".", ext: str = "", recursive: bool = False, **kwargs) -> str:
     """
@@ -48,13 +50,21 @@ def run(directory: str = ".", ext: str = "", recursive: bool = False, **kwargs) 
             lines.append(f"{kind}{rel}")
 
         total = len(lines)
+        truncated = total > MAX_ENTRIES
+        if truncated:
+            lines = lines[:MAX_ENTRIES]
         header = f"{total} item(s) em '{directory}'"
         if ext:
             header += f" (ext: {ext})"
         if recursive:
             header += " [recursivo]"
-
-        return header + "\n\n" + "\n".join(lines)
+        body = "\n".join(lines)
+        if truncated:
+            body += (
+                f"\n... saída truncada em {MAX_ENTRIES} itens; "
+                "refine o filtro ou a pasta."
+            )
+        return header + "\n\n" + body
 
     except Exception as e:
         return f"Erro: {e}"
