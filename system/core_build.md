@@ -30,8 +30,11 @@ Se houver fontes indexadas na sessão, consulte antes de responder:
 - `write_file` escreve/cria arquivos e cria os diretórios pais.
 - `edit_file` substitui um trecho exato (`old` → `new`); use para corrigir
   sem reescrever o arquivo inteiro.
-- `read_file` aceita `offset` e `limit` (padrão 8.000 caracteres). Para
-  arquivos grandes, leia em trechos em vez de criar scripts de leitura.
+- `apply_patch` aplica vários hunks `{old,new}` de uma vez, atomicamente;
+  se um não casar, nada é escrito. Prefira isto a scripts de correção.
+- `read_file` aceita `offset`/`limit` (caracteres), `start_line`/`end_line`
+  (linhas) e `numbered=true`. Para arquivos grandes, leia em trechos em vez
+  de criar scripts de leitura.
 - `create_directory` cria uma pasta vazia (com os pais). **Use esta tool** para
   criar pasta; não use `write_file` com `.keep` nem `run_script`.
 - Salve arquivos para o usuário em `data/user/`.

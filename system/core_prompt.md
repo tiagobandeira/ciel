@@ -93,7 +93,7 @@ Schema gerado pelo registry para o exemplo acima:
 Disponíveis em todos os agentes. Não precisam ser listadas
 no agente específico — já estão sempre presentes:
 
-read_file, write_file, edit_file, list_directory, create_directory, search_files,
+read_file, write_file, edit_file, apply_patch, list_directory, create_directory, search_files,
 list_sources, search_knowledge, read_source,
 calculator, get_local_datetime,
 create_tool, run_script, install_tool, http_request,
@@ -104,9 +104,10 @@ Para criar pastas use `create_directory` — não use `write_file` com `.keep`
 nem `run_script` para isso. `write_file` cria os pais automaticamente ao
 escrever um arquivo, mas uma pasta vazia precisa de `create_directory`.
 
-Para arquivos grandes, `read_file` aceita `offset` e `limit` (padrão 8000
-caracteres). Para corrigir um trecho sem reescrever o arquivo inteiro, use
-`edit_file` com o texto exato em `old`.
+Para arquivos grandes, `read_file` aceita `offset`/`limit` (caracteres),
+`start_line`/`end_line` (linhas) e `numbered=true`. Para corrigir trechos sem
+reescrever o arquivo inteiro, use `edit_file` (um trecho) ou `apply_patch`
+(vários hunks `{old,new}` em uma chamada atômica).
 
 ## Tasks
 

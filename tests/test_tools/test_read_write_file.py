@@ -61,6 +61,28 @@ class TestReadFile:
         result = read_file(str(f), offset=99)
         assert "trecho 3–3 de 3" in result
 
+    def test_por_linhas_com_numeracao(self, tmp_path):
+        f = tmp_path / "linhas.txt"
+        f.write_text("um\ndois\ntres\nquatro\n", encoding="utf-8")
+        result = read_file(str(f), start_line=2, end_line=3, numbered=True)
+        assert "    2 | dois" in result
+        assert "    3 | tres" in result
+        assert "quatro" not in result
+        assert "linhas 2–3 de 4" in result
+
+    def test_por_linhas_sem_end_line(self, tmp_path):
+        f = tmp_path / "linhas.txt"
+        f.write_text("a\nb\nc\n", encoding="utf-8")
+        result = read_file(str(f), start_line=2, numbered=True)
+        assert "    2 | b" in result
+        assert "    3 | c" in result
+
+    def test_char_mode_com_numeracao(self, tmp_path):
+        f = tmp_path / "linhas.txt"
+        f.write_text("a\nb\nc\n", encoding="utf-8")
+        result = read_file(str(f), offset=2, limit=1, numbered=True)
+        assert "    2 | b" in result
+
     def test_arquivo_vazio_retorna_string_vazia(self, tmp_path):
         f = tmp_path / "vazio.txt"
         f.write_text("", encoding="utf-8")

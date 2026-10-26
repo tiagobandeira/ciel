@@ -187,8 +187,9 @@ def build_task_context(board: Board, task, phase: str, profile: str = "local") -
         "- Arquivos grandes: escreva cada arquivo em UMA chamada quando couber "
         "em ~8.000 caracteres; divida só se passar. Não faça chunks de 2.000 "
         "por padrão.",
-        "- Para ler/editar arquivo grande use read_file com offset/limit e "
-        "edit_file; não crie scripts de leitura ou correção.",
+        "- Para ler/editar arquivo grande use read_file com offset/limit ou "
+        "start_line/end_line e edit_file/apply_patch; não crie scripts de "
+        "leitura ou correção.",
         "- Não releia o arquivo inteiro depois de escrever; finalize a task. "
         "Só leia de novo se a checagem falhar.",
         "- Leituras independentes podem ir em um único actions (até 4); "

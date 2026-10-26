@@ -1,4 +1,4 @@
-## flow: app_web
+﻿## flow: app_web
 objetivo: criar um app web local com interface, persistência e critérios de aceite
 formato: markdown
 como_testar: abra data/user/app_web/index.html no navegador, crie uma nota, recarregue e confira se ela continua listada
@@ -31,7 +31,7 @@ checagem: [{"tipo": "arquivo", "path": "data/user/app_web/index.html"}, {"tipo":
 fase: Implementação
 depende_de: estrutura
 agente: frontend
-tools: read_file, write_file, edit_file, list_directory
+tools: read_file, write_file, edit_file, apply_patch, list_directory
 objetivo: implementar criar, editar, salvar, listar, abrir e excluir notas
 ações:
 - implementar em app.js o estado das notas e a persistência em localStorage
@@ -44,7 +44,7 @@ checagem: [{"tipo": "arquivo", "path": "data/user/app_web/app.js", "contem": "lo
 ## task: preview
 fase: Implementação
 depende_de: editor
-tools: read_file, write_file, edit_file, list_directory
+tools: read_file, write_file, edit_file, apply_patch, list_directory
 objetivo: adicionar preview de Markdown e acabamento da interface
 ações:
 - implementar um preview simples de Markdown (títulos, negrito, listas e código)
@@ -66,3 +66,4 @@ ações:
 - escrever um relatório curto em data/user/app_web/VERIFICACAO.md
 resultado esperado: VERIFICACAO.md existe e os arquivos estão integrados
 checagem: [{"tipo": "arquivo", "path": "data/user/app_web/VERIFICACAO.md", "tamanho_min": 100}, {"tipo": "arquivo", "path": "data/user/app_web/app.js", "contem": "localStorage"}]
+

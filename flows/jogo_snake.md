@@ -1,4 +1,4 @@
-## flow: jogo_snake
+﻿## flow: jogo_snake
 objetivo: criar um jogo da cobrinha completo e jogável em data/user/jogo_snake
 formato: markdown
 como_testar: abra data/user/jogo_snake/index.html no navegador e jogue com as setas ou WASD
@@ -51,3 +51,4 @@ ações:
 - conferir que o jogo não depende de bibliotecas externas
 resultado esperado: o jogo é autocontido e abre sem erros no console
 checagem: [{"tipo": "arquivo", "path": "data/user/jogo_snake/index.html", "contem": "game.js"}, {"tipo": "arquivo", "path": "data/user/jogo_snake/game.js", "contem": "gameOver"}]
+

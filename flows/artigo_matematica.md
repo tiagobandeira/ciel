@@ -1,4 +1,4 @@
-## flow: artigo_matematica
+﻿## flow: artigo_matematica
 objetivo: escrever um artigo de matemática em data/user/artigos/artigo.md sobre o tema pedido
 formato: markdown
 como_testar: abra data/user/artigos/artigo.md e confira definições, teoremas, demonstrações e referências
@@ -17,7 +17,7 @@ checagem: [{"tipo": "arquivo", "path": "data/user/artigos/escopo.md", "tamanho_m
 ## task: artigo_base
 fase: Redação
 depende_de: escopo
-tools: read_file, write_file, edit_file, list_directory
+tools: read_file, write_file, edit_file, apply_patch, list_directory
 objetivo: escrever a abertura do artigo (título, resumo, introdução e definições)
 ações:
 - ler data/user/artigos/escopo.md [tool: read_file]
@@ -30,7 +30,7 @@ checagem: [{"tipo": "arquivo", "path": "data/user/artigos/artigo.md", "contem": 
 ## task: artigo_corpo
 fase: Redação
 depende_de: artigo_base
-tools: read_file, write_file, edit_file, list_directory
+tools: read_file, write_file, edit_file, apply_patch, list_directory
 objetivo: acrescentar os teoremas, exemplos e discussão matemática
 ações:
 - ler data/user/artigos/artigo.md [tool: read_file]
@@ -43,7 +43,7 @@ checagem: [{"tipo": "arquivo", "path": "data/user/artigos/artigo.md", "contem": 
 ## task: artigo_final
 fase: Redação
 depende_de: artigo_corpo
-tools: read_file, write_file, edit_file, list_directory
+tools: read_file, write_file, edit_file, apply_patch, list_directory
 objetivo: concluir o artigo com conclusão e referências
 ações:
 - ler data/user/artigos/artigo.md [tool: read_file]
@@ -64,3 +64,4 @@ ações:
 - NÃO editar artigo.md nesta task; NÃO criar scripts
 resultado esperado: revisao.md existe e o artigo cobre o escopo
 checagem: [{"tipo": "arquivo", "path": "data/user/artigos/revisao.md", "tamanho_min": 100}, {"tipo": "arquivo", "path": "data/user/artigos/artigo.md", "contem": "##"}]
+

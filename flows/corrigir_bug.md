@@ -1,4 +1,4 @@
-## flow: corrigir_bug
+﻿## flow: corrigir_bug
 objetivo: corrigir o bug que faz data/user/bugfix_demo/test_media.py falhar
 formato: markdown
 como_testar: cd data/user/bugfix_demo && python -m pytest -q
@@ -16,7 +16,7 @@ checagem: [{"tipo": "arquivo", "path": "data/user/bugfix_demo/BUG.md", "tamanho_
 ## task: corrigir
 fase: Correção
 depende_de: diagnosticar
-tools: read_file, write_file, edit_file, list_directory
+tools: read_file, write_file, edit_file, apply_patch, list_directory
 objetivo: aplicar a correção mínima em calc.py
 ações:
 - reler data/user/bugfix_demo/calc.py [tool: read_file]
@@ -35,3 +35,4 @@ ações:
 - escrever data/user/bugfix_demo/VERIFICACAO.md com o que foi alterado e como testar
 resultado esperado: VERIFICACAO.md existe e a checagem de comportamento passa
 checagem: [{"tipo": "arquivo", "path": "data/user/bugfix_demo/VERIFICACAO.md", "tamanho_min": 50}, {"tipo": "comando", "cmd": ["python", "-c", "from calc import media; assert media([]) == 0; print('ok')"], "cwd": "data/user/bugfix_demo", "esperado": 0, "timeout": 30}]
+

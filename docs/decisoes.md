@@ -247,6 +247,24 @@ gerador de app.
 
 ---
 
+---
+
+## D-012 — Patch antes de tool calling nativo
+
+**Decisão:** a próxima alavanca de custo é edição parcial, não tool calling
+nativo. `apply_patch` aplica vários hunks `{old,new}` atomicamente; `read_file`
+ganhou `start_line`/`end_line` e `numbered`. Tool calling nativo fica para
+depois, atrás de capability flag, porque não reduz geração por si só.
+
+**Por quê:** o custo dominante em app/landing é gerar e reenviar conteúdo de
+arquivo; patch reduz output e leitura, enquanto tool nativo ataca protocolo e
+round-trips. O adaptador DSML já cobre o caso atual.
+
+**Consequência:** medir `tokens_out`/`tool_calls` depois de patch; só então
+avaliar nativo/parallel calls e scaffold.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |
