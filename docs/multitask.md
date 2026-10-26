@@ -193,6 +193,18 @@ O revisor nunca altera task concluída/falha/em andamento. A revisão é opt-in
 no runner (`revisar_fases=True`) e o `/processo` a liga automaticamente no
 perfil `nuvem`. Eventos: `fase_revisada` e `fase_revisao_falhou`.
 
+## Preview e entrega
+
+O `app_web` termina com uma task `publicar`:
+
+- `start_preview` sobe `data/user/app_web` em `http://127.0.0.1:8765/`;
+- a task escreve `COMO_RODAR.md` com a URL e o comando manual;
+- o check faz um `GET` na URL e confere o arquivo;
+- o preview continua ativo depois do run; use `stop_preview` para encerrar.
+
+O servidor é estático (`python -m http.server`), escuta só em `127.0.0.1` e
+não executa código do projeto. `list_previews` mostra o que está ativo.
+
 ## Perfis de modelo
 
 O fluxo pode declarar `perfil: nuvem` para usar o provider configurado como
@@ -256,6 +268,6 @@ pendências e como testar.
 
 ## O que vem depois
 
-1. Fluxo `web_projeto` completo: entrevista, servidor/preview e entrega.
+1. Entrevista e fluxo `web_projeto` completo (o preview/entrega já entrou).
 2. Painel na TUI e `analisar` sobre o quadro.
 3. Subagentes paralelos e mais fluxos (dados/acadêmicos).

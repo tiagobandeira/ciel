@@ -37,7 +37,7 @@ def test_detect_process_por_intencao():
 def test_app_web_e_um_fluxo_valido():
     flow = load_flow("app_web")
     board = build_board(flow)
-    assert len(board.tasks()) == 5
+    assert len(board.tasks()) == 6
     assert not board.validate()
     assert board.task("t1").titulo == "spec"
 

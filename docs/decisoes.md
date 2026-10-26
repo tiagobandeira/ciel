@@ -340,6 +340,24 @@ run.
 
 ---
 
+---
+
+## D-017 — Preview estático e entrega do app
+
+**Decisão:** `app_web` ganhou uma fase de entrega com `start_preview`: um
+servidor estático em `127.0.0.1:8765`, mais `COMO_RODAR.md` e um check HTTP.
+O preview continua ativo após o run e pode ser encerrado com `stop_preview`.
+
+**Por quê:** o usuário precisa abrir o app no navegador, não só receber
+arquivos. O servidor é determinístico, local e não executa código do projeto;
+a entrega é um artefato verificável.
+
+**Consequência:** porta fixa por app (8765) para o check HTTP; se estiver em
+uso, o `start_preview` falha de forma explícita. `list_previews` mostra os
+ativos.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

@@ -41,6 +41,8 @@ Se houver fontes indexadas na sessão, consulte antes de responder:
   criar pasta; não use `write_file` com `.keep` nem `run_script`.
 - `copy_template` copia um template de `templates/` (app_web, landing, game)
   para o destino; use para scaffold em vez de gerar boilerplate.
+- `start_preview` sobe a pasta em `127.0.0.1` e devolve a URL; `stop_preview`
+  encerra; `list_previews` lista. Use para validar app/landing no navegador.
 - Salve arquivos para o usuário em `data/user/`.
 - A tool `secondary_model` não existe nesta sessão: gere o conteúdo com
   `write_file` ou `create_tool` diretamente.

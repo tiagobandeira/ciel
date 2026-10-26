@@ -69,3 +69,15 @@ ações:
 resultado esperado: VERIFICACAO.md existe e os arquivos estão integrados
 checagem: [{"tipo": "arquivo", "path": "data/user/app_web/VERIFICACAO.md", "tamanho_min": 100}, {"tipo": "arquivo", "path": "data/user/app_web/app.js", "contem": "localStorage"}]
 
+## task: publicar
+fase: Entrega
+depende_de: verificar
+tools: start_preview, stop_preview, list_previews, write_file, read_file
+objetivo: subir um preview local e documentar como abrir o app
+ações:
+- iniciar o preview de data/user/app_web na porta 8765 [tool: start_preview]
+- escrever data/user/app_web/COMO_RODAR.md com a URL http://127.0.0.1:8765/ e o comando manual
+- não alterar index.html, style.css nem app.js nesta task
+resultado esperado: o preview responde e COMO_RODAR.md existe
+checagem: [{"tipo": "arquivo", "path": "data/user/app_web/COMO_RODAR.md", "tamanho_min": 60}, {"tipo": "http", "url": "http://127.0.0.1:8765/", "esperado": 200}]
+
