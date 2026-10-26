@@ -662,6 +662,11 @@ def _execute_task(
         "context_peak_chars": 0,
         "tool_calls": 0,
         "batch_calls": 0,
+        "system_chars": 0,
+        "schema_chars": 0,
+        "task_context_chars": 0,
+        "history_chars": 0,
+        "prompt_chars": 0,
     }
     max_steps = int(getattr(task, "max_steps", 0) or 0) or max_steps
 
@@ -771,6 +776,18 @@ def _execute_task(
         )
         metrics["tool_calls"] += int(getattr(result, "tool_calls", 0) or 0)
         metrics["batch_calls"] += int(getattr(result, "batch_calls", 0) or 0)
+        metrics["system_chars"] = max(
+            metrics["system_chars"], int(getattr(result, "system_chars", 0) or 0)
+        )
+        metrics["schema_chars"] = max(
+            metrics["schema_chars"], int(getattr(result, "schema_chars", 0) or 0)
+        )
+        metrics["task_context_chars"] = max(
+            metrics["task_context_chars"],
+            int(getattr(result, "task_context_chars", 0) or 0),
+        )
+        metrics["history_chars"] += int(getattr(result, "history_chars", 0) or 0)
+        metrics["prompt_chars"] += int(getattr(result, "prompt_chars", 0) or 0)
 
         if result.status != "done":
             # Steps esgotados não significam necessariamente trabalho

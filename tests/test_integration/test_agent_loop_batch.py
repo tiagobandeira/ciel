@@ -79,6 +79,9 @@ def test_run_agent_executa_lote_em_um_step():
     assert result.tool_calls == 2
     assert result.batch_calls == 1
     assert result.context_peak_chars > 0
+    assert result.system_chars > 0
+    assert result.prompt_chars > 0
+    assert result.task_context_chars > 0
     assert calls == ["1+1"]
     assert fake.calls == 2
 

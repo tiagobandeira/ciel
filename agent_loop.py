@@ -493,6 +493,11 @@ class AgentResult:
         context_peak_chars: int = 0,
         tool_calls: int = 0,
         batch_calls: int = 0,
+        system_chars: int = 0,
+        schema_chars: int = 0,
+        task_context_chars: int = 0,
+        history_chars: int = 0,
+        prompt_chars: int = 0,
     ):
         self.status   = status
         self.message  = message
@@ -505,6 +510,11 @@ class AgentResult:
         self.context_peak_chars = context_peak_chars
         self.tool_calls = tool_calls
         self.batch_calls = batch_calls
+        self.system_chars = system_chars
+        self.schema_chars = schema_chars
+        self.task_context_chars = task_context_chars
+        self.history_chars = history_chars
+        self.prompt_chars = prompt_chars
 
     @property
     def ok(self) -> bool:
@@ -592,6 +602,9 @@ def run_agent(
             parse_errors=parse_errors, compactions=compactions,
             context_peak_chars=context_peak_chars,
             tool_calls=tool_calls, batch_calls=batch_calls,
+            system_chars=system_chars, schema_chars=schema_chars,
+            task_context_chars=task_context_chars,
+            history_chars=history_chars, prompt_chars=prompt_chars,
         )
 
     def _system_prompt() -> str:
@@ -629,6 +642,12 @@ def run_agent(
         *context,
         first_msg,
     ]
+
+    system_chars = len(system_prompt)
+    schema_chars = len(json.dumps(schema, ensure_ascii=False))
+    task_context_chars = len(user_input or "") + len(context_injection or "")
+    history_chars = sum(len(str(m.get("content", ""))) for m in context)
+    prompt_chars = sum(len(str(m.get("content", ""))) for m in messages)
 
     nudge_sent = False
     for step in range(1, max_steps + 1):

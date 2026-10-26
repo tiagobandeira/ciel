@@ -221,6 +221,7 @@ class TestExecucaoFeliz:
         assert metricas["tokens_in"] == 10
         assert metricas["tokens_out"] == 5
         assert "context_peak_chars" in metricas
+        assert "prompt_chars" in metricas
 
     def test_pular_se_ok_nao_chama_modelo(self, store, workspace):
         (workspace / "pronto.txt").write_text("ok", encoding="utf-8")

@@ -128,6 +128,13 @@ def _resolve_session_roles(
     return roles, None, local_model
 
 
+def _prompt_user(prompt: str, completer=None, style=None) -> str:
+    """Prompt interativo; em stdin não-TTY (pipe/benchmark) usa input()."""
+    if not sys.stdin.isatty():
+        return input(prompt)
+    return pt_prompt(prompt, completer=completer, style=style)
+
+
 def _run_agent_session(
     user_input: str,
     tools: dict,
@@ -1443,7 +1450,7 @@ def main():
 
     while True:
         try:
-            user_input = pt_prompt(
+            user_input = _prompt_user(
                 f"{'build' if _SESSION.get('modo') == 'build' else _SESSION['perfil']} ❯ ",
                 completer=completer, style=pt_style,
             ).strip()
