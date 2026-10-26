@@ -57,6 +57,13 @@ PROCESSES: tuple[Process, ...] = (
         keywords=("jogo", "game", "cobrinha", "snake", "canvas"),
     ),
     Process(
+        id="auditar_repo",
+        titulo="Auditar repositório",
+        descricao="mapeia estrutura, riscos e próximos passos sem alterar o código",
+        flow="auditar_repo",
+        keywords=("auditar", "auditoria", "seguranca", "code review", "revisar repo", "riscos"),
+    ),
+    Process(
         id="analise_dados",
         titulo="Análise de dados",
         descricao="perfila, limpa e analisa um dataset com relatório reproduzível",

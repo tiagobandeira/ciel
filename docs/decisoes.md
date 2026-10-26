@@ -424,6 +424,22 @@ atualizado via eventos sem bloquear a interface.
 
 ---
 
+---
+
+## D-022 — Auditoria read-only como processo
+
+**Decisão:** `auditar_repo` é um fluxo de três fases (inventário, riscos,
+relatório) que escreve apenas em `data/user/auditoria/`; o código auditado não
+é alterado.
+
+**Por quê:** auditoria precisa ser barata e segura. O valor está em achar
+evidência e priorizar, não em aplicar patch na hora; correção é outro processo.
+
+**Consequência:** os checks são de artefato de relatório; o alvo pode ser o
+workspace ou um caminho citado no objetivo.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

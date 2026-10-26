@@ -53,6 +53,7 @@ esse motor.
 /processo web_projeto "app de notas com entrevista"
 /processo landing_page
 /processo analise_dados "analise data/vendas.csv"
+/processo auditar_repo "audite src/ e o pyproject"
 /processo --retomar <id>          # retoma um processo pausado
 /processo --analisar [id]         # analisa a execução (última por padrão)
 ```
@@ -75,6 +76,7 @@ Processos iniciais:
 | `landing_page` | página responsiva com hero, features e CTA |
 | `jogo_web` | jogo simples em HTML/canvas/JavaScript |
 | `analise_dados` | perfil, limpeza e análise de um dataset com relatório |
+| `auditar_repo` | inventário, riscos e relatório de auditoria sem alterar código |
 | `artigo_matematica` | artigo em Markdown com definições, teoremas e referências |
 | `notebook_matematica` | notebook Jupyter sobre um tema matemático |
 | `corrigir_bug` | corrige uma falha reproduzível com correção mínima e check |
@@ -101,6 +103,18 @@ python examples/reset_bugfix_demo.py
 Resultado do primeiro teste: **3/3 tasks, ~50k tokens** (47,4k input + 2,4k
 output), contra 1,5M de um app greenfield. É o caso onde o motor de checks se
 paga.
+
+## Auditoria
+
+O `auditar_repo` é somente leitura no código auditado. Ele produz em
+`data/user/auditoria/`:
+
+- `INVENTARIO.md` — estrutura, stack, entradas e comandos;
+- `RISCOS.md` — riscos com severidade e evidência;
+- `RELATORIO.md` — resumo, top 5 e próximos passos.
+
+Use quando quiser “o que está perigoso/frágil neste repo?” sem aplicar
+correções. Para corrigir, encadeie com `corrigir_bug`.
 
 ## Análise de dados
 
