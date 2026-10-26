@@ -295,6 +295,7 @@ def build_board(
                 perfil=str(task.get("perfil") or ""),
                 read_only=bool(task.get("read_only") or False),
                 timeout_s=float(task.get("timeout_s") or task.get("timeout") or 0),
+                writes=list(task.get("writes") or []),
             )
         except BoardError as exc:
             raise FlowError(str(exc)) from exc

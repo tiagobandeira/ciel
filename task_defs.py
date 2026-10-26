@@ -40,7 +40,7 @@ TASK_KEYS = (
     "nome", "objetivo", "acoes", "resultado", "grupo",
     "fase", "agente", "subagente", "tools", "max_steps", "pular_se_ok",
     "parallel", "paralelo", "modelo", "perfil", "read_only", "somente_leitura",
-    "timeout_s", "timeout",
+    "timeout_s", "timeout", "writes", "escreve",
     "depende_de", "checagem",
 )
 
@@ -91,6 +91,7 @@ def parse_task_text(text: str) -> dict | None:
     perfil = ""
     read_only = False
     timeout_s = 0.0
+    writes: list[str] = []
     depende_de: list[str] = []
     checagem  = None
     section   = None
@@ -145,6 +146,9 @@ def parse_task_text(text: str) -> dict | None:
             except (TypeError, ValueError):
                 timeout_s = 0.0
             section = None
+        elif stripped.startswith("writes:") or stripped.startswith("escreve:"):
+            writes = _parse_depende(stripped.split(":", 1)[1])
+            section = None
         elif stripped.startswith("depende_de:") or stripped.startswith("depende de:"):
             raw = stripped.split(":", 1)[1]
             depende_de = _parse_depende(raw)
@@ -179,6 +183,7 @@ def parse_task_text(text: str) -> dict | None:
         "perfil": perfil,
         "read_only": read_only,
         "timeout_s": timeout_s,
+        "writes": writes,
         "depende_de": depende_de,
         "checagem": checagem,
     }

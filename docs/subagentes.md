@@ -25,6 +25,8 @@ max_steps: 4
 - `read_only`: declara intenção somente leitura;
 - `parallel`: pode rodar junto com tasks irmãs read-only;
 - `timeout_s`: tempo máximo do subagente;
+- `writes`: arquivos/pastas escritos pela task; necessário para paralelismo
+  de escrita com arquivos disjuntos;
 - `max_steps`: orçamento de steps.
 
 ## Observar
@@ -41,6 +43,36 @@ max_steps: 4
 Cada task grava `data/runs/<id>/subagents/<task_id>.json`.
 O `/subagente` lê esses arquivos e mostra agente, status, tokens e se foi
 paralelo — sem chamar o modelo.
+
+## Escrita paralela
+
+Só é permitida quando todas as tasks do lote declaram `writes:` e os caminhos
+são disjuntos:
+
+```markdown
+## task: modulo-a
+parallel: true
+tools: write_file, edit_file
+writes: src/modulo_a.py
+
+## task: modulo-b
+parallel: true
+tools: write_file, edit_file
+writes: src/modulo_b.py
+```
+
+Regras:
+
+- `writes` obrigatório em modo escrita;
+- locks por caminho em `write_file`, `edit_file`, `apply_patch`,
+  `write_files`, `copy_template`, `prepare_kernel`;
+- `run_script` fica fora do paralelo;
+- caminhos que se sobrepõem não entram no mesmo lote;
+- falha pode deixar escrita parcial: não há rollback/overlay ainda.
+
+Cada branch grava seu resultado em `subagents/<task>.json` antes do merge. Se
+o processo morrer no meio, a próxima execução aplica os checkpoints concluídos
+e continua só o que falta.
 
 ## Cancelamento
 

@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 
 from tools.copy_template import run as copy_template
+from tools.file_locks import lock_path
 
 KERNELS_DIR = Path(__file__).resolve().parent.parent / "kernels"
 
@@ -51,6 +52,17 @@ def _substituir_variables(dest: Path, variables: dict) -> int:
 
 
 def run(
+    kernel: str,
+    dest: str,
+    variant: str = "",
+    overwrite: bool = False,
+    variables: dict | None = None,
+) -> str:
+    with lock_path(dest):
+        return _run(kernel, dest, variant, overwrite, variables)
+
+
+def _run(
     kernel: str,
     dest: str,
     variant: str = "",

@@ -597,6 +597,24 @@ interrompem uma requisição em andamento, mas evitam novos steps.
 
 ---
 
+---
+
+## D-032 — Escrita paralela com `writes` e locks
+
+**Decisão:** tasks de escrita só entram no mesmo lote se declararem `writes:`
+disjuntos; tools de escrita usam lock por caminho; `run_script` fica fora do
+paralelo.
+
+**Por quê:** locks sozinhos evitam colisão, mas não sabem o que a task escreve.
+`writes` torna a intenção explícita e o runner consegue recusar lotes que se
+sobrepõem.
+
+**Consequência:** falha ainda pode deixar escrita parcial; rollback/overlay
+fica para uma fase posterior. Cada branch grava checkpoint em
+`subagents/<task>.json`, aplicado na retomada.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

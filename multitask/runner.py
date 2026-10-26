@@ -448,6 +448,13 @@ def _execute(
             fluxo=board.fluxo,
             total=len(board.tasks()),
         )
+        resumed_ids = _apply_subagent_checkpoints(board, store, on_event)
+        for tid in resumed_ids:
+            task_done = board.task(tid)
+            if task_done is not None:
+                tasks_ok.append(tid)
+                tokens_in += task_done.tokens_in
+                tokens_out += task_done.tokens_out
 
         while True:
             task = board.next_pending()
@@ -523,6 +530,9 @@ def _execute(
                         tokens_out += outcome.tokens_out
                         _record_subagent(
                             store, board, branch_task, phase, parallel=True,
+                            metricas=branch.meta.get("metricas", {}).get(
+                                original.id
+                            ),
                         )
                         stopped_at = original.id
                         current_task_id = original.id
@@ -805,6 +815,7 @@ def _record_subagent(
     phase: str,
     *,
     parallel: bool = False,
+    metricas: dict | None = None,
 ) -> None:
     """Persiste o resultado do subagente em data/runs/<id>/subagents/."""
     try:
@@ -831,6 +842,7 @@ def _record_subagent(
             "checagem": task.checagem_resumo,
             "artefatos": list(task.artefatos),
             "parallel": parallel,
+            "metricas": dict(metricas or {}),
             "atualizado_em": now_iso(),
         }
         path = target / f"{task.id}.json"
@@ -851,12 +863,97 @@ class _NullStore:
         pass
 
 
+def _apply_subagent_checkpoints(
+    board: Board,
+    store: BoardStore,
+    on_event=None,
+) -> list[str]:
+    """Aplica estados concluídos gravados por um lote paralelo interrompido."""
+    sub_dir = store.run_dir(board.id) / "subagents"
+    if not sub_dir.is_dir():
+        return []
+    applied: list[str] = []
+    for path in sorted(sub_dir.glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if str(data.get("status", "")) != TASK_CONCLUIDA:
+            continue
+        task = board.task(str(data.get("id", "")))
+        if task is None or task.status != TASK_PENDENTE:
+            continue
+        task.status = TASK_CONCLUIDA
+        task.resumo = str(data.get("resumo", ""))
+        task.erro = ""
+        task.tokens_in = int(data.get("tokens_in", 0) or 0)
+        task.tokens_out = int(data.get("tokens_out", 0) or 0)
+        task.duracao_s = float(data.get("duracao_s", 0) or 0)
+        task.correcoes = int(data.get("correcoes", 0) or 0)
+        task.checagem_ok = data.get("checagem_ok")
+        task.checagem_resumo = str(data.get("checagem", "") or "")
+        task.artefatos = list(data.get("artefatos", []) or [])
+        metricas = data.get("metricas")
+        if isinstance(metricas, dict):
+            board.meta.setdefault("metricas", {})[task.id] = metricas
+        applied.append(task.id)
+        _emit(
+            store, board, on_event, "task_concluida",
+            task=task.id, titulo=task.titulo,
+            fase=str(data.get("fase", "") or ""),
+            resumo=task.resumo[:500],
+            tokens_in=task.tokens_in, tokens_out=task.tokens_out,
+            duracao_s=task.duracao_s, artefatos=task.artefatos,
+            correcoes=task.correcoes, checagem=task.checagem_resumo,
+            checagem_ok=task.checagem_ok, retomado=True,
+        )
+    if applied:
+        board.touch()
+        store.save(board)
+    return applied
+
+
+
+PARALLEL_WRITE_TOOLS = {
+    "write_file", "write_files", "edit_file", "apply_patch",
+    "create_directory", "copy_template", "prepare_kernel",
+}
+
+
+def _norm_write(path: str) -> str:
+    return Path(str(path)).expanduser().resolve().as_posix().lower()
+
+
+def _writes_overlap(a: set[str], b: set[str]) -> bool:
+    for left in a:
+        for right in b:
+            if left == right:
+                return True
+            if left.startswith(right.rstrip("/") + "/"):
+                return True
+            if right.startswith(left.rstrip("/") + "/"):
+                return True
+    return False
+
+
+def _parallel_mode(task):
+    tools = set(task.tools or [])
+    writes = list(getattr(task, "writes", []) or [])
+    if not tools or getattr(task, "read_only", False) and writes:
+        return None, set()
+    if not writes and tools <= BATCH_SAFE_TOOLS:
+        return "read", set()
+    if writes and tools <= (BATCH_SAFE_TOOLS | PARALLEL_WRITE_TOOLS):
+        return "write", {_norm_write(p) for p in writes}
+    return None, set()
+
+
 def _parallel_candidates(board: Board, first, max_parallel: int = 2) -> list:
-    """Tasks irmãs seguras para rodar em paralelo: read-only e sem deps pendentes."""
+    """Tasks irmãs seguras: read-only ou escrita com paths disjuntos."""
     if getattr(first, "parallel", False) is not True:
         return []
-    allowed = set(first.tools or [])
-    if not allowed or not allowed <= BATCH_SAFE_TOOLS:
+    mode, first_writes = _parallel_mode(first)
+    if mode is None:
         return []
 
     phase_name = _phase_of(board, first)
@@ -864,6 +961,7 @@ def _parallel_candidates(board: Board, first, max_parallel: int = 2) -> list:
     if phase is None:
         return []
     batch = [first]
+    batch_writes = set(first_writes)
     for task in phase.tasks:
         if len(batch) >= max(2, int(max_parallel or 2)):
             break
@@ -871,8 +969,10 @@ def _parallel_candidates(board: Board, first, max_parallel: int = 2) -> list:
             continue
         if getattr(task, "parallel", False) is not True:
             continue
-        tools = set(task.tools or [])
-        if not tools or not tools <= BATCH_SAFE_TOOLS:
+        task_mode, task_writes = _parallel_mode(task)
+        if task_mode != mode:
+            continue
+        if mode == "write" and _writes_overlap(batch_writes, task_writes):
             continue
         if any(
             (board.task(dep) is None or not board.task(dep).is_terminal())
@@ -880,6 +980,7 @@ def _parallel_candidates(board: Board, first, max_parallel: int = 2) -> list:
         ):
             continue
         batch.append(task)
+        batch_writes |= task_writes
     return batch
 
 
@@ -929,12 +1030,16 @@ def _parallel_execute(
                 profile=profile,
                 cancel_event=cancel_event,
             )
+            metricas = branch.meta.get("metricas", {}).get(branch_task.id)
+            _record_subagent(
+                store, branch, branch_task, phase,
+                parallel=True, metricas=metricas,
+            )
             return original, branch, branch_task, outcome
         except Exception as exc:
             return original, branch, branch_task, _TaskOutcome(
                 "failed", erro=str(exc), motivo=str(exc),
             )
-
     results = []
     with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
         futures = [pool.submit(run_one, job) for job in jobs]

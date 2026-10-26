@@ -4,10 +4,17 @@ PERMISSIONS = {"path": "write"}
 
 from pathlib import Path
 
+from tools.file_locks import lock_path
+
 MAX_HUNKS = 30
 
 
 def run(path: str, hunks: list[dict], encoding: str = "utf-8") -> str:
+    with lock_path(path):
+        return _run(path, hunks, encoding)
+
+
+def _run(path: str, hunks: list[dict], encoding: str = "utf-8") -> str:
     """
     path:    caminho do arquivo a editar
     hunks:   lista de {"old": "trecho exato", "new": "novo trecho"}

@@ -242,6 +242,75 @@ class TestExecucaoFeliz:
         assert result.status == RUN_PAUSADA
         assert board.task("t1").status == TASK_PENDENTE
 
+    def test_parallel_write_disjunto(self, store, workspace):
+        import threading
+        from agent_loop import AgentResult
+        from pathlib import Path
+
+        barrier = threading.Barrier(2)
+
+        def fake_agent(prompt, *args, **kwargs):
+            barrier.wait(timeout=5)
+            target = Path(workspace) / (
+                "a.txt" if "arquivo-a" in prompt else "b.txt"
+            )
+            target.write_text("ok", encoding="utf-8")
+            return AgentResult("done", "ok", tokens_in=1, tokens_out=1)
+
+        board = Board.new("x", run_id="run-write-parallel")
+        board.add_task(
+            "f", "a", acoes=["arquivo-a"],
+            tools=["write_file"], parallel=True, writes=["a.txt"],
+        )
+        board.add_task(
+            "f", "b", acoes=["arquivo-b"],
+            tools=["write_file"], parallel=True, writes=["b.txt"],
+        )
+        with patch("multitask.runner.run_agent", side_effect=fake_agent):
+            result = run_board(
+                board, {}, [], AGENT,
+                store=store, workspace_root=workspace, max_parallel=2,
+            )
+
+        assert result.status == RUN_CONCLUIDA
+        assert len(result.tasks_ok) == 2
+
+    def test_parallel_write_sobreposto_nao_agrupa(self, store, workspace):
+        from multitask.runner import _parallel_candidates
+
+        board = Board.new("x", run_id="run-write-overlap")
+        first = board.add_task(
+            "f", "a", acoes=["a"],
+            tools=["write_file"], parallel=True, writes=["x.txt"],
+        )
+        board.add_task(
+            "f", "b", acoes=["b"],
+            tools=["write_file"], parallel=True, writes=["x.txt"],
+        )
+        assert _parallel_candidates(board, first, 2) == [first]
+
+    def test_retoma_checkpoint_de_subagente(self, store, workspace):
+        board = Board.new("x", run_id="run-checkpoint")
+        board.add_task("f", "t", acoes=["a"])
+        sub_dir = store.run_dir(board.id) / "subagents"
+        sub_dir.mkdir(parents=True)
+        (sub_dir / "t1.json").write_text(
+            '{"id":"t1","titulo":"t","fase":"f","status":"concluida",'
+            '"resumo":"feito","tokens_in":3,"tokens_out":2,'
+            '"artefatos":[],"parallel":true,"metricas":{"steps":1}}',
+            encoding="utf-8",
+        )
+        with patch("multitask.runner.run_agent") as fake:
+            result = run_board(
+                board, {}, [], AGENT,
+                store=store, workspace_root=workspace,
+            )
+
+        fake.assert_not_called()
+        assert result.status == RUN_CONCLUIDA
+        assert board.task("t1").status == TASK_CONCLUIDA
+        assert board.task("t1").resumo == "feito"
+
     def test_parallel_readonly_roda_em_threads(self, store, workspace):
         import threading
         from agent_loop import AgentResult

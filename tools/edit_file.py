@@ -4,6 +4,8 @@ PERMISSIONS = {"path": "write"}
 
 from pathlib import Path
 
+from tools.file_locks import lock_path
+
 
 def run(
     path: str,
@@ -27,35 +29,36 @@ def run(
     if not old:
         return "Erro: o trecho 'old' não pode ser vazio."
 
-    try:
-        content = p.read_text(encoding=encoding)
-    except UnicodeDecodeError:
-        return f"Erro: não foi possível decodificar '{path}' como {encoding}."
-    except Exception as e:
-        return f"Erro ao ler arquivo: {e}"
+    with lock_path(path):
+        try:
+            content = p.read_text(encoding=encoding)
+        except UnicodeDecodeError:
+            return f"Erro: não foi possível decodificar '{path}' como {encoding}."
+        except Exception as e:
+            return f"Erro ao ler arquivo: {e}"
 
-    occurrences = content.count(old)
-    if occurrences == 0:
+        occurrences = content.count(old)
+        if occurrences == 0:
+            return (
+                "Erro: trecho não encontrado. Leia o arquivo com read_file "
+                "e copie exatamente o texto que quer substituir."
+            )
+
+        try:
+            times = int(count)
+        except (TypeError, ValueError):
+            times = 1
+        if times <= 0:
+            times = occurrences
+        times = min(times, occurrences)
+
+        try:
+            updated = content.replace(old, new, times)
+            p.write_text(updated, encoding=encoding)
+        except Exception as e:
+            return f"Erro ao editar arquivo: {e}"
+
         return (
-            "Erro: trecho não encontrado. Leia o arquivo com read_file "
-            "e copie exatamente o texto que quer substituir."
+            f"Arquivo atualizado: {path} "
+            f"({occurrences} ocorrência(s), {times} substituída(s))"
         )
-
-    try:
-        times = int(count)
-    except (TypeError, ValueError):
-        times = 1
-    if times <= 0:
-        times = occurrences
-    times = min(times, occurrences)
-
-    try:
-        updated = content.replace(old, new, times)
-        p.write_text(updated, encoding=encoding)
-    except Exception as e:
-        return f"Erro ao editar arquivo: {e}"
-
-    return (
-        f"Arquivo atualizado: {path} "
-        f"({occurrences} ocorrência(s), {times} substituída(s))"
-    )

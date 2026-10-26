@@ -4,6 +4,8 @@ PERMISSIONS = {"base": "write"}
 
 from pathlib import Path
 
+from tools.file_locks import lock_paths
+
 MAX_FILES = 20
 
 
@@ -66,27 +68,28 @@ def run(
 
     backups: dict[Path, bytes] = {}
     created: list[Path] = []
-    try:
-        for target, content in prepared:
-            if target.exists():
-                backups[target] = target.read_bytes()
-            else:
-                created.append(target)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(content, encoding=encoding)
-    except Exception as exc:
-        for target, data in backups.items():
-            try:
-                target.write_bytes(data)
-            except Exception:
-                pass
-        for target in created:
-            try:
+    with lock_paths([target for target, _ in prepared]):
+        try:
+            for target, content in prepared:
                 if target.exists():
-                    target.unlink()
-            except Exception:
-                pass
-        return f"Erro ao escrever arquivos; alterações revertidas: {exc}"
+                    backups[target] = target.read_bytes()
+                else:
+                    created.append(target)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding=encoding)
+        except Exception as exc:
+            for target, data in backups.items():
+                try:
+                    target.write_bytes(data)
+                except Exception:
+                    pass
+            for target in created:
+                try:
+                    if target.exists():
+                        target.unlink()
+                except Exception:
+                    pass
+            return f"Erro ao escrever arquivos; alterações revertidas: {exc}"
 
     return (
         f"{len(prepared)} arquivo(s) escrito(s) em {base}; "

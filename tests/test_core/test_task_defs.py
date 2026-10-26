@@ -73,6 +73,7 @@ modelo: modelo-x
 perfil: nuvem
 read_only: true
 timeout_s: 12
+writes: src/a.py, src/b.py
 depende_de: t1, t2
 checagem: {"tipo": "http", "url": "/", "esperado": 200}
 """
@@ -86,6 +87,7 @@ checagem: {"tipo": "http", "url": "/", "esperado": 200}
         assert task["perfil"] == "nuvem"
         assert task["read_only"] is True
         assert task["timeout_s"] == 12.0
+        assert task["writes"] == ["src/a.py", "src/b.py"]
         assert task["depende_de"] == ["t1", "t2"]
         assert task["checagem"] == {
             "tipo": "http", "url": "/", "esperado": 200,

@@ -477,6 +477,7 @@ def parse_plan(
                 task_timeout = max(0.0, float(task.get("timeout_s") or 0))
             except (TypeError, ValueError):
                 task_timeout = 0.0
+            task_writes = list(task.get("writes") or [])
 
             if task_errors:
                 errors.extend(task_errors)
@@ -499,6 +500,7 @@ def parse_plan(
                     perfil=task_perfil,
                     read_only=read_only,
                     timeout_s=task_timeout,
+                    writes=task_writes,
                     depende_de=deps,
                     task_id=task_id,
                 )

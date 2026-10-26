@@ -73,6 +73,8 @@ sem explicação antes ou depois.
 - `modelo`: opcional. Modelo específico do subagente; vazio = modelo do papel.
 - `perfil`: opcional. `local` ou `nuvem`; vazio = perfil da execução.
 - `timeout_s`: opcional. Tempo máximo do subagente em segundos; 0 = sem limite.
+- `writes`: opcional. Arquivos/pastas que a task escreve; necessário para
+  paralelismo de escrita com arquivos disjuntos.
 - `read_only`: opcional. Declara que o subagente só lê arquivos.
 - `resultado_esperado`: obrigatório e verificável. Descreva o estado final,
   não o processo ("arquivo X existe e contém Y", "comando retorna 0",

@@ -6,11 +6,18 @@ import re
 import shutil
 from pathlib import Path
 
+from tools.file_locks import lock_path
+
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 _TEMPLATE_RE = re.compile(r"^[a-z0-9_-]+$")
 
 
 def run(template: str, dest: str, overwrite: bool = False) -> str:
+    with lock_path(dest):
+        return _run(template, dest, overwrite)
+
+
+def _run(template: str, dest: str, overwrite: bool = False) -> str:
     """
     template: nome da pasta em templates/ (ex.: app_web, landing, game)
     dest:     pasta de destino no workspace

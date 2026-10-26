@@ -228,17 +228,28 @@ parallel: true
 tools: read_file, list_directory, search_files
 ```
 
-Regras da primeira versão:
+Para escrita:
 
-- só tools de **leitura** (`BATCH_SAFE_TOOLS`);
-- a task precisa declarar `tools:` explicitamente;
-- dependências precisam estar concluídas;
+```markdown
+parallel: true
+tools: write_file, edit_file
+writes: src/modulo_a.py
+```
+
+Regras:
+
+- leitura: tools em `BATCH_SAFE_TOOLS`;
+- escrita: `writes:` obrigatório, caminhos disjuntos e tools de escrita
+  conhecidas;
+- `run_script` não entra no paralelo de escrita;
+- locks por caminho protegem `write_file`, `edit_file`, `apply_patch`,
+  `write_files`, `copy_template`, `prepare_kernel`;
 - `max_parallel` padrão é 2;
-- cada subagente roda em um board isolado e o resultado é mesclado ao quadro.
+- cada branch grava checkpoint em `subagents/<task>.json` antes do merge;
+- se o processo cair, checkpoints concluídos são aplicados na retomada.
 
-Escrita paralela ainda não é permitida. A revisão de fase depois de um lote
-paralelo fica para a próxima etapa; os eventos `task_concluida`/`task_falhou`
-levam `paralelo=True`.
+Ainda não há rollback/overlay: falha no meio de uma task pode deixar escrita
+parcial.
 
 ## Perfis de modelo
 
