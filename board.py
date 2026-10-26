@@ -64,7 +64,7 @@ TASK_TERMINAIS = frozenset({TASK_CONCLUIDA, TASK_PULADA})
 EVENT_TYPES = frozenset({
     "run_criada", "run_iniciada", "run_pausada", "run_retomada",
     "run_encerrada",
-    "fase_iniciada", "fase_concluida",
+    "fase_iniciada", "fase_concluida", "fase_revisada", "fase_revisao_falhou",
     "task_iniciada", "task_concluida", "task_falhou", "task_pulada",
     "checagem_ok", "checagem_falhou", "correcao_iniciada", "task_corrigida",
     "checkpoint", "replanejado",

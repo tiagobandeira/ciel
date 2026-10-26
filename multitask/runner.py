@@ -42,6 +42,7 @@ from board import (
 )
 from multitask.checks import build_correction_context, run_checks
 from multitask.report import build_report
+from multitask.reviewer import review_phase
 
 # callbacks aceitos por run_agent (mantém a assinatura explícita)
 _RUN_CALLBACKS = (
@@ -356,6 +357,7 @@ def run_board(
     should_pause: Callable[[], bool] | None = None,
     workspace_root: str | Path | None = None,
     profile: str = "local",
+    revisar_fases: bool = False,
 ) -> RunResult:
     """
     Executa as tasks pendentes do quadro, em ordem, até concluir, falhar,
@@ -389,6 +391,7 @@ def run_board(
             should_pause=should_pause,
             workspace_root=workspace_root,
             profile=profile,
+            revisar_fases=revisar_fases,
         )
 
 
@@ -410,6 +413,7 @@ def _execute(
     should_pause,
     workspace_root: str | Path | None,
     profile: str = "local",
+    revisar_fases: bool = False,
 ) -> RunResult:
     started = time.monotonic()
     tokens_in = 0
@@ -419,6 +423,7 @@ def _execute(
     stopped_at = ""
     motivo = ""
     current_phase: str | None = None
+    reviewed_phases: set[str] = set()
     current_task_id = ""
     root = Path(workspace_root) if workspace_root else Path.cwd()
 
@@ -485,6 +490,37 @@ def _execute(
                 tasks_ok.append(task.id)
                 if _phase_finished(board, phase):
                     _emit(store, board, on_event, "fase_concluida", fase=phase)
+                    if (
+                        revisar_fases
+                        and profile == PERFIL_NUVEM
+                        and model_client is not None
+                        and phase not in reviewed_phases
+                    ):
+                        reviewed_phases.add(phase)
+                        review = review_phase(
+                            board, phase, model_client, model=model,
+                            available_tools=set(tools),
+                        )
+                        tokens_in += review.tokens_in
+                        tokens_out += review.tokens_out
+                        if review.errors:
+                            store.save(board)
+                            _emit(
+                                store, board, on_event, "fase_revisao_falhou",
+                                fase=phase, erros=review.errors,
+                                mudancas=review.applied,
+                                tokens_in=review.tokens_in,
+                                tokens_out=review.tokens_out,
+                            )
+                        else:
+                            store.save(board)
+                            _emit(
+                                store, board, on_event, "fase_revisada",
+                                fase=phase, resumo=review.resumo,
+                                mudancas=review.applied,
+                                tokens_in=review.tokens_in,
+                                tokens_out=review.tokens_out,
+                            )
                 continue
 
             tasks_fail.append(task.id)

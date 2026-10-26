@@ -245,6 +245,33 @@ class TestExecucaoFeliz:
         assert "pulada" in task.resumo
         assert board.meta["metricas"]["t1"]["pulada"] is True
 
+    def test_revisao_de_fase_no_nuvem(self, store, workspace):
+        from multitask.reviewer import ReviewResult
+
+        board = Board.new("x", run_id="run-review")
+        board.add_task("f", "t", acoes=["a"])
+        calls = []
+        with patch(
+            "multitask.runner.run_agent",
+            side_effect=make_fake([done("ok")], calls=calls),
+        ), patch(
+            "multitask.runner.review_phase",
+            return_value=ReviewResult(
+                resumo="ok", applied=["adicionada: testes"],
+                tokens_in=7, tokens_out=3,
+            ),
+        ) as review:
+            result = run_board(
+                board, {}, [], AGENT,
+                store=store, workspace_root=workspace,
+                model_client=object(), profile="nuvem",
+                revisar_fases=True,
+            )
+
+        review.assert_called_once()
+        assert result.tokens_in >= 7
+        assert result.tokens_out >= 3
+
     def test_persona_por_task(self, store, workspace):
         board = Board.new("x", run_id="run-persona")
         board.add_task("f", "t", agente="frontend", acoes=["a"])

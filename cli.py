@@ -3074,6 +3074,22 @@ def main():
                         f"  [ok]✓ checagem ok após "
                         f"{n_corr} {label}[/ok]"
                     )
+                elif tipo == "fase_revisada":
+                    resumo = str(event.get("resumo") or "")[:100]
+                    mudancas = event.get("mudancas") or []
+                    console.print(
+                        f"  [muted]revisão da fase: {escape(resumo)}[/muted]"
+                    )
+                    if mudancas:
+                        console.print(
+                            f"  [muted]  {len(mudancas)} ajuste(s) no plano[/muted]"
+                        )
+                elif tipo == "fase_revisao_falhou":
+                    erros = "; ".join(str(e) for e in event.get("erros") or [])
+                    console.print(
+                        f"  [warn]revisão da fase falhou:[/warn] "
+                        f"{escape(erros[:150])}"
+                    )
                 elif tipo == "run_pausada":
                     console.print(
                         f"  [warn]pausada:[/warn] "
@@ -3098,6 +3114,7 @@ def main():
                     callbacks=_callbacks,
                     on_event=on_multitask_event,
                     profile=effective_perfil,
+                    revisar_fases=(effective_perfil == PERFIL_NUVEM),
                 )
             except BoardLocked as exc:
                 console.print(f"  [err]{escape(str(exc))}[/err]\n")

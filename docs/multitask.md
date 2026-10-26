@@ -178,6 +178,21 @@ execução para — o relatório mostra o erro e as pendências.
 **Segurança:** paths e `cwd` são resolvidos dentro do workspace. Fluxos fora
 de `flows/` pedem confirmação na CLI e avisam quando há checagens de comando.
 
+## Revisão por fase
+
+No perfil `nuvem`, ao concluir uma fase o runner chama o revisor com o
+secundário. Ele recebe o quadro da fase, os resumos e as tasks pendentes e
+pode apenas ajustar o que ainda não executou:
+
+- adicionar task;
+- atualizar objetivo/ações/check/tools de task pendente;
+- pular task pendente;
+- reordenar tasks pendentes.
+
+O revisor nunca altera task concluída/falha/em andamento. A revisão é opt-in
+no runner (`revisar_fases=True`) e o `/processo` a liga automaticamente no
+perfil `nuvem`. Eventos: `fase_revisada` e `fase_revisao_falhou`.
+
 ## Perfis de modelo
 
 O fluxo pode declarar `perfil: nuvem` para usar o provider configurado como
@@ -241,6 +256,6 @@ pendências e como testar.
 
 ## O que vem depois
 
-1. **Fase 4** — fluxo `web_projeto` completo, entrevista, servidor e entrega.
-2. **Fase 5** — painel na TUI, revisão por fase, replanejamento automático e
-   retomada com mais garantias.
+1. Fluxo `web_projeto` completo: entrevista, servidor/preview e entrega.
+2. Painel na TUI e `analisar` sobre o quadro.
+3. Subagentes paralelos e mais fluxos (dados/acadêmicos).

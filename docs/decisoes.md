@@ -322,6 +322,24 @@ nativo para escrita.
 
 ---
 
+---
+
+## D-016 — Revisão por fase no nuvem
+
+**Decisão:** ao fim de cada fase no perfil `nuvem`, o secundário revisa o
+quadro e pode adicionar/atualizar/pular/reordenar **tasks pendentes**. Tasks
+concluídas, falhas ou em andamento nunca são alteradas.
+
+**Por quê:** o check por task valida o artefato, mas não a coerência da fase;
+um revisor read-only com o quadro inteiro pega dependência faltando e escopo
+errado antes de gastar nas próximas tasks.
+
+**Consequência:** revisão é opt-in no runner e ligada no `/processo` nuvem;
+eventos `fase_revisada` e `fase_revisao_falhou`; o custo do revisor entra no
+run.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |
