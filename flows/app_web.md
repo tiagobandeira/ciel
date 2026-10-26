@@ -14,7 +14,7 @@ ações:
 - limitar o escopo: app local, um usuário, sem backend/login/sync
 - listar os critérios de aceite que as próximas tasks devem cumprir
 resultado esperado: SPEC.md existe, tem escopo e critérios de aceite
-checagem: [{"tipo": "arquivo", "path": "data/user/app_web/SPEC.md", "contem": "aceite"}, {"tipo": "arquivo", "path": "data/user/app_web/SPEC.md", "tamanho_min": 300}]
+checagem: [{"tipo": "arquivo", "path": "data/user/app_web/SPEC.md", "contem": "aceit"}, {"tipo": "arquivo", "path": "data/user/app_web/SPEC.md", "tamanho_min": 300}]
 
 ## task: estrutura
 fase: Estrutura
@@ -33,29 +33,28 @@ fase: Implementação
 depende_de: estrutura
 agente: frontend
 tools: read_file, write_file, edit_file, apply_patch, list_directory
-pular_se_ok: true
 objetivo: implementar criar, editar, salvar, listar, abrir e excluir notas
 ações:
 - implementar em app.js o estado das notas e a persistência em localStorage
-- implementar criar nota, editar título/conteúdo, salvar e excluir
+- implementar criar nota, editar título/conteúdo, salvar e excluir (função excluirNota)
 - renderizar a lista de notas no menu e abrir a nota selecionada
 - manter tudo no navegador; não usar backend
-resultado esperado: o app salva e recarrega notas do localStorage
-checagem: [{"tipo": "arquivo", "path": "data/user/app_web/app.js", "contem": "localStorage"}, {"tipo": "arquivo", "path": "data/user/app_web/app.js", "contem": "addEventListener"}, {"tipo": "arquivo", "path": "data/user/app_web/index.html", "contem": "app.js"}]
+resultado esperado: o app salva, recarrega e exclui notas do localStorage
+checagem: [{"tipo": "arquivo", "path": "data/user/app_web/app.js", "contem": "localStorage"}, {"tipo": "arquivo", "path": "data/user/app_web/app.js", "contem": "excluir"}, {"tipo": "arquivo", "path": "data/user/app_web/index.html", "contem": "app.js"}]
 
 ## task: preview
 fase: Implementação
 depende_de: editor
 tools: read_file, write_file, edit_file, apply_patch, list_directory
-pular_se_ok: true
 objetivo: adicionar preview de Markdown e acabamento da interface
 ações:
 - implementar um preview simples de Markdown (títulos, negrito, listas e código)
+- renderizar o Markdown em HTML (innerHTML), não apenas texto puro
 - atualizar o preview enquanto o usuário edita
 - estilizar o editor, a lista e o preview para ficarem legíveis
 - exibir uma mensagem quando não houver notas
-resultado esperado: o preview reflete o conteúdo da nota
-checagem: [{"tipo": "arquivo", "path": "data/user/app_web/app.js", "contem": "preview"}, {"tipo": "arquivo", "path": "data/user/app_web/style.css", "tamanho_min": 500}]
+resultado esperado: o preview renderiza o Markdown da nota em HTML
+checagem: [{"tipo": "arquivo", "path": "data/user/app_web/app.js", "contem": "innerHTML"}, {"tipo": "arquivo", "path": "data/user/app_web/style.css", "tamanho_min": 500}]
 
 ## task: verificar
 fase: Verificação

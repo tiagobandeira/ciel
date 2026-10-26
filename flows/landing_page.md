@@ -1,4 +1,4 @@
-## flow: landing_page
+﻿## flow: landing_page
 objetivo: criar uma landing page completa e responsiva em data/user/landing_page
 formato: markdown
 como_testar: abra data/user/landing_page/index.html no navegador e teste o CTA e o menu mobile
@@ -19,7 +19,6 @@ fase: Conteúdo
 depende_de: estrutura
 agente: frontend
 tools: read_file, write_file, list_directory
-pular_se_ok: true
 objetivo: preencher a landing page com hero, prova social, features e CTA
 ações:
 - escrever o hero com headline, subheadline e botão de CTA
@@ -41,4 +40,5 @@ ações:
 - conferir que não há placeholders óbvios (lorem ipsum, TODO)
 resultado esperado: a listagem contém os três arquivos e o HTML está completo
 checagem: [{"tipo": "arquivo", "path": "data/user/landing_page/index.html", "contem": "<!DOCTYPE"}, {"tipo": "arquivo", "path": "data/user/landing_page/index.html", "contem": "script.js"}]
+
 

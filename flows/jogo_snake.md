@@ -1,4 +1,4 @@
-## flow: jogo_snake
+﻿## flow: jogo_snake
 objetivo: criar um jogo da cobrinha completo e jogável em data/user/jogo_snake
 formato: markdown
 como_testar: abra data/user/jogo_snake/index.html no navegador e jogue com as setas ou WASD
@@ -18,7 +18,6 @@ checagem: [{"tipo": "arquivo", "path": "data/user/jogo_snake/index.html"}, {"tip
 fase: Interface
 depende_de: estrutura
 tools: read_file, write_file, list_directory
-pular_se_ok: true
 objetivo: montar a interface do jogo com canvas, placar e instruções
 ações:
 - escrever index.html com canvas id="game", um placar e instruções de controle
@@ -31,7 +30,6 @@ checagem: [{"tipo": "arquivo", "path": "data/user/jogo_snake/index.html", "conte
 fase: Lógica
 depende_de: html_css
 tools: read_file, write_file, list_directory
-pular_se_ok: true
 objetivo: implementar a lógica completa da cobrinha em JavaScript
 ações:
 - implementar o loop do jogo com requestAnimationFrame
@@ -52,4 +50,5 @@ ações:
 - conferir que o jogo não depende de bibliotecas externas
 resultado esperado: o jogo é autocontido e abre sem erros no console
 checagem: [{"tipo": "arquivo", "path": "data/user/jogo_snake/index.html", "contem": "game.js"}, {"tipo": "arquivo", "path": "data/user/jogo_snake/game.js", "contem": "gameOver"}]
+
 
