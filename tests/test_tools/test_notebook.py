@@ -76,3 +76,14 @@ def test_grava_expressao_e_erro(tmp_path):
     data = json.loads(nb.read_text(encoding="utf-8"))
     assert data["cells"][0]["outputs"][0]["output_type"] == "execute_result"
     assert data["cells"][1]["outputs"][0]["output_type"] == "error"
+
+
+def test_caminho_relativo_grava_no_lugar_certo(tmp_path, monkeypatch):
+    nb = tmp_path / "lab.ipynb"
+    write_notebook.run(str(nb), [{"type": "code", "source": "print('ok')"}])
+    monkeypatch.chdir(tmp_path)
+    result = run_notebook.run("lab.ipynb", cwd=".")
+    assert "exit=0" in result
+    data = json.loads(nb.read_text(encoding="utf-8"))
+    assert data["cells"][0]["outputs"]
+    assert not (tmp_path / "lab" / "lab.ipynb").exists()

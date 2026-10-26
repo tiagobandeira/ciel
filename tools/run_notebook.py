@@ -220,7 +220,7 @@ def run(
     log_path: se informado, grava stdout/stderr nesse arquivo
     salvar_saidas: executa célula a célula e grava outputs no notebook
     """
-    notebook_path = Path(path)
+    notebook_path = Path(path).resolve()
     if not notebook_path.is_file():
         return f"Erro: notebook '{path}' não encontrado."
     try:
@@ -231,7 +231,7 @@ def run(
     if not any(c.get("cell_type") == "code" for c in data.get("cells", [])):
         return "Erro: notebook não tem células de código."
 
-    workdir = Path(cwd) if cwd else notebook_path.parent
+    workdir = (Path(cwd) if cwd else notebook_path.parent).resolve()
     if not workdir.is_dir():
         return f"Erro: cwd '{workdir}' não é uma pasta."
 
