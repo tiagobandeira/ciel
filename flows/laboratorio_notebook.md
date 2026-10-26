@@ -89,20 +89,33 @@ ações:
 resultado esperado: RELATORIO.md e NOTA.md existem e citam os resultados
 checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/RELATORIO.md", "tamanho_min": 400}, {"tipo": "arquivo", "path": "data/labs/estudo/NOTA.md", "tamanho_min": 200}]
 
-## task: verificar
+## task: auditar
 fase: Verificação
 depende_de: relatorio
 tools: read_file, write_file, run_script
-max_steps: 7
-objetivo: auditar a evidência de forma neutra, sem reexecutar o notebook
+max_steps: 6
+objetivo: escrever e rodar um script pequeno de auditoria de evidência
 ações:
-- ler NOTA.md, RELATORIO.md e resultados/metricas.json; não use list_directory
-- extrair de 3 a 6 afirmações verificáveis e escrever data/labs/estudo/verificacao/contraexemplos.py
+- ler NOTA.md, RELATORIO.md e resultados/metricas.json; leia no máximo 6.000 caracteres por arquivo e não use list_directory
+- extrair de 3 a 4 afirmações verificáveis e escrever data/labs/estudo/verificacao/contraexemplos.py
 - o script deve testar cada afirmação com aritmética exata, casos de borda e uma faixa pequena determinística; aleatoriedade só com semente fixa
 - rodar o script [tool: run_script] e salvar data/labs/estudo/resultados/verificacao.json com status: suportado, contraexemplo, inconclusivo ou erro
 - NÃO é um debate e não há recompensa por refutar: refutação sem saída de script é proibida; se não der para testar mecanicamente, use inconclusivo
 - falha lógica só pode ser registrada com trecho exato da prova e o passo questionado; sem encenação e sem acusação
+- não escrever VERIFICACAO.md aqui; isso é a próxima task
+resultado esperado: script executado e verificacao.json com status
+checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/verificacao/contraexemplos.py", "tamanho_min": 150}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/verificacao.json", "tamanho_min": 40}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/metricas.json", "tamanho_min": 40}, {"tipo": "comando", "cmd": ["python", "data/labs/estudo/verificacao/contraexemplos.py"], "cwd": ".", "esperado": 0, "timeout": 120}]
+
+## task: verificar
+fase: Verificação
+depende_de: auditar
+tools: read_file, write_file
+max_steps: 4
+objetivo: consolidar a auditoria em VERIFICACAO.md, sem reexecutar nada
+ações:
+- ler resultados/verificacao.json
 - escrever data/labs/estudo/VERIFICACAO.md com tabela: afirmação, método, comando, saída, status e limitações
-- o notebook já foi executado em t5; não rode de novo e não o reescreva
-resultado esperado: script de verificação executado, JSON de status e VERIFICACAO.md existem
-checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/VERIFICACAO.md", "tamanho_min": 250}, {"tipo": "arquivo", "path": "data/labs/estudo/verificacao/contraexemplos.py", "tamanho_min": 150}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/verificacao.json", "tamanho_min": 40}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/metricas.json", "tamanho_min": 40}, {"tipo": "comando", "cmd": ["python", "data/labs/estudo/verificacao/contraexemplos.py"], "cwd": ".", "esperado": 0, "timeout": 120}]
+- registrar explicitamente o que ficou inconclusivo e por quê
+- não rodar notebook, não rodar script de novo e não usar list_directory
+resultado esperado: VERIFICACAO.md existe e cita o JSON de status
+checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/VERIFICACAO.md", "tamanho_min": 250}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/verificacao.json", "tamanho_min": 40}]
