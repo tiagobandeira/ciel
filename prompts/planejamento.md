@@ -66,6 +66,8 @@ sem explicação antes ou depois.
   Não peça todas as tools; schema grande custa tokens e distrai.
 - `max_steps`: 1 a 12. Tasks pequenas devem ficar em 4–8. O executor usa isso
   como orçamento de passos da task.
+- `pular_se_ok`: opcional. Use `true` só quando a task for idempotente e a
+  checagem já puder estar satisfeita antes de executar.
 - `resultado_esperado`: obrigatório e verificável. Descreva o estado final,
   não o processo ("arquivo X existe e contém Y", "comando retorna 0",
   "GET / responde 200").

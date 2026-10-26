@@ -468,6 +468,8 @@ def parse_plan(
                     f"task {task_id}: max_steps fora de 0..{MAX_STEPS_PER_TASK}"
                 )
 
+            pular_se_ok = bool(task.get("pular_se_ok") or False)
+
             if task_errors:
                 errors.extend(task_errors)
                 continue
@@ -483,6 +485,7 @@ def parse_plan(
                     agente=agent,
                     tools=tools_raw,
                     max_steps=task_max_steps,
+                    pular_se_ok=pular_se_ok,
                     depende_de=deps,
                     task_id=task_id,
                 )

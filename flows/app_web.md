@@ -1,4 +1,4 @@
-﻿## flow: app_web
+## flow: app_web
 objetivo: criar um app web local com interface, persistência e critérios de aceite
 formato: markdown
 como_testar: abra data/user/app_web/index.html no navegador, crie uma nota, recarregue e confira se ela continua listada
@@ -6,6 +6,7 @@ como_testar: abra data/user/app_web/index.html no navegador, crie uma nota, reca
 ## task: spec
 fase: Especificação
 tools: create_directory, write_file, read_file, list_directory
+pular_se_ok: true
 objetivo: transformar a ideia em uma spec pequena e verificável
 ações:
 - criar a pasta data/user/app_web [tool: create_directory]
@@ -18,13 +19,13 @@ checagem: [{"tipo": "arquivo", "path": "data/user/app_web/SPEC.md", "contem": "a
 ## task: estrutura
 fase: Estrutura
 depende_de: spec
-tools: create_directory, write_file, read_file, list_directory
-objetivo: criar os arquivos base do app
+tools: copy_template, read_file, list_directory
+pular_se_ok: true
+objetivo: criar os arquivos base do app a partir do template
 ações:
-- criar data/user/app_web/index.html com HTML5, menu, editor e área de preview
-- criar data/user/app_web/style.css com layout de duas colunas e lista de notas
-- criar data/user/app_web/app.js vazio com um comentário de TODO
-resultado esperado: index.html, style.css e app.js existem
+- copiar o template app_web para data/user/app_web (template="app_web", dest="data/user/app_web") [tool: copy_template]
+- conferir index.html, style.css e app.js
+resultado esperado: os três arquivos base existem em data/user/app_web
 checagem: [{"tipo": "arquivo", "path": "data/user/app_web/index.html"}, {"tipo": "arquivo", "path": "data/user/app_web/style.css"}, {"tipo": "arquivo", "path": "data/user/app_web/app.js"}]
 
 ## task: editor
@@ -32,6 +33,7 @@ fase: Implementação
 depende_de: estrutura
 agente: frontend
 tools: read_file, write_file, edit_file, apply_patch, list_directory
+pular_se_ok: true
 objetivo: implementar criar, editar, salvar, listar, abrir e excluir notas
 ações:
 - implementar em app.js o estado das notas e a persistência em localStorage
@@ -45,6 +47,7 @@ checagem: [{"tipo": "arquivo", "path": "data/user/app_web/app.js", "contem": "lo
 fase: Implementação
 depende_de: editor
 tools: read_file, write_file, edit_file, apply_patch, list_directory
+pular_se_ok: true
 objetivo: adicionar preview de Markdown e acabamento da interface
 ações:
 - implementar um preview simples de Markdown (títulos, negrito, listas e código)

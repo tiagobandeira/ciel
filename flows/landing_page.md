@@ -1,17 +1,16 @@
-﻿## flow: landing_page
+## flow: landing_page
 objetivo: criar uma landing page completa e responsiva em data/user/landing_page
 formato: markdown
 como_testar: abra data/user/landing_page/index.html no navegador e teste o CTA e o menu mobile
 
 ## task: estrutura
 fase: Estrutura
-tools: create_directory, write_file, read_file, list_directory
-objetivo: criar a pasta e os três arquivos base da landing page
+tools: copy_template, read_file, list_directory
+pular_se_ok: true
+objetivo: criar os três arquivos base da landing page a partir do template
 ações:
-- criar a pasta data/user/landing_page [tool: create_directory]
-- criar data/user/landing_page/index.html com estrutura HTML5, link para style.css e script.js
-- criar data/user/landing_page/style.css com variáveis de cor e layout base
-- criar data/user/landing_page/script.js com um handler simples de menu/CTA
+- copiar o template landing para data/user/landing_page (template="landing", dest="data/user/landing_page") [tool: copy_template]
+- conferir index.html, style.css e script.js
 resultado esperado: os três arquivos existem em data/user/landing_page
 checagem: [{"tipo": "arquivo", "path": "data/user/landing_page/index.html"}, {"tipo": "arquivo", "path": "data/user/landing_page/style.css"}, {"tipo": "arquivo", "path": "data/user/landing_page/script.js"}]
 
@@ -20,6 +19,7 @@ fase: Conteúdo
 depende_de: estrutura
 agente: frontend
 tools: read_file, write_file, list_directory
+pular_se_ok: true
 objetivo: preencher a landing page com hero, prova social, features e CTA
 ações:
 - escrever o hero com headline, subheadline e botão de CTA

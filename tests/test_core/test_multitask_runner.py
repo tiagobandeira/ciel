@@ -222,6 +222,28 @@ class TestExecucaoFeliz:
         assert metricas["tokens_out"] == 5
         assert "context_peak_chars" in metricas
 
+    def test_pular_se_ok_nao_chama_modelo(self, store, workspace):
+        (workspace / "pronto.txt").write_text("ok", encoding="utf-8")
+        board = Board.new("x", run_id="run-pular")
+        board.add_task(
+            "f", "t", acoes=["a"],
+            checagem={"tipo": "arquivo", "path": "pronto.txt"},
+            pular_se_ok=True,
+        )
+
+        with patch("multitask.runner.run_agent") as fake:
+            result = run_board(
+                board, {}, [], AGENT,
+                store=store, workspace_root=workspace,
+            )
+
+        fake.assert_not_called()
+        assert result.status == RUN_CONCLUIDA
+        task = board.task("t1")
+        assert task.status == TASK_CONCLUIDA
+        assert "pulada" in task.resumo
+        assert board.meta["metricas"]["t1"]["pulada"] is True
+
     def test_persona_por_task(self, store, workspace):
         board = Board.new("x", run_id="run-persona")
         board.add_task("f", "t", agente="frontend", acoes=["a"])

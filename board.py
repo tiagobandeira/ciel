@@ -191,6 +191,7 @@ class TaskState:
     agente: str = ""
     tools: list[str] | None = None
     max_steps: int = 0
+    pular_se_ok: bool = False
     depende_de: list[str] = field(default_factory=list)
     tentativas: int = 0
     correcoes: int = 0
@@ -209,6 +210,7 @@ class TaskState:
         if self.tools is not None:
             self.tools = [str(t) for t in self.tools]
         self.max_steps = _coerce_int(self.max_steps)
+        self.pular_se_ok = bool(self.pular_se_ok)
 
         normalized: list[dict] = []
         for item in self.artefatos or []:
@@ -377,6 +379,7 @@ class Board:
         agente: str = "",
         tools: list[str] | None = None,
         max_steps: int = 0,
+        pular_se_ok: bool = False,
         depende_de: list[str] | None = None,
         status: str = TASK_PENDENTE,
         task_id: str | None = None,
@@ -404,6 +407,7 @@ class Board:
             agente=agente,
             tools=list(tools) if tools is not None else None,
             max_steps=max_steps,
+            pular_se_ok=pular_se_ok,
             depende_de=list(depende_de or []),
         )
         phase.tasks.append(task)

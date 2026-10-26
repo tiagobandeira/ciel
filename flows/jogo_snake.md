@@ -1,17 +1,16 @@
-﻿## flow: jogo_snake
+## flow: jogo_snake
 objetivo: criar um jogo da cobrinha completo e jogável em data/user/jogo_snake
 formato: markdown
 como_testar: abra data/user/jogo_snake/index.html no navegador e jogue com as setas ou WASD
 
 ## task: estrutura
 fase: Estrutura
-tools: create_directory, write_file, read_file, list_directory
-objetivo: criar a pasta e os arquivos base do jogo
+tools: copy_template, read_file, list_directory
+pular_se_ok: true
+objetivo: criar os arquivos base do jogo a partir do template
 ações:
-- criar a pasta data/user/jogo_snake [tool: create_directory]
-- criar data/user/jogo_snake/index.html com HTML5, canvas e links para style.css e game.js
-- criar data/user/jogo_snake/style.css com layout centralizado e placar
-- criar data/user/jogo_snake/game.js vazio com um comentário de TODO
+- copiar o template game para data/user/jogo_snake (template="game", dest="data/user/jogo_snake") [tool: copy_template]
+- conferir index.html, style.css e game.js
 resultado esperado: os três arquivos existem em data/user/jogo_snake
 checagem: [{"tipo": "arquivo", "path": "data/user/jogo_snake/index.html"}, {"tipo": "arquivo", "path": "data/user/jogo_snake/style.css"}, {"tipo": "arquivo", "path": "data/user/jogo_snake/game.js"}]
 
@@ -19,6 +18,7 @@ checagem: [{"tipo": "arquivo", "path": "data/user/jogo_snake/index.html"}, {"tip
 fase: Interface
 depende_de: estrutura
 tools: read_file, write_file, list_directory
+pular_se_ok: true
 objetivo: montar a interface do jogo com canvas, placar e instruções
 ações:
 - escrever index.html com canvas id="game", um placar e instruções de controle
@@ -31,6 +31,7 @@ checagem: [{"tipo": "arquivo", "path": "data/user/jogo_snake/index.html", "conte
 fase: Lógica
 depende_de: html_css
 tools: read_file, write_file, list_directory
+pular_se_ok: true
 objetivo: implementar a lógica completa da cobrinha em JavaScript
 ações:
 - implementar o loop do jogo com requestAnimationFrame

@@ -37,6 +37,8 @@ Se houver fontes indexadas na sessão, consulte antes de responder:
   de criar scripts de leitura.
 - `create_directory` cria uma pasta vazia (com os pais). **Use esta tool** para
   criar pasta; não use `write_file` com `.keep` nem `run_script`.
+- `copy_template` copia um template de `templates/` (app_web, landing, game)
+  para o destino; use para scaffold em vez de gerar boilerplate.
 - Salve arquivos para o usuário em `data/user/`.
 - A tool `secondary_model` não existe nesta sessão: gere o conteúdo com
   `write_file` ou `create_tool` diretamente.

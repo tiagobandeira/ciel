@@ -289,6 +289,7 @@ def build_board(
                 agente=task.get("agente", ""),
                 tools=task.get("tools") or None,
                 max_steps=int(task.get("max_steps") or 0),
+                pular_se_ok=bool(task.get("pular_se_ok") or False),
             )
         except BoardError as exc:
             raise FlowError(str(exc)) from exc

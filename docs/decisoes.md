@@ -265,6 +265,27 @@ avaliar nativo/parallel calls e scaffold.
 
 ---
 
+---
+
+## D-013 — Tarefas idempotentes e scaffold determinístico
+
+**Decisão:** tasks podem declarar `pular_se_ok: true`; antes de executar, o
+runner roda a checagem e, se ela já passar, marca a task como concluída com
+`pulada=True` e custo zero.
+
+**Decisão:** `copy_template` + `templates/` (app_web, landing, game) criam o
+boilerplate deterministicamente; o modelo edita as features em vez de gerar
+estrutura.
+
+**Por quê:** reruns de landing/app não devem pagar de novo pelo que já está
+pronto, e boilerplate não é o lugar onde o modelo agrega valor.
+
+**Consequência:** `pular_se_ok` é opt-in (checks específicos); templates são
+versionados. Medir `tokens_in`/`steps` depois disso antes de avaliar tool
+nativo.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

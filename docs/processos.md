@@ -97,6 +97,16 @@ Resultado do primeiro teste: **3/3 tasks, ~50k tokens** (47,4k input + 2,4k
 output), contra 1,5M de um app greenfield. É o caso onde o motor de checks se
 paga.
 
+## Scaffold e tarefas idempotentes
+
+Os processos `app_web`, `landing_page` e `jogo_web` começam copiando um
+template de `templates/` (`copy_template`) em vez de gerar o boilerplate. Isso
+reduz geração e deixa o modelo focar nas features.
+
+Tasks com `pular_se_ok: true` verificam o critério antes de executar. Se já
+passa, a task é marcada como concluída com `pulada=True` e custo zero. Use só
+quando o check for realmente específico da task.
+
 ## Saída
 
 O detalhe fica no log:

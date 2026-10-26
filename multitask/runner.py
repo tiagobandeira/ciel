@@ -686,6 +686,44 @@ def _execute_task(
                 motivo=f"task {task.id}: persona inválida",
             )
 
+    # Task idempotente: se o critério já está satisfeito, não gasta steps.
+    if getattr(task, "pular_se_ok", False) and task.checagem is not None:
+        pre = run_checks(task.checagem, workspace_root=root)
+        if pre.ok and pre.verificado:
+            duration = time.monotonic() - task_clock
+            resumo = "já satisfazia a checagem; execução pulada"
+            artifacts = collect_artifacts(root, task_started)
+            board.record_task_result(
+                task.id, TASK_CONCLUIDA,
+                resumo=resumo,
+                tokens_in=0,
+                tokens_out=0,
+                duracao_s=duration,
+                correcoes=0,
+                checagem_ok=True,
+                checagem_resumo=pre.mensagem,
+            )
+            for artifact in artifacts:
+                board.add_artifact(
+                    task.id, artifact["path"], mtime=artifact["mtime"]
+                )
+            metrics["pulada"] = True
+            _record_task_metrics(board, task, metrics)
+            store.save(board)
+            _emit(
+                store, board, on_event, "task_concluida",
+                task=task.id, titulo=task.titulo, fase=phase,
+                resumo=resumo,
+                tokens_in=0, tokens_out=0,
+                duracao_s=round(duration, 2),
+                artefatos=[a["path"] for a in artifacts],
+                correcoes=0,
+                checagem=pre.mensagem,
+                checagem_ok=True,
+                pulada=True,
+            )
+            return _TaskOutcome("done", tokens_in=0, tokens_out=0)
+
     attempts = 0
     while True:
         attempts += 1
