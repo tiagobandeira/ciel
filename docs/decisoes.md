@@ -440,6 +440,22 @@ workspace ou um caminho citado no objetivo.
 
 ---
 
+---
+
+## D-023 — Gerar testes sem alterar o fonte
+
+**Decisão:** `gerar_testes` escreve testes e runner em `data/user/gerar_testes/`,
+executa contra o alvo via `sys.path` e registra bugs reais em `RESULTADO.md`
+sem editar o código-fonte.
+
+**Por quê:** gerar e corrigir ao mesmo tempo mistura responsabilidades e pode
+mascarar o bug. Teste é o contrato; correção é o próximo processo.
+
+**Consequência:** o check do processo é `python rodar.py`; o usuário pode
+copiar os testes gerados para o repositório depois.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

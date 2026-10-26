@@ -35,6 +35,14 @@ def test_auditar_repo_e_um_fluxo_valido():
     assert board.task("t1").titulo == "inventariar"
 
 
+def test_gerar_testes_e_um_fluxo_valido():
+    flow = load_flow("gerar_testes")
+    board = build_board(flow)
+    assert len(board.tasks()) == 3
+    assert not board.validate()
+    assert board.task("t1").titulo == "mapear"
+
+
 def test_web_projeto_comeca_com_briefing():
     flow = load_flow("web_projeto")
     board = build_board(flow)
@@ -59,6 +67,7 @@ def test_detect_process_por_intencao():
     assert detect_process("monte um notebook jupyter sobre o tema").id == "notebook_matematica"
     assert detect_process("analise este csv de vendas").id == "analise_dados"
     assert detect_process("audite a segurança deste repositório").id == "auditar_repo"
+    assert detect_process("gere testes pytest para o módulo").id == "gerar_testes"
     assert detect_process("corrija o bug do demo").id == "corrigir_bug"
 
 

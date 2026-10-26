@@ -54,6 +54,7 @@ esse motor.
 /processo landing_page
 /processo analise_dados "analise data/vendas.csv"
 /processo auditar_repo "audite src/ e o pyproject"
+/processo gerar_testes "teste data/user/bugfix_demo"
 /processo --retomar <id>          # retoma um processo pausado
 /processo --analisar [id]         # analisa a execução (última por padrão)
 ```
@@ -77,6 +78,7 @@ Processos iniciais:
 | `jogo_web` | jogo simples em HTML/canvas/JavaScript |
 | `analise_dados` | perfil, limpeza e análise de um dataset com relatório |
 | `auditar_repo` | inventário, riscos e relatório de auditoria sem alterar código |
+| `gerar_testes` | escreve e roda testes para um módulo sem alterar o fonte |
 | `artigo_matematica` | artigo em Markdown com definições, teoremas e referências |
 | `notebook_matematica` | notebook Jupyter sobre um tema matemático |
 | `corrigir_bug` | corrige uma falha reproduzível com correção mínima e check |
@@ -103,6 +105,19 @@ python examples/reset_bugfix_demo.py
 Resultado do primeiro teste: **3/3 tasks, ~50k tokens** (47,4k input + 2,4k
 output), contra 1,5M de um app greenfield. É o caso onde o motor de checks se
 paga.
+
+## Gerar testes
+
+O `gerar_testes` cria testes em `data/user/gerar_testes/` e executa contra o
+alvo indicado, sem alterar o código-fonte:
+
+- `ALVO.json` — alvo, módulo e comando;
+- `tests/test_gerado.py` — casos de comportamento;
+- `rodar.py` — runner que adiciona o alvo ao `sys.path`;
+- `RESULTADO.md` — comando, saída e limitações.
+
+O check executa `python rodar.py`. Se um teste falhar por bug real do código,
+o processo registra isso em vez de corrigir o fonte.
 
 ## Auditoria
 
