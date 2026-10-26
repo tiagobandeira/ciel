@@ -196,6 +196,7 @@ class TaskState:
     modelo: str = ""
     perfil: str = ""
     read_only: bool = False
+    timeout_s: float = 0.0
     depende_de: list[str] = field(default_factory=list)
     tentativas: int = 0
     correcoes: int = 0
@@ -218,6 +219,10 @@ class TaskState:
         self.parallel = bool(self.parallel)
         self.modelo = str(self.modelo or "")
         self.perfil = str(self.perfil or "").strip().lower()
+        try:
+            self.timeout_s = max(0.0, float(self.timeout_s or 0))
+        except (TypeError, ValueError):
+            self.timeout_s = 0.0
         self.read_only = bool(self.read_only)
 
         normalized: list[dict] = []
@@ -392,6 +397,7 @@ class Board:
         modelo: str = "",
         perfil: str = "",
         read_only: bool = False,
+        timeout_s: float = 0.0,
         depende_de: list[str] | None = None,
         status: str = TASK_PENDENTE,
         task_id: str | None = None,
@@ -424,6 +430,7 @@ class Board:
             modelo=modelo,
             perfil=perfil,
             read_only=read_only,
+            timeout_s=timeout_s,
             depende_de=list(depende_de or []),
         )
         phase.tasks.append(task)

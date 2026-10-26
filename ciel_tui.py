@@ -344,6 +344,8 @@ COMMANDS: list[tuple[str, str]] = [
     ("/modo",              "modo atual (chat/build)"),
     ("/modo chat",         "volta para conversa"),
     ("/modo build",        "ativa build (exige nuvem)"),
+    ("/subagente",         "lista subagentes da última execução"),
+    ("/subagente t1",      "detalha subagente por id/título"),
     ("/preview",           "lista previews locais"),
     ("/preview stop",      "para o preview ativo, sem chamar modelo"),
     ("/copiar",            "copia última resposta"),
@@ -3552,6 +3554,8 @@ class CielTUI(App):
                 ("/perfil <local|nuvem>", "troca o orquestrador da sessão"),
                 ("/modo",                 "modo atual (chat/build)"),
                 ("/modo <chat|build>",    "troca o modo da sessão"),
+                ("/subagente",            "lista subagentes da última execução"),
+                ("/subagente <id|titulo>", "detalha um subagente"),
                 ("/preview",              "lista previews locais"),
                 ("/preview stop",         "para preview sem chamar modelo"),
                 ("/connect",             "configura provedor do modelo secundário"),
@@ -3798,6 +3802,69 @@ class CielTUI(App):
                     "|stop [id|porta|todos]]",
                     "warn",
                 ))
+
+        elif verb == "/subagente":
+            import json as _json
+            from board import BoardStore
+
+            args = parts[1:]
+            runs = BoardStore()
+            run_id = args[0] if args and runs.exists(args[0]) else ""
+            chave = args[1] if run_id and len(args) > 1 else (
+                args[-1] if args and not run_id else ""
+            )
+            try:
+                board_sub = runs.load(run_id) if run_id else runs.latest()
+            except Exception:
+                board_sub = None
+            if board_sub is None:
+                self._log_write(msg_system("nenhuma execução encontrada.", "warn"))
+            else:
+                sub_dir = runs.run_dir(board_sub.id) / "subagents"
+                registros = []
+                if sub_dir.is_dir():
+                    for path in sorted(sub_dir.glob("*.json")):
+                        try:
+                            registros.append((path, _json.loads(
+                                path.read_text(encoding="utf-8")
+                            )))
+                        except Exception:
+                            pass
+                if not registros:
+                    self._log_write(msg_system(
+                        f"nenhum subagente em {board_sub.id}.", "warn"
+                    ))
+                elif chave:
+                    alvo = chave.lower()
+                    found = next(
+                        (
+                            (p, d) for p, d in registros
+                            if alvo in (str(d.get("id", p.stem)).lower(),
+                                        str(d.get("titulo", "")).lower())
+                        ),
+                        None,
+                    )
+                    if found is None:
+                        self._log_write(msg_system(
+                            f"subagente '{chave}' não encontrado.", "warn"
+                        ))
+                    else:
+                        self._log_write(msg_system(
+                            _json.dumps(found[1], ensure_ascii=False, indent=2),
+                            "info",
+                        ))
+                else:
+                    linhas = [f"run: {board_sub.id}"]
+                    for path, data in registros:
+                        linhas.append(
+                            f"{data.get('id', path.stem)} · "
+                            f"{data.get('titulo', '')} · "
+                            f"{data.get('agente', '')} · "
+                            f"{data.get('status', '')} · "
+                            f"↑{data.get('tokens_in', 0)} "
+                            f"↓{data.get('tokens_out', 0)}"
+                        )
+                    self._log_write(msg_system("\n".join(linhas), "info"))
 
         elif verb == "/perfil":
             arg = parts[1].lower() if len(parts) > 1 else ""

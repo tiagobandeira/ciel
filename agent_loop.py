@@ -38,6 +38,7 @@ from __future__ import annotations
 import inspect
 import json
 import re
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -594,6 +595,7 @@ def run_agent(
     # Orçamento de tokens desta task (0 = sem limite). Se estourar, o loop
     # devolve status "limit"; o runner decide pela checagem.
     budget_tokens: int = 0,
+    deadline: float | None = None,
 ) -> AgentResult:
     """
     Executa o loop agêntico e retorna um AgentResult.
@@ -670,6 +672,13 @@ def run_agent(
         and getattr(model_client, "native_tools", False)
     )
     for step in range(1, max_steps + 1):
+        if deadline is not None and time.monotonic() >= deadline:
+            _call(on_limit, step, total_in, total_out)
+            return _mk(
+                "timeout",
+                "⚠ Tempo máximo do subagente atingido.",
+                steps=max(0, step - 1),
+            )
         if (
             profile == PERFIL_NUVEM
             and not nudge_sent

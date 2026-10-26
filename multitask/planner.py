@@ -473,6 +473,10 @@ def parse_plan(
             task_model = str(task.get("modelo") or task.get("model") or "")
             task_perfil = str(task.get("perfil") or "").strip().lower()
             read_only = bool(task.get("read_only") or False)
+            try:
+                task_timeout = max(0.0, float(task.get("timeout_s") or 0))
+            except (TypeError, ValueError):
+                task_timeout = 0.0
 
             if task_errors:
                 errors.extend(task_errors)
@@ -494,6 +498,7 @@ def parse_plan(
                     modelo=task_model,
                     perfil=task_perfil,
                     read_only=read_only,
+                    timeout_s=task_timeout,
                     depende_de=deps,
                     task_id=task_id,
                 )

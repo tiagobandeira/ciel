@@ -786,6 +786,7 @@ def _record_subagent(
             "agente": task.agente or "general",
             "modelo": task.modelo or "",
             "perfil": task.perfil or "",
+            "timeout_s": task.timeout_s,
             "tools": list(task.tools or []),
             "read_only": bool(task.read_only),
             "status": task.status,
@@ -963,6 +964,11 @@ def _execute_task(
     index = _task_index(board, task)
     task_started = time.time()
     task_clock = time.monotonic()
+    try:
+        task_timeout = float(getattr(task, "timeout_s", 0) or 0)
+    except (TypeError, ValueError):
+        task_timeout = 0.0
+    deadline = task_clock + task_timeout if task_timeout > 0 else None
     tokens_in = 0
     tokens_out = 0
     corrections = 0
@@ -1078,6 +1084,7 @@ def _execute_task(
             profile=profile,
             allow_tool_proposal=False,
             budget_tokens=budget_left,
+            deadline=deadline,
             **callbacks,
         )
 
@@ -1110,7 +1117,7 @@ def _execute_task(
         if result.status != "done":
             # Steps esgotados não significam necessariamente trabalho
             # incompleto: se a checagem por código passar, aceita a task.
-            if result.status in ("limit", "needs_tool") and task.checagem is not None:
+            if result.status in ("limit", "needs_tool", "timeout") and task.checagem is not None:
                 limit_check = run_checks(task.checagem, workspace_root=root)
                 if limit_check.ok and limit_check.verificado:
                     duration = time.monotonic() - task_clock
