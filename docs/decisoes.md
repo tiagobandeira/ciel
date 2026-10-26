@@ -615,6 +615,23 @@ fica para uma fase posterior. Cada branch grava checkpoint em
 
 ---
 
+---
+
+## D-033 — Laboratório de notebook como processo
+
+**Decisão:** criar `laboratorio_notebook`, um fluxo genérico que recebe
+PDF/Markdown/ideia e produz projeto em `data/labs/estudo` com hipótese,
+formalização, script, notebook Colab, execução, relatório e nota.
+
+**Por quê:** tasks comuns não davam estrutura para “testar uma ideia”: faltava
+separar fonte, hipótese, experimento, evidência e formalismo. O fluxo serve
+para matemática, dados e simulações, não para um tema específico.
+
+**Consequência:** `write_notebook` e `run_notebook` entram no core. O notebook
+é nbformat 4 com metadados Colab e caminhos relativos, sem depender do Ciel.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

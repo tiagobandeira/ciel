@@ -85,11 +85,21 @@ PROCESSES: tuple[Process, ...] = (
         keywords=("artigo", "paper", "cientifico", "matematic"),
     ),
     Process(
+        id="laboratorio_notebook",
+        titulo="Laboratório de notebook",
+        descricao="testa uma hipótese/fonte em projeto reproduzível com notebook Colab, execução e relatório",
+        flow="laboratorio_notebook",
+        keywords=(
+            "laboratorio", "hipotese", "testar hipotese", "testar a hipotese",
+            "experimento", "simulacao", "colab", "artigo pdf", "ideia matematica",
+        ),
+    ),
+    Process(
         id="notebook_matematica",
         titulo="Notebook",
         descricao="notebook Jupyter sobre um tema matemático",
         flow="notebook_matematica",
-        keywords=("notebook", "colab", "jupyter"),
+        keywords=("notebook", "jupyter"),
     ),
     Process(
         id="corrigir_bug",

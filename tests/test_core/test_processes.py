@@ -58,6 +58,15 @@ def test_get_process_por_id_ou_titulo():
     assert get_process("nao_existe") is None
 
 
+def test_laboratorio_notebook_e_um_fluxo_valido():
+    flow = load_flow("laboratorio_notebook")
+    board = build_board(flow)
+    assert len(board.tasks()) == 6
+    assert not board.validate()
+    assert board.task("t1").titulo == "preparar"
+    assert board.task("t2").depende_de == ["t1"]
+
+
 def test_detect_process_por_intencao():
     assert detect_process("quero um app de notas em markdown").id == "app_web"
     assert detect_process("quero um app com entrevista").id == "web_projeto"
@@ -65,6 +74,7 @@ def test_detect_process_por_intencao():
     assert detect_process("faça um jogo da cobrinha").id == "jogo_web"
     assert detect_process("escreva um artigo sobre grupos").id == "artigo_matematica"
     assert detect_process("monte um notebook jupyter sobre o tema").id == "notebook_matematica"
+    assert detect_process("testar a hipotese de um artigo").id == "laboratorio_notebook"
     assert detect_process("analise este csv de vendas").id == "analise_dados"
     assert detect_process("audite a segurança deste repositório").id == "auditar_repo"
     assert detect_process("gere testes pytest para o módulo").id == "gerar_testes"

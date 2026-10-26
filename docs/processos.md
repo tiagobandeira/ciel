@@ -81,10 +81,46 @@ Processos iniciais:
 | `gerar_testes` | escreve e roda testes para um módulo sem alterar o fonte |
 | `artigo_matematica` | artigo em Markdown com definições, teoremas e referências |
 | `notebook_matematica` | notebook Jupyter sobre um tema matemático |
+| `laboratorio_notebook` | testa hipótese/fonte com notebook Colab, execução e relatório |
 | `corrigir_bug` | corrige uma falha reproduzível com correção mínima e check |
 
 Os fluxos de exemplo (artigo, landing, jogo, notebook) continuam em `flows/`;
 `app_web` é o primeiro processo com fase de spec explícita.
+
+## Laboratório de notebook
+
+`laboratorio_notebook` é o fluxo genérico para testar uma ideia:
+
+- fonte PDF ou Markdown;
+- hipótese/formalização;
+- experimento em `src/experimento.py`;
+- notebook Colab em `laboratorio.ipynb`;
+- execução registrada;
+- relatório e nota curta.
+
+```text
+/processo laboratorio_notebook "teste a hipótese do artigo data/artigo.pdf"
+```
+
+Saída:
+
+```text
+data/labs/estudo/
+  fonte/artigo.md
+  PLANO.md
+  FORMALIZACAO.md
+  src/experimento.py
+  laboratorio.ipynb
+  resultados/
+  figuras/
+  EXECUCAO.md
+  RELATORIO.md
+  NOTA.md
+  VERIFICACAO.md
+```
+
+Serve para matemática, dados ou simulação; não é específico de Goldbach.
+O notebook usa caminhos relativos e metadados Colab, sem depender do Ciel.
 
 ## Corrigir bug
 

@@ -43,6 +43,8 @@ Se houver fontes indexadas na sessão, consulte antes de responder:
   para o destino; use para scaffold em vez de gerar boilerplate.
 - `prepare_kernel` aplica um kernel de `kernels/` (template + manifesto +
   smoke). Prefira kernel para ambientes base reutilizáveis.
+- `write_notebook` cria um .ipynb nbformat 4 válido a partir de células
+  markdown/code; `run_notebook` executa as células code localmente.
 - `start_preview` sobe a pasta em `127.0.0.1` e devolve a URL; `stop_preview`
   encerra; `list_previews` lista. Use para validar app/landing no navegador.
 - Salve arquivos para o usuário em `data/user/`.
