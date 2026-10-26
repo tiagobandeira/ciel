@@ -64,12 +64,13 @@ checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/laboratorio.ipynb", "co
 ## task: executar
 fase: Execução
 depende_de: implementar_notebook
-tools: read_file, write_file, run_notebook
-max_steps: 5
+tools: read_file, write_file, write_notebook, run_notebook
+max_steps: 8
 objetivo: executar o notebook e registrar a execução detalhada
 ações:
 - rodar laboratorio.ipynb com run_notebook, cwd data/labs/estudo e log_path resultados/execucao_notebook.log [tool: run_notebook]
-- escrever data/labs/estudo/EXECUCAO.md com comandos, stdout, erros, arquivos gerados e leitura dos resultados
+- se o notebook falhar, corrigir as células com write_notebook [tool: write_notebook] e rodar de novo; não sobrescrever o JSON cru com write_file
+- depois da execução, escrever data/labs/estudo/EXECUCAO.md com comandos, stdout, erros, arquivos gerados e leitura dos resultados
 - não inventar saída: copie/parafraseie apenas o que os comandos produziram
 resultado esperado: EXECUCAO.md e log do notebook existem
 checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/EXECUCAO.md", "tamanho_min": 300}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/execucao_notebook.log", "tamanho_min": 40}]
@@ -92,7 +93,7 @@ checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/RELATORIO.md", "tamanho
 fase: Verificação
 depende_de: relatorio
 tools: read_file, write_file, run_notebook
-max_steps: 4
+max_steps: 6
 objetivo: validar notebook, artefatos e reprodutibilidade
 ações:
 - validar laboratorio.ipynb como JSON nbformat 4 e rodar o notebook com run_notebook [tool: run_notebook]
