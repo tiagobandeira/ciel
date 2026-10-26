@@ -20,6 +20,7 @@ Presentes em todo agente, independente do caso de uso.
 | `start_preview.py` | sobe um servidor estático local em 127.0.0.1 e devolve a URL |
 | `stop_preview.py` | encerra um preview pelo id ou porta |
 | `list_previews.py` | lista previews ativos |
+| `/preview` | na CLI: lista, inicia e para previews sem chamar modelo |
 | `list_directory.py` | lista arquivos de um diretório com filtro por extensão e modo recursivo |
 | `create_directory.py` | cria uma pasta (com os pais) — use isto em vez de `.keep`/`run_script` |
 | `list_sources.py` | RAG — lista fontes indexadas com IDs |

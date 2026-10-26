@@ -176,15 +176,22 @@ def stop(preview_id: str = "", port: int = 0) -> str:
         return f"Preview encerrado: {target_id}"
 
 
-def list_all() -> str:
+def active() -> dict:
+    """Devolve os previews vivos, removendo entradas mortas do estado."""
     with _LOCK:
         state = _load_state()
-        alive = {}
-        for preview_id, info in state.items():
-            if _pid_alive(int(info.get("pid", 0))):
-                alive[preview_id] = info
+        alive = {
+            preview_id: info
+            for preview_id, info in state.items()
+            if _pid_alive(int(info.get("pid", 0)))
+        }
         if alive != state:
             _save_state(alive)
+    return alive
+
+
+def list_all() -> str:
+    alive = active()
     if not alive:
         return "Nenhum preview ativo."
     lines = ["Previews ativos:"]

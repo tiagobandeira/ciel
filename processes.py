@@ -24,6 +24,14 @@ class Process:
 
 PROCESSES: tuple[Process, ...] = (
     Process(
+        id="web_projeto",
+        titulo="Projeto web com entrevista",
+        descricao="app web com briefing entrevistado, spec, implementação e preview",
+        flow="web_projeto",
+        keywords=("entrevista", "briefing", "projeto web", "requisitos"),
+        precisa_spec=True,
+    ),
+    Process(
         id="app_web",
         titulo="App web",
         descricao="app local com interface, persistência e critérios de aceite",

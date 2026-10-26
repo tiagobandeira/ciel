@@ -205,6 +205,9 @@ O `app_web` termina com uma task `publicar`:
 O servidor é estático (`python -m http.server`), escuta só em `127.0.0.1` e
 não executa código do projeto. `list_previews` mostra o que está ativo.
 
+Na CLI, `/preview` lista, `/preview start <pasta> [porta]` inicia e
+`/preview stop [id|porta|todos]` encerra — **sem chamar o modelo**.
+
 ## Perfis de modelo
 
 O fluxo pode declarar `perfil: nuvem` para usar o provider configurado como

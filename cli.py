@@ -1422,7 +1422,8 @@ def main():
     # ── prompt_toolkit: autocomplete ──────────────────────────────────────────
     CMDS = [
         "/sair", "/limpar", "/novo", "/criar", "/criar agente", "/criar task", "/criar canal whatsapp", "/task", "/tools", "/agente",
-        "/modo chat", "/modo build", "/processo", "/processo app_web", "/processo landing_page", "/processo --retomar",
+        "/modo chat", "/modo build", "/processo", "/processo app_web", "/processo web_projeto", "/processo landing_page", "/processo --retomar",
+        "/preview", "/preview start", "/preview stop", "/preview listar",
         "/source", "/source --listar","/source --remover","/source --global","/source --limpar-orfas","/skill", "/limpar-temp",
         "/promover ", "/copiar", "/tokens", "/ajuda",
         "/history", "/history salvar", "/history exportar",
@@ -2455,6 +2456,7 @@ def main():
                 "  [tool]/perfil [white]local|nuvem[/white][/tool]    troca o orquestrador da sessão\n"
                 "  [tool]/modo [white]chat|build[/white][/tool]      modo da sessão (build exige nuvem)\n"
                 "  [tool]/processo[/tool]                lista e executa processos nativos do Ciel\n"
+                "  [tool]/preview[/tool]                 lista/para previews locais sem chamar o modelo\n"
                 "  [tool]/tools-extras[/tool]            tools opcionais e exemplos disponíveis\n"
                 "  [tool]/ajuda[/tool]                   este menu",
                 title="[white]comandos[/white]",
@@ -2622,6 +2624,62 @@ def main():
             if current_session_id is not None:
                 store.append_turn(current_session_id, "agent", result, ts)
             completer = make_completer(tools)  # pega o agente/task recém-criado no Tab
+            continue
+
+        # ── /preview — servidor estático local, sem chamar modelo ─────────────
+        if user_input.startswith("/preview"):
+            from tools import preview_manager
+
+            partes = user_input.split()
+            sub = partes[1].lower() if len(partes) > 1 else "listar"
+            if sub in ("listar", "list", "ls"):
+                console.print(preview_manager.list_all())
+            elif sub in ("start", "iniciar"):
+                if len(partes) < 3:
+                    console.print(
+                        "  [tool]uso: /preview start <pasta> [porta][/tool]"
+                    )
+                else:
+                    porta = 8765
+                    if len(partes) > 3:
+                        try:
+                            porta = int(partes[3])
+                        except ValueError:
+                            porta = 8765
+                    console.print(preview_manager.start(partes[2], porta))
+            elif sub in ("stop", "parar", "encerrar"):
+                alvo = partes[2] if len(partes) > 2 else ""
+                if alvo in ("all", "todos"):
+                    ativos = preview_manager.active()
+                    if not ativos:
+                        console.print("Nenhum preview ativo.")
+                    else:
+                        for preview_id in ativos:
+                            console.print(preview_manager.stop(preview_id))
+                elif alvo:
+                    if alvo.startswith("preview-"):
+                        console.print(preview_manager.stop(alvo))
+                    elif alvo.isdigit():
+                        console.print(preview_manager.stop(port=int(alvo)))
+                    else:
+                        console.print(f"Preview '{alvo}' não encontrado.")
+                else:
+                    ativos = preview_manager.active()
+                    if len(ativos) == 1:
+                        console.print(preview_manager.stop(next(iter(ativos))))
+                    elif not ativos:
+                        console.print("Nenhum preview ativo.")
+                    else:
+                        console.print(
+                            "Há mais de um preview; use "
+                            "/preview stop <id|porta|todos>.\n"
+                            + preview_manager.list_all()
+                        )
+            else:
+                console.print(
+                    "  [tool]uso:[/tool] /preview [listar|start <pasta> [porta]"
+                    "|stop [id|porta|todos]]"
+                )
             continue
 
         # ── /multitask — execução de fluxo em tasks ───────────────────────────

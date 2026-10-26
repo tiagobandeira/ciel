@@ -358,6 +358,22 @@ ativos.
 
 ---
 
+---
+
+## D-018 — Entrevista como processo separado
+
+**Decisão:** `web_projeto` é um processo próprio, com uma task `briefing`
+usando `entrevista_interativa` antes da spec. `app_web` continua o caminho
+direto, sem interação, para benchmarks e pedidos já claros.
+
+**Por quê:** entrevista é interativa e não pode quebrar o fluxo automático.
+Separar os processos mantém os dois previsíveis.
+
+**Consequência:** `web_projeto` tem 7 tasks e grava `BRIEFING.md`; `app_web`
+tem 6 e vai direto para `SPEC.md`.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

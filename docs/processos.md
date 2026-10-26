@@ -50,6 +50,7 @@ esse motor.
 ```text
 /processo                         # lista
 /processo app_web "app de notas em markdown"
+/processo web_projeto "app de notas com entrevista"
 /processo landing_page
 /processo --retomar <id>          # retoma um processo pausado
 ```
@@ -67,6 +68,7 @@ Processos iniciais:
 
 | Processo | O que faz |
 |---|---|
+| `web_projeto` | app web com briefing entrevistado, spec, implementação e preview |
 | `app_web` | app local com spec, interface, persistência e critérios de aceite |
 | `landing_page` | página responsiva com hero, features e CTA |
 | `jogo_web` | jogo simples em HTML/canvas/JavaScript |
@@ -96,6 +98,12 @@ python examples/reset_bugfix_demo.py
 Resultado do primeiro teste: **3/3 tasks, ~50k tokens** (47,4k input + 2,4k
 output), contra 1,5M de um app greenfield. É o caso onde o motor de checks se
 paga.
+
+## Entrevista
+
+O `web_projeto` começa com a task `briefing`: o Ciel faz 4 perguntas
+(objetivo, público, funcionalidades e estilo), grava `BRIEFING.md` e só então
+escreve a spec. Use `app_web` quando quiser o caminho direto, sem entrevista.
 
 ## Scaffold e tarefas idempotentes
 

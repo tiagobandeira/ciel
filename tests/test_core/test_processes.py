@@ -16,7 +16,16 @@ def test_normaliza_aliases_de_perfil():
 
 def test_lista_processos():
     ids = {p.id for p in list_processes()}
-    assert {"app_web", "landing_page", "jogo_web", "corrigir_bug"} <= ids
+    assert {"app_web", "web_projeto", "landing_page", "jogo_web", "corrigir_bug"} <= ids
+
+
+def test_web_projeto_comeca_com_briefing():
+    flow = load_flow("web_projeto")
+    board = build_board(flow)
+    assert len(board.tasks()) == 7
+    assert not board.validate()
+    assert board.task("t1").titulo == "briefing"
+    assert board.task("t2").depende_de == ["t1"]
 
 
 def test_get_process_por_id_ou_titulo():
@@ -27,6 +36,7 @@ def test_get_process_por_id_ou_titulo():
 
 def test_detect_process_por_intencao():
     assert detect_process("quero um app de notas em markdown").id == "app_web"
+    assert detect_process("quero um app com entrevista").id == "web_projeto"
     assert detect_process("crie uma landing page para o produto").id == "landing_page"
     assert detect_process("faça um jogo da cobrinha").id == "jogo_web"
     assert detect_process("escreva um artigo sobre grupos").id == "artigo_matematica"
