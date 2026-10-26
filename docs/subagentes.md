@@ -11,6 +11,7 @@ bruto dos outros, só o que a task declara como dependência.
 fase: Pesquisa
 subagente: pesquisador
 modelo: modelo-especifico
+perfil: nuvem
 tools: read_file, list_directory
 read_only: true
 parallel: true
@@ -19,6 +20,7 @@ max_steps: 4
 
 - `subagente` (ou `agente`): persona de `agents/`;
 - `modelo`: modelo específico da task; vazio usa o modelo do papel;
+- `perfil`: `local` ou `nuvem`; vazio usa o perfil da execução;
 - `tools`: restringe o schema;
 - `read_only`: declara intenção somente leitura;
 - `parallel`: pode rodar junto com tasks irmãs read-only;

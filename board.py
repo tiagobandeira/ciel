@@ -194,6 +194,7 @@ class TaskState:
     pular_se_ok: bool = False
     parallel: bool = False
     modelo: str = ""
+    perfil: str = ""
     read_only: bool = False
     depende_de: list[str] = field(default_factory=list)
     tentativas: int = 0
@@ -216,6 +217,7 @@ class TaskState:
         self.pular_se_ok = bool(self.pular_se_ok)
         self.parallel = bool(self.parallel)
         self.modelo = str(self.modelo or "")
+        self.perfil = str(self.perfil or "").strip().lower()
         self.read_only = bool(self.read_only)
 
         normalized: list[dict] = []
@@ -388,6 +390,7 @@ class Board:
         pular_se_ok: bool = False,
         parallel: bool = False,
         modelo: str = "",
+        perfil: str = "",
         read_only: bool = False,
         depende_de: list[str] | None = None,
         status: str = TASK_PENDENTE,
@@ -419,6 +422,7 @@ class Board:
             pular_se_ok=pular_se_ok,
             parallel=parallel,
             modelo=modelo,
+            perfil=perfil,
             read_only=read_only,
             depende_de=list(depende_de or []),
         )

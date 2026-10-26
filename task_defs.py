@@ -39,7 +39,7 @@ TASKS_DIR_DEFAULT = Path("tasks")
 TASK_KEYS = (
     "nome", "objetivo", "acoes", "resultado", "grupo",
     "fase", "agente", "subagente", "tools", "max_steps", "pular_se_ok",
-    "parallel", "paralelo", "modelo", "read_only", "somente_leitura",
+    "parallel", "paralelo", "modelo", "perfil", "read_only", "somente_leitura",
     "depende_de", "checagem",
 )
 
@@ -87,6 +87,7 @@ def parse_task_text(text: str) -> dict | None:
     pular_se_ok = False
     parallel = False
     modelo = ""
+    perfil = ""
     read_only = False
     depende_de: list[str] = []
     checagem  = None
@@ -129,6 +130,9 @@ def parse_task_text(text: str) -> dict | None:
         elif stripped.startswith("modelo:") or stripped.startswith("model:"):
             modelo = stripped.split(":", 1)[1].strip()
             section = None
+        elif stripped.startswith("perfil:"):
+            perfil = stripped.split(":", 1)[1].strip().lower()
+            section = None
         elif stripped.startswith("read_only:") or stripped.startswith("somente_leitura:"):
             raw = stripped.split(":", 1)[1].strip().lower()
             read_only = raw in ("1", "true", "sim", "s", "yes", "y")
@@ -164,6 +168,7 @@ def parse_task_text(text: str) -> dict | None:
         "pular_se_ok": pular_se_ok,
         "parallel": parallel,
         "modelo": modelo,
+        "perfil": perfil,
         "read_only": read_only,
         "depende_de": depende_de,
         "checagem": checagem,

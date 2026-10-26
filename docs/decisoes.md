@@ -565,6 +565,23 @@ arquivos disjuntos/locks.
 
 ---
 
+---
+
+## D-030 — Perfil por subagente
+
+**Decisão:** cada task pode declarar `perfil: local|nuvem`. O runner resolve
+papéis e cliente para aquela task; o prompt do subagente usa o `core_prompt`
+ou `core_build` correspondente.
+
+**Por quê:** misturar tarefas mecânicas no local com tarefas difíceis no
+nuvem é o ponto de “modelo por subagente”. Antes, o board nuvem executava as
+tasks com prompt local por engano.
+
+**Consequência:** o cliente por task é criado sob demanda; o resultado registra
+o perfil em `subagents/<task>.json`.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

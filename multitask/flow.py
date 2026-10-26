@@ -292,6 +292,7 @@ def build_board(
                 pular_se_ok=bool(task.get("pular_se_ok") or False),
                 parallel=bool(task.get("parallel") or task.get("paralelo") or False),
                 modelo=str(task.get("modelo") or ""),
+                perfil=str(task.get("perfil") or ""),
                 read_only=bool(task.get("read_only") or False),
             )
         except BoardError as exc:

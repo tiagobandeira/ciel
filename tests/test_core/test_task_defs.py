@@ -70,6 +70,7 @@ tools: read_file, write_file, list_directory
 max_steps: 6
 parallel: true
 modelo: modelo-x
+perfil: nuvem
 read_only: true
 depende_de: t1, t2
 checagem: {"tipo": "http", "url": "/", "esperado": 200}
@@ -81,6 +82,7 @@ checagem: {"tipo": "http", "url": "/", "esperado": 200}
         assert task["max_steps"] == 6
         assert task["parallel"] is True
         assert task["modelo"] == "modelo-x"
+        assert task["perfil"] == "nuvem"
         assert task["read_only"] is True
         assert task["depende_de"] == ["t1", "t2"]
         assert task["checagem"] == {

@@ -785,6 +785,7 @@ def _record_subagent(
             "fase": phase,
             "agente": task.agente or "general",
             "modelo": task.modelo or "",
+            "perfil": task.perfil or "",
             "tools": list(task.tools or []),
             "read_only": bool(task.read_only),
             "status": task.status,
@@ -939,6 +940,25 @@ def _execute_task(
     task_model = str(getattr(task, "modelo", "") or "").strip()
     if task_model:
         model = task_model
+    task_perfil = normalize_perfil(getattr(task, "perfil", "") or profile)
+    if task_perfil != normalize_perfil(profile):
+        try:
+            from llm.roles import load_roles
+
+            task_roles = load_roles(
+                model or "gemma4:cloud", perfil=task_perfil,
+            )
+            spec = task_roles.orchestrator
+            if spec is not None:
+                if spec.is_local:
+                    model_client = None
+                    model = task_model or spec.model or model
+                else:
+                    model_client = spec.client()
+                    model = ""
+                profile = task_perfil
+        except Exception:
+            pass
     total = len(board.tasks())
     index = _task_index(board, task)
     task_started = time.time()
@@ -1055,6 +1075,7 @@ def _execute_task(
             ollama_url=ollama_url,
             mcp_manager=mcp_manager,
             model_client=model_client,
+            profile=profile,
             allow_tool_proposal=False,
             budget_tokens=budget_left,
             **callbacks,

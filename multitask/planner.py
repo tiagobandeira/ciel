@@ -471,6 +471,7 @@ def parse_plan(
             pular_se_ok = bool(task.get("pular_se_ok") or False)
             parallel = bool(task.get("parallel") or task.get("paralelo") or False)
             task_model = str(task.get("modelo") or task.get("model") or "")
+            task_perfil = str(task.get("perfil") or "").strip().lower()
             read_only = bool(task.get("read_only") or False)
 
             if task_errors:
@@ -491,6 +492,7 @@ def parse_plan(
                     pular_se_ok=pular_se_ok,
                     parallel=parallel,
                     modelo=task_model,
+                    perfil=task_perfil,
                     read_only=read_only,
                     depende_de=deps,
                     task_id=task_id,

@@ -266,6 +266,26 @@ class TestExecucaoFeliz:
 
         assert calls[0]["model"] == "meu-modelo"
 
+    def test_perfil_por_task_cria_cliente(self, store, workspace):
+        sentinel = object()
+        spec = type("Spec", (), {
+            "is_local": False,
+            "model": "modelo-nuvem",
+            "client": lambda self: sentinel,
+        })()
+        roles = type("Roles", (), {"orchestrator": spec})()
+        board = Board.new("x", run_id="run-perfil")
+        board.add_task("f", "t", acoes=["a"], perfil="nuvem")
+        calls = []
+        with patch("llm.roles.load_roles", return_value=roles), patch(
+            "multitask.runner.run_agent",
+            side_effect=make_fake([done("ok")], calls=calls),
+        ):
+            run_board(board, {}, [], AGENT, store=store, workspace_root=workspace)
+
+        assert calls[0]["kwargs"]["model_client"] is sentinel
+        assert calls[0]["kwargs"]["profile"] == "nuvem"
+
     def test_pular_se_ok_nao_chama_modelo(self, store, workspace):
         (workspace / "pronto.txt").write_text("ok", encoding="utf-8")
         board = Board.new("x", run_id="run-pular")
