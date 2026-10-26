@@ -5,13 +5,14 @@ como_testar: leia data/user/corrigir_bug/VERIFICACAO.md e rode python verificar.
 
 ## task: preparar
 fase: Preparação
-tools: copy_template, write_file, read_file, list_directory
-max_steps: 6
-objetivo: identificar o projeto-alvo e preparar o runner de verificação
+tools: copy_template, read_file, edit_file
+max_steps: 4
+objetivo: preparar o ALVO e o runner de verificação
 ações:
-- copiar o template corrigir_bug para data/user/corrigir_bug [tool: copy_template]
-- ler o objetivo: se citar projeto e comando de teste, usar; senão usar data/user/bugfix_demo e python -m pytest -q
-- escrever data/user/corrigir_bug/ALVO.json com projeto, comando, cwd e arquivo afetado (se conhecido)
+- copiar o template corrigir_bug para data/user/corrigir_bug (inclui ALVO.json e verificar.py) [tool: copy_template]
+- ler o objetivo; se citar outro projeto, comando, cwd ou arquivo, atualizar ALVO.json com edit_file
+- se não citar nada, manter o ALVO default do template (demo)
+- não listar a raiz inteira nem data/user; o template já traz o alvo default
 - não alterar o código do projeto nesta task
 resultado esperado: ALVO.json e verificar.py existem na pasta de saída
 checagem: [{"tipo": "arquivo", "path": "data/user/corrigir_bug/ALVO.json", "tamanho_min": 40}, {"tipo": "arquivo", "path": "data/user/corrigir_bug/verificar.py", "tamanho_min": 100}]

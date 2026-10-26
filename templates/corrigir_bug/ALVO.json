@@ -1,0 +1,6 @@
+{
+  "projeto": "data/user/bugfix_demo",
+  "comando": ["python", "-m", "pytest", "-q"],
+  "cwd": "data/user/bugfix_demo",
+  "arquivo": ""
+}

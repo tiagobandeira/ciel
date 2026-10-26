@@ -7,6 +7,13 @@ import sys
 from pathlib import Path
 
 TEMPLATE = Path(__file__).resolve().parents[2] / "templates/corrigir_bug/verificar.py"
+ALVO_TEMPLATE = Path(__file__).resolve().parents[2] / "templates/corrigir_bug/ALVO.json"
+
+
+def test_template_traz_alvo_default():
+    data = json.loads(ALVO_TEMPLATE.read_text(encoding="utf-8"))
+    assert data["projeto"] == "data/user/bugfix_demo"
+    assert data["comando"]
 
 
 def test_runner_executa_comando_do_alvo(tmp_path):
