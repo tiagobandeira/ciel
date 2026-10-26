@@ -193,6 +193,8 @@ class TaskState:
     max_steps: int = 0
     pular_se_ok: bool = False
     parallel: bool = False
+    modelo: str = ""
+    read_only: bool = False
     depende_de: list[str] = field(default_factory=list)
     tentativas: int = 0
     correcoes: int = 0
@@ -213,6 +215,8 @@ class TaskState:
         self.max_steps = _coerce_int(self.max_steps)
         self.pular_se_ok = bool(self.pular_se_ok)
         self.parallel = bool(self.parallel)
+        self.modelo = str(self.modelo or "")
+        self.read_only = bool(self.read_only)
 
         normalized: list[dict] = []
         for item in self.artefatos or []:
@@ -383,6 +387,8 @@ class Board:
         max_steps: int = 0,
         pular_se_ok: bool = False,
         parallel: bool = False,
+        modelo: str = "",
+        read_only: bool = False,
         depende_de: list[str] | None = None,
         status: str = TASK_PENDENTE,
         task_id: str | None = None,
@@ -412,6 +418,8 @@ class Board:
             max_steps=max_steps,
             pular_se_ok=pular_se_ok,
             parallel=parallel,
+            modelo=modelo,
+            read_only=read_only,
             depende_de=list(depende_de or []),
         )
         phase.tasks.append(task)

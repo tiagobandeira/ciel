@@ -38,7 +38,8 @@ TASKS_DIR_DEFAULT = Path("tasks")
 # e o formato antigo continua funcionando sem nenhuma mudança.
 TASK_KEYS = (
     "nome", "objetivo", "acoes", "resultado", "grupo",
-    "fase", "agente", "tools", "max_steps", "pular_se_ok", "parallel", "paralelo",
+    "fase", "agente", "subagente", "tools", "max_steps", "pular_se_ok",
+    "parallel", "paralelo", "modelo", "read_only", "somente_leitura",
     "depende_de", "checagem",
 )
 
@@ -85,6 +86,8 @@ def parse_task_text(text: str) -> dict | None:
     max_steps = 0
     pular_se_ok = False
     parallel = False
+    modelo = ""
+    read_only = False
     depende_de: list[str] = []
     checagem  = None
     section   = None
@@ -102,7 +105,7 @@ def parse_task_text(text: str) -> dict | None:
         elif stripped.startswith("fase:"):
             fase    = stripped.split(":", 1)[1].strip()
             section = None
-        elif stripped.startswith("agente:"):
+        elif stripped.startswith("agente:") or stripped.startswith("subagente:"):
             agente  = stripped.split(":", 1)[1].strip()
             section = None
         elif stripped.startswith("tools:") or stripped.startswith("ferramentas:"):
@@ -122,6 +125,13 @@ def parse_task_text(text: str) -> dict | None:
         elif stripped.startswith("parallel:") or stripped.startswith("paralelo:"):
             raw = stripped.split(":", 1)[1].strip().lower()
             parallel = raw in ("1", "true", "sim", "s", "yes", "y")
+            section = None
+        elif stripped.startswith("modelo:") or stripped.startswith("model:"):
+            modelo = stripped.split(":", 1)[1].strip()
+            section = None
+        elif stripped.startswith("read_only:") or stripped.startswith("somente_leitura:"):
+            raw = stripped.split(":", 1)[1].strip().lower()
+            read_only = raw in ("1", "true", "sim", "s", "yes", "y")
             section = None
         elif stripped.startswith("depende_de:") or stripped.startswith("depende de:"):
             raw = stripped.split(":", 1)[1]
@@ -153,6 +163,8 @@ def parse_task_text(text: str) -> dict | None:
         "max_steps": max_steps,
         "pular_se_ok": pular_se_ok,
         "parallel": parallel,
+        "modelo": modelo,
+        "read_only": read_only,
         "depende_de": depende_de,
         "checagem": checagem,
     }

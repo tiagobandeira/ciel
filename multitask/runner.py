@@ -509,6 +509,9 @@ def _execute(
                             board.meta.setdefault("metricas", {})[original.id] = metric
                         tokens_in += outcome.tokens_in
                         tokens_out += outcome.tokens_out
+                        _record_subagent(
+                            store, board, branch_task, phase, parallel=True,
+                        )
                         stopped_at = original.id
                         current_task_id = original.id
                         if outcome.status == "done":
@@ -567,6 +570,7 @@ def _execute(
 
             tokens_in += outcome.tokens_in
             tokens_out += outcome.tokens_out
+            _record_subagent(store, board, task, phase)
 
             if outcome.status == "done":
                 tasks_ok.append(task.id)
@@ -733,6 +737,47 @@ def _tools_for_task(task, tools: dict, schema: list) -> tuple[dict, list]:
     return selected, selected_schema
 
 
+def _record_subagent(
+    store: BoardStore,
+    board: Board,
+    task,
+    phase: str,
+    *,
+    parallel: bool = False,
+) -> None:
+    """Persiste o resultado do subagente em data/runs/<id>/subagents/."""
+    try:
+        target = store.run_dir(board.id) / "subagents"
+        target.mkdir(parents=True, exist_ok=True)
+        data = {
+            "id": task.id,
+            "titulo": task.titulo,
+            "fase": phase,
+            "agente": task.agente or "general",
+            "modelo": task.modelo or "",
+            "tools": list(task.tools or []),
+            "read_only": bool(task.read_only),
+            "status": task.status,
+            "resumo": task.resumo,
+            "erro": task.erro,
+            "tokens_in": task.tokens_in,
+            "tokens_out": task.tokens_out,
+            "duracao_s": task.duracao_s,
+            "correcoes": task.correcoes,
+            "checagem_ok": task.checagem_ok,
+            "checagem": task.checagem_resumo,
+            "artefatos": list(task.artefatos),
+            "parallel": parallel,
+            "atualizado_em": now_iso(),
+        }
+        path = target / f"{task.id}.json"
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(path)
+    except Exception:
+        pass
+
+
 class _NullStore:
     """Store no-op para execuções paralelas em boards isolados."""
 
@@ -861,6 +906,9 @@ def _execute_task(
     Ciclo: run_agent → checagem por código → (se falhar) correção com o erro
     e os arquivos envolvidos, até `max_correcoes_por_task`.
     """
+    task_model = str(getattr(task, "modelo", "") or "").strip()
+    if task_model:
+        model = task_model
     total = len(board.tasks())
     index = _task_index(board, task)
     task_started = time.time()

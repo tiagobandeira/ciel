@@ -65,9 +65,12 @@ class TestLoadTask:
         text = BASE_TASK + """\
 
 fase: backend
-agente: dev_helper
+subagente: dev_helper
 tools: read_file, write_file, list_directory
 max_steps: 6
+parallel: true
+modelo: modelo-x
+read_only: true
 depende_de: t1, t2
 checagem: {"tipo": "http", "url": "/", "esperado": 200}
 """
@@ -76,6 +79,9 @@ checagem: {"tipo": "http", "url": "/", "esperado": 200}
         assert task["agente"] == "dev_helper"
         assert task["tools"] == ["read_file", "write_file", "list_directory"]
         assert task["max_steps"] == 6
+        assert task["parallel"] is True
+        assert task["modelo"] == "modelo-x"
+        assert task["read_only"] is True
         assert task["depende_de"] == ["t1", "t2"]
         assert task["checagem"] == {
             "tipo": "http", "url": "/", "esperado": 200,

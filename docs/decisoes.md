@@ -547,6 +547,24 @@ fase.
 
 ---
 
+---
+
+## D-029 — Subagente como unidade de sistema
+
+**Decisão:** cada task é tratada como subagente: persona, modelo, tools,
+limite, contexto e resultado próprios. O resultado é persistido em
+`data/runs/<id>/subagents/<task_id>.json`.
+
+**Por quê:** “task” era só uma linha do quadro; faltava o contrato de execução
+isolada e observável. Subagente precisa de identidade, permissões e resultado,
+não de acesso ao log bruto.
+
+**Consequência:** `subagente` é alias de `agente`; `modelo`, `read_only` e
+`parallel` são campos de task. Paralelo continua read-only; escrita exige
+arquivos disjuntos/locks.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

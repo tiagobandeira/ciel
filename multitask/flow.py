@@ -291,6 +291,8 @@ def build_board(
                 max_steps=int(task.get("max_steps") or 0),
                 pular_se_ok=bool(task.get("pular_se_ok") or False),
                 parallel=bool(task.get("parallel") or task.get("paralelo") or False),
+                modelo=str(task.get("modelo") or ""),
+                read_only=bool(task.get("read_only") or False),
             )
         except BoardError as exc:
             raise FlowError(str(exc)) from exc

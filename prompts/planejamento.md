@@ -70,6 +70,8 @@ sem explicação antes ou depois.
   checagem já puder estar satisfeita antes de executar.
 - `parallel`: opcional. Use `true` só em task independente e com `tools:`
   restrito a leitura; o harness pode executá-la junto com outras da fase.
+- `modelo`: opcional. Modelo específico do subagente; vazio = modelo do papel.
+- `read_only`: opcional. Declara que o subagente só lê arquivos.
 - `resultado_esperado`: obrigatório e verificável. Descreva o estado final,
   não o processo ("arquivo X existe e contém Y", "comando retorna 0",
   "GET / responde 200").

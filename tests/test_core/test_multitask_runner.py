@@ -250,6 +250,21 @@ class TestExecucaoFeliz:
         assert len(result.tasks_ok) == 2
         assert board.task("t1").status == TASK_CONCLUIDA
         assert board.task("t2").status == TASK_CONCLUIDA
+        sub = store.run_dir(board.id) / "subagents" / "t1.json"
+        assert sub.exists()
+        assert '"parallel": true' in sub.read_text(encoding="utf-8")
+
+    def test_modelo_por_task(self, store, workspace):
+        board = Board.new("x", run_id="run-modelo")
+        board.add_task("f", "t", acoes=["a"], modelo="meu-modelo")
+        calls = []
+        with patch(
+            "multitask.runner.run_agent",
+            side_effect=make_fake([done("ok")], calls=calls),
+        ):
+            run_board(board, {}, [], AGENT, store=store, workspace_root=workspace)
+
+        assert calls[0]["model"] == "meu-modelo"
 
     def test_pular_se_ok_nao_chama_modelo(self, store, workspace):
         (workspace / "pronto.txt").write_text("ok", encoding="utf-8")
