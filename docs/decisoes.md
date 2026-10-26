@@ -529,6 +529,24 @@ nível.
 
 ---
 
+---
+
+## D-028 — Paralelismo só para leitura
+
+**Decisão:** tasks com `parallel: true` podem rodar juntas somente se todas as
+tools declaradas forem de leitura. Cada uma usa um board isolado; o resultado
+é mesclado no quadro principal.
+
+**Por quê:** o runner atual compartilha board, workspace e callbacks; rodar
+escrita concorrente sem isolamento corromperia estado. Leitura paralela já
+reduz latência em pesquisa/inspeção sem esse risco.
+
+**Consequência:** `max_parallel` padrão 2; revisão de fase após lote paralelo
+fica pendente; escrita paralela exige locks/arquivos disjuntos em uma próxima
+fase.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

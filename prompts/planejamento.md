@@ -68,6 +68,8 @@ sem explicação antes ou depois.
   como orçamento de passos da task.
 - `pular_se_ok`: opcional. Use `true` só quando a task for idempotente e a
   checagem já puder estar satisfeita antes de executar.
+- `parallel`: opcional. Use `true` só em task independente e com `tools:`
+  restrito a leitura; o harness pode executá-la junto com outras da fase.
 - `resultado_esperado`: obrigatório e verificável. Descreva o estado final,
   não o processo ("arquivo X existe e contém Y", "comando retorna 0",
   "GET / responde 200").

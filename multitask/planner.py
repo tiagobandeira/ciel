@@ -469,6 +469,7 @@ def parse_plan(
                 )
 
             pular_se_ok = bool(task.get("pular_se_ok") or False)
+            parallel = bool(task.get("parallel") or task.get("paralelo") or False)
 
             if task_errors:
                 errors.extend(task_errors)
@@ -486,6 +487,7 @@ def parse_plan(
                     tools=tools_raw,
                     max_steps=task_max_steps,
                     pular_se_ok=pular_se_ok,
+                    parallel=parallel,
                     depende_de=deps,
                     task_id=task_id,
                 )

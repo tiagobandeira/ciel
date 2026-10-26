@@ -223,6 +223,34 @@ class TestExecucaoFeliz:
         assert "context_peak_chars" in metricas
         assert "prompt_chars" in metricas
 
+    def test_parallel_readonly_roda_em_threads(self, store, workspace):
+        import threading
+        from agent_loop import AgentResult
+
+        barrier = threading.Barrier(2)
+
+        def fake_agent(*args, **kwargs):
+            barrier.wait(timeout=5)
+            return AgentResult("done", "ok", tokens_in=1, tokens_out=1)
+
+        board = Board.new("x", run_id="run-parallel")
+        board.add_task(
+            "f", "a", acoes=["a"], tools=["calculator"], parallel=True,
+        )
+        board.add_task(
+            "f", "b", acoes=["b"], tools=["calculator"], parallel=True,
+        )
+        with patch("multitask.runner.run_agent", side_effect=fake_agent):
+            result = run_board(
+                board, {}, [], AGENT,
+                store=store, workspace_root=workspace, max_parallel=2,
+            )
+
+        assert result.status == RUN_CONCLUIDA
+        assert len(result.tasks_ok) == 2
+        assert board.task("t1").status == TASK_CONCLUIDA
+        assert board.task("t2").status == TASK_CONCLUIDA
+
     def test_pular_se_ok_nao_chama_modelo(self, store, workspace):
         (workspace / "pronto.txt").write_text("ok", encoding="utf-8")
         board = Board.new("x", run_id="run-pular")

@@ -38,7 +38,7 @@ TASKS_DIR_DEFAULT = Path("tasks")
 # e o formato antigo continua funcionando sem nenhuma mudança.
 TASK_KEYS = (
     "nome", "objetivo", "acoes", "resultado", "grupo",
-    "fase", "agente", "tools", "max_steps", "pular_se_ok",
+    "fase", "agente", "tools", "max_steps", "pular_se_ok", "parallel", "paralelo",
     "depende_de", "checagem",
 )
 
@@ -84,6 +84,7 @@ def parse_task_text(text: str) -> dict | None:
     tools: list[str] = []
     max_steps = 0
     pular_se_ok = False
+    parallel = False
     depende_de: list[str] = []
     checagem  = None
     section   = None
@@ -118,6 +119,10 @@ def parse_task_text(text: str) -> dict | None:
             raw = stripped.split(":", 1)[1].strip().lower()
             pular_se_ok = raw in ("1", "true", "sim", "s", "yes", "y")
             section = None
+        elif stripped.startswith("parallel:") or stripped.startswith("paralelo:"):
+            raw = stripped.split(":", 1)[1].strip().lower()
+            parallel = raw in ("1", "true", "sim", "s", "yes", "y")
+            section = None
         elif stripped.startswith("depende_de:") or stripped.startswith("depende de:"):
             raw = stripped.split(":", 1)[1]
             depende_de = _parse_depende(raw)
@@ -147,6 +152,7 @@ def parse_task_text(text: str) -> dict | None:
         "tools": tools,
         "max_steps": max_steps,
         "pular_se_ok": pular_se_ok,
+        "parallel": parallel,
         "depende_de": depende_de,
         "checagem": checagem,
     }

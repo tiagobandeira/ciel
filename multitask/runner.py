@@ -19,12 +19,15 @@ from __future__ import annotations
 import json
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Lock
 from typing import Any, Callable
 
 from agent_loader import load_agent
-from agent_loop import OLLAMA_URL, run_agent
+from agent_loop import BATCH_SAFE_TOOLS, OLLAMA_URL, run_agent
 from llm.roles import PERFIL_NUVEM, normalize_perfil
 from board import (
     RUN_CONCLUIDA,
@@ -358,6 +361,7 @@ def run_board(
     workspace_root: str | Path | None = None,
     profile: str = "local",
     revisar_fases: bool = False,
+    max_parallel: int = 2,
 ) -> RunResult:
     """
     Executa as tasks pendentes do quadro, em ordem, até concluir, falhar,
@@ -392,6 +396,7 @@ def run_board(
             workspace_root=workspace_root,
             profile=profile,
             revisar_fases=revisar_fases,
+            max_parallel=max_parallel,
         )
 
 
@@ -414,6 +419,7 @@ def _execute(
     workspace_root: str | Path | None,
     profile: str = "local",
     revisar_fases: bool = False,
+    max_parallel: int = 2,
 ) -> RunResult:
     started = time.monotonic()
     tokens_in = 0
@@ -466,6 +472,82 @@ def _execute(
 
             stopped_at = task.id
             current_task_id = task.id
+
+            if max_parallel and max_parallel > 1 and getattr(task, "parallel", False):
+                batch = _parallel_candidates(board, task, max_parallel)
+                if len(batch) > 1:
+                    total_tasks = len(board.tasks())
+                    for item in batch:
+                        _emit(
+                            store, board, on_event, "task_iniciada",
+                            task=item.id, titulo=item.titulo, fase=phase,
+                            indice=_task_index(board, item), total=total_tasks,
+                        )
+                    results = _parallel_execute(
+                        batch, board, phase, tools, schema, agent_info,
+                        store=store,
+                        model=model,
+                        model_client=model_client,
+                        session_id=session_id,
+                        max_steps_per_task=max_steps_per_task,
+                        ollama_url=ollama_url,
+                        mcp_manager=mcp_manager,
+                        callbacks=callbacks,
+                        root=root,
+                        profile=profile,
+                    )
+                    phase_state = board.phase(phase)
+                    batch_failed = False
+                    for original, branch, branch_task, outcome in results:
+                        if phase_state is not None:
+                            for index, current in enumerate(phase_state.tasks):
+                                if current.id == original.id:
+                                    phase_state.tasks[index] = branch_task
+                                    break
+                        metric = branch.meta.get("metricas", {}).get(original.id)
+                        if metric:
+                            board.meta.setdefault("metricas", {})[original.id] = metric
+                        tokens_in += outcome.tokens_in
+                        tokens_out += outcome.tokens_out
+                        stopped_at = original.id
+                        current_task_id = original.id
+                        if outcome.status == "done":
+                            tasks_ok.append(original.id)
+                            _emit(
+                                store, board, on_event, "task_concluida",
+                                task=original.id, titulo=branch_task.titulo,
+                                fase=phase, resumo=branch_task.resumo,
+                                tokens_in=outcome.tokens_in,
+                                tokens_out=outcome.tokens_out,
+                                duracao_s=branch_task.duracao_s,
+                                artefatos=[
+                                    a.get("path") for a in branch_task.artefatos
+                                ],
+                                correcoes=branch_task.correcoes,
+                                checagem=branch_task.checagem_resumo,
+                                checagem_ok=branch_task.checagem_ok,
+                                paralelo=True,
+                            )
+                        else:
+                            batch_failed = True
+                            tasks_fail.append(original.id)
+                            _emit(
+                                store, board, on_event, "task_falhou",
+                                task=original.id, titulo=branch_task.titulo,
+                                fase=phase, erro=outcome.erro or outcome.motivo,
+                                tokens_in=outcome.tokens_in,
+                                tokens_out=outcome.tokens_out,
+                                paralelo=True,
+                            )
+                    store.save(board)
+                    if _phase_finished(board, phase):
+                        _emit(store, board, on_event, "fase_concluida", fase=phase)
+                    if batch_failed:
+                        board.set_status(RUN_FALHOU)
+                        store.save(board)
+                        motivo = "task paralela falhou"
+                        break
+                    continue
 
             outcome = _execute_task(
                 board, task, phase, tools, schema, agent_info,
@@ -649,6 +731,107 @@ def _tools_for_task(task, tools: dict, schema: list) -> tuple[dict, list]:
         if isinstance(item, dict) and item.get("name") in selected
     ]
     return selected, selected_schema
+
+
+class _NullStore:
+    """Store no-op para execuções paralelas em boards isolados."""
+
+    def save(self, board) -> None:
+        pass
+
+    def append_event(self, *args, **kwargs) -> None:
+        pass
+
+
+def _parallel_candidates(board: Board, first, max_parallel: int = 2) -> list:
+    """Tasks irmãs seguras para rodar em paralelo: read-only e sem deps pendentes."""
+    if getattr(first, "parallel", False) is not True:
+        return []
+    allowed = set(first.tools or [])
+    if not allowed or not allowed <= BATCH_SAFE_TOOLS:
+        return []
+
+    phase_name = _phase_of(board, first)
+    phase = board.phase(phase_name)
+    if phase is None:
+        return []
+    batch = [first]
+    for task in phase.tasks:
+        if len(batch) >= max(2, int(max_parallel or 2)):
+            break
+        if task.id == first.id or task.status != TASK_PENDENTE:
+            continue
+        if getattr(task, "parallel", False) is not True:
+            continue
+        tools = set(task.tools or [])
+        if not tools or not tools <= BATCH_SAFE_TOOLS:
+            continue
+        if any(
+            (board.task(dep) is None or not board.task(dep).is_terminal())
+            for dep in task.depende_de
+        ):
+            continue
+        batch.append(task)
+    return batch
+
+
+def _parallel_execute(
+    batch: list,
+    board: Board,
+    phase: str,
+    tools: dict,
+    schema: list,
+    agent_info: dict,
+    *,
+    store: BoardStore,
+    model: str,
+    model_client,
+    session_id,
+    max_steps_per_task: int,
+    ollama_url: str,
+    mcp_manager,
+    callbacks: dict,
+    root: Path,
+    profile: str,
+):
+    """Executa um lote em boards isolados e devolve (task_original, board, outcome)."""
+    jobs = []
+    for task in batch:
+        branch = deepcopy(board)
+        branch_task = branch.task(task.id)
+        jobs.append((task, branch, branch_task))
+
+    def run_one(job):
+        original, branch, branch_task = job
+        try:
+            outcome = _execute_task(
+                branch, branch_task, phase, tools, schema, agent_info,
+                store=_NullStore(),
+                model=model,
+                model_client=model_client,
+                session_id=session_id,
+                max_steps=max_steps_per_task,
+                ollama_url=ollama_url,
+                mcp_manager=mcp_manager,
+                callbacks=callbacks,
+                on_event=None,
+                root=root,
+                tokens_before=(0, 0),
+                profile=profile,
+            )
+            return original, branch, branch_task, outcome
+        except Exception as exc:
+            return original, branch, branch_task, _TaskOutcome(
+                "failed", erro=str(exc), motivo=str(exc),
+            )
+
+    results = []
+    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+        futures = [pool.submit(run_one, job) for job in jobs]
+        for future in futures:
+            results.append(future.result())
+    return results
+
 
 
 def _execute_task(

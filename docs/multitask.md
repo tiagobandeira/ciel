@@ -219,6 +219,27 @@ Mostra o que funcionou, riscos/falhas e próximo passo. No perfil `nuvem`, usa
 o modelo para a análise e mostra os tokens gastos; no `local`, gera uma
 análise determinística a partir do quadro, sem chamar modelo.
 
+## Subagentes paralelos
+
+Tasks da mesma fase podem rodar em paralelo quando declaram:
+
+```markdown
+parallel: true
+tools: read_file, list_directory, search_files
+```
+
+Regras da primeira versão:
+
+- só tools de **leitura** (`BATCH_SAFE_TOOLS`);
+- a task precisa declarar `tools:` explicitamente;
+- dependências precisam estar concluídas;
+- `max_parallel` padrão é 2;
+- cada subagente roda em um board isolado e o resultado é mesclado ao quadro.
+
+Escrita paralela ainda não é permitida. A revisão de fase depois de um lote
+paralelo fica para a próxima etapa; os eventos `task_concluida`/`task_falhou`
+levam `paralelo=True`.
+
 ## Perfis de modelo
 
 O fluxo pode declarar `perfil: nuvem` para usar o provider configurado como
