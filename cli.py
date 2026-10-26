@@ -1423,6 +1423,7 @@ def main():
     CMDS = [
         "/sair", "/limpar", "/novo", "/criar", "/criar agente", "/criar task", "/criar canal whatsapp", "/task", "/tools", "/agente",
         "/modo chat", "/modo build", "/processo", "/processo app_web", "/processo web_projeto", "/processo landing_page", "/processo --retomar", "/processo --analisar",
+        "/replicar",
         "/preview", "/preview start", "/preview stop", "/preview listar",
         "/source", "/source --listar","/source --remover","/source --global","/source --limpar-orfas","/skill", "/limpar-temp",
         "/promover ", "/copiar", "/tokens", "/ajuda",
@@ -2457,6 +2458,7 @@ def main():
                 "  [tool]/modo [white]chat|build[/white][/tool]      modo da sessão (build exige nuvem)\n"
                 "  [tool]/processo[/tool]                lista e executa processos nativos do Ciel\n"
                 "  [tool]/processo --analisar [id][/tool]  analisa uma execução (sem modelo no local)\n"
+                "  [tool]/replicar <skill>[/tool]       executa uma skill absorvida como board\n"
                 "  [tool]/preview[/tool]                 lista/para previews locais sem chamar o modelo\n"
                 "  [tool]/tools-extras[/tool]            tools opcionais e exemplos disponíveis\n"
                 "  [tool]/ajuda[/tool]                   este menu",
@@ -2681,6 +2683,105 @@ def main():
                     "  [tool]uso:[/tool] /preview [listar|start <pasta> [porta]"
                     "|stop [id|porta|todos]]"
                 )
+            continue
+
+        # ── /replicar — skill absorvida vira board executável ────────────────
+        if user_input.startswith("/replicar"):
+            from board import BoardStore
+            from multitask.runner import run_board
+            from multitask.skill_board import SkillBoardError, build_skill_board
+
+            nome_skill = user_input[len("/replicar"):].strip()
+            if not nome_skill:
+                console.print(
+                    "  [tool]uso:[/tool] /replicar <skill>\n"
+                    "  [muted]a skill precisa ter sido absorvida por /analisar.[/muted]\n"
+                )
+                continue
+            try:
+                board = build_skill_board(
+                    nome_skill,
+                    perfil=_SESSION.get("perfil", "local"),
+                )
+            except SkillBoardError as exc:
+                console.print(f"  [err]{escape(str(exc))}[/err]\n")
+                continue
+
+            tbl = Table(box=None, show_header=True, padding=(0, 1))
+            tbl.add_column("task", style="tool", no_wrap=True)
+            tbl.add_column("fase", style="muted")
+            tbl.add_column("checks", style="muted")
+            phase_by_id = {
+                task.id: phase.nome
+                for phase in board.fases
+                for task in phase.tasks
+            }
+            for task in board.tasks():
+                tbl.add_row(
+                    f"{task.id} {task.titulo}",
+                    phase_by_id.get(task.id, ""),
+                    str(len(task.checagem or [])) if isinstance(task.checagem, list) else ("1" if task.checagem else "0"),
+                )
+            console.print()
+            console.print(tbl)
+            console.print()
+            confirmar = Prompt.ask(
+                "  executar a skill?", choices=["s", "n"], default="s"
+            )
+            if confirmar.lower() != "s":
+                continue
+
+            store = BoardStore()
+            store.create(board)
+            _callbacks = _make_run_callbacks(session_flags)
+            _callbacks.pop("_on_queue_action", None)
+
+            def on_replicar_event(event):
+                tipo = event.get("tipo")
+                if tipo == "task_iniciada":
+                    console.print(
+                        f"  [user]task {event.get('indice')}/{event.get('total')}"
+                        f"[/user] {escape(str(event.get('titulo', '')))}"
+                    )
+                elif tipo == "task_concluida":
+                    console.print(
+                        f"  [ok]✓[/ok] {escape(str(event.get('titulo', '')))}"
+                    )
+                elif tipo == "task_falhou":
+                    console.print(
+                        f"  [err]✗[/err] {escape(str(event.get('titulo', '')))}"
+                    )
+
+            resultado = run_board(
+                board, tools, schema, agent_info,
+                store=store,
+                model="" if _SESSION.get("client") is not None else args.model,
+                model_client=_SESSION.get("client"),
+                session_id=(
+                    str(current_session_id) if current_session_id else None
+                ),
+                max_steps_per_task=(
+                    MAX_STEPS_TASK_NUVEM
+                    if _SESSION.get("perfil") == PERFIL_NUVEM
+                    else MAX_STEPS_TASK
+                ),
+                mcp_manager=mcp_manager,
+                callbacks=_callbacks,
+                on_event=on_replicar_event,
+                profile=_SESSION.get("perfil", "local"),
+                revisar_fases=(_SESSION.get("perfil") == PERFIL_NUVEM),
+            )
+            console.print()
+            console.print(Panel(
+                escape(resultado.message or ""),
+                title=f"[user]replicar {nome_skill}[/user]",
+                border_style=CLR_USER,
+                padding=(0, 1),
+            ))
+            console.print(
+                f"  [muted]{resultado.status} · {len(resultado.tasks_ok)} tasks ok "
+                f"· ↑{resultado.tokens_in} ↓{resultado.tokens_out}[/muted]\n"
+            )
             continue
 
         # ── /multitask — execução de fluxo em tasks ───────────────────────────

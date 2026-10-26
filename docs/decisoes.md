@@ -474,6 +474,23 @@ copiado do repositório, não gerado pelo modelo.
 
 ---
 
+---
+
+## D-025 — `/replicar` liga skill absorvida ao board
+
+**Decisão:** `/replicar <skill>` lê `skills/<nome>_meta.json`, carrega as tasks
+geradas por `/analisar` e monta um `Board` do multitask, com dependências
+sequenciais para skills do tipo `pipeline`.
+
+**Por quê:** o `/analisar` já produzia as primitivas, mas elas ficavam soltas
+em `tasks/`; o roadmap pede que o plano venha da skill e use o mesmo quadro,
+checks e limites.
+
+**Consequência:** skills `plugin`/`context` continuam usando tools/instruções
+diretamente; só `pipeline` vira board.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

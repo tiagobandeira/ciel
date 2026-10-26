@@ -69,6 +69,7 @@ A linha `description:` é usada pela tool `list_skills` para exibir a descriçã
 | `/skill <nome>` | exibe o conteúdo da skill |
 | `/skill <nome> <prompt>` | executa o prompt usando a skill no modelo secundário |
 | `/analisar <caminho>` | absorve skill externa e a replica como primitivas nativas (Grande Sábio) |
+| `/replicar <nome>` | executa as tasks geradas por `/analisar` como board do multitask |
 
 ### Exemplos
 
@@ -92,6 +93,22 @@ A linha `description:` é usada pela tool `list_skills` para exibir a descriçã
 ```
 
 O autocompletar (Tab) sugere os nomes das skills disponíveis após `/skill `.
+
+## Replicar uma skill absorvida
+
+`/analisar` gera tasks, tools e contexto. Se a skill for do tipo `pipeline`,
+essas tasks podem rodar como um board do multitask:
+
+```text
+/analisar ~/downloads/minha-skill.md
+/replicar minha-skill
+```
+
+O `/replicar` lê `skills/<nome>_meta.json`, carrega as tasks em `tasks/`,
+monta o quadro em ordem e executa com checks, correção, retomada e revisão.
+
+Skills do tipo `plugin`/`context` não têm pipeline de tasks; use as tools ou o
+`/skill` diretamente.
 
 ---
 
