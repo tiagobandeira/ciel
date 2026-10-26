@@ -391,6 +391,23 @@ execução.
 
 ---
 
+---
+
+## D-020 — Fluxo de análise de dados
+
+**Decisão:** `analise_dados` é um fluxo de quatro fases — inspecionar, limpar,
+analisar e verificar — com scripts Python reproduzíveis e um check de comando
+no final.
+
+**Por quê:** análise de dados precisa de números reproduzíveis; um relatório
+gerado direto pelo modelo não é confiável. O fluxo separa perfil/limpeza/análise
+e obriga `verificar.py` a passar.
+
+**Consequência:** o objetivo precisa apontar o dataset; os artefatos ficam em
+`data/user/analise_dados/`.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

@@ -57,6 +57,13 @@ PROCESSES: tuple[Process, ...] = (
         keywords=("jogo", "game", "cobrinha", "snake", "canvas"),
     ),
     Process(
+        id="analise_dados",
+        titulo="Análise de dados",
+        descricao="perfila, limpa e analisa um dataset com relatório reproduzível",
+        flow="analise_dados",
+        keywords=("analise de dados", "análise de dados", "dataset", "csv", "planilha", "pandas", "estatistica"),
+    ),
+    Process(
         id="artigo_matematica",
         titulo="Artigo de matemática",
         descricao="artigo em Markdown com definições, teoremas e referências",

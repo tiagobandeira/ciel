@@ -52,6 +52,7 @@ esse motor.
 /processo app_web "app de notas em markdown"
 /processo web_projeto "app de notas com entrevista"
 /processo landing_page
+/processo analise_dados "analise data/vendas.csv"
 /processo --retomar <id>          # retoma um processo pausado
 /processo --analisar [id]         # analisa a execução (última por padrão)
 ```
@@ -73,6 +74,7 @@ Processos iniciais:
 | `app_web` | app local com spec, interface, persistência e critérios de aceite |
 | `landing_page` | página responsiva com hero, features e CTA |
 | `jogo_web` | jogo simples em HTML/canvas/JavaScript |
+| `analise_dados` | perfil, limpeza e análise de um dataset com relatório |
 | `artigo_matematica` | artigo em Markdown com definições, teoremas e referências |
 | `notebook_matematica` | notebook Jupyter sobre um tema matemático |
 | `corrigir_bug` | corrige uma falha reproduzível com correção mínima e check |
@@ -99,6 +101,19 @@ python examples/reset_bugfix_demo.py
 Resultado do primeiro teste: **3/3 tasks, ~50k tokens** (47,4k input + 2,4k
 output), contra 1,5M de um app greenfield. É o caso onde o motor de checks se
 paga.
+
+## Análise de dados
+
+O `analise_dados` espera um dataset (CSV/JSON/XLSX) citado no objetivo. Ele
+produz em `data/user/analise_dados/`:
+
+- `PERFIL.md` — shape, colunas, tipos e nulos;
+- `dados_limpos.csv` + `LIMPEZA.md`;
+- `ANALISE.md` — achados e limitações;
+- `VERIFICACAO.md` — como reproduzir.
+
+Os checks rodam `verificar.py`; números do relatório devem vir do script, não
+da imaginação do modelo.
 
 ## Entrevista
 
