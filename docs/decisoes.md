@@ -511,6 +511,24 @@ e reutiliza. Skills `plugin`/`context` não viram board.
 
 ---
 
+---
+
+## D-027 — Kernel como ambiente base
+
+**Decisão:** ambientes reutilizáveis ficam em `kernels/<nome>/kernel.yaml` com
+variantes, template, variáveis e smoke de arquivos. `prepare_kernel` aplica o
+kernel e grava `.ciel/kernel.json` no projeto.
+
+**Por quê:** `copy_template` resolvia arquivos, mas não expressava ambiente,
+variante, versão nem smoke. O kernel separa “terreno” de “feature”, que é a
+base para scaffold e, depois, para subagentes paralelos.
+
+**Consequência:** `web_static` cobre app/landing/jogo; os fluxos usam
+`prepare_kernel` na estrutura. `copy_template` continua como tool de baixo
+nível.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

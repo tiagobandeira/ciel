@@ -1,15 +1,15 @@
-﻿## flow: jogo_snake
+## flow: jogo_snake
 objetivo: criar um jogo da cobrinha completo e jogável em data/user/jogo_snake
 formato: markdown
 como_testar: abra data/user/jogo_snake/index.html no navegador e jogue com as setas ou WASD
 
 ## task: estrutura
 fase: Estrutura
-tools: copy_template, read_file, list_directory
+tools: prepare_kernel, read_file, list_directory
 pular_se_ok: true
-objetivo: criar os arquivos base do jogo a partir do template
+objetivo: criar os arquivos base do jogo a partir do kernel
 ações:
-- copiar o template game para data/user/jogo_snake (template="game", dest="data/user/jogo_snake") [tool: copy_template]
+- aplicar o kernel web_static, variante game, em data/user/jogo_snake (kernel="web_static", variant="game", dest="data/user/jogo_snake") [tool: prepare_kernel]
 - conferir index.html, style.css e game.js
 resultado esperado: os três arquivos existem em data/user/jogo_snake
 checagem: [{"tipo": "arquivo", "path": "data/user/jogo_snake/index.html"}, {"tipo": "arquivo", "path": "data/user/jogo_snake/style.css"}, {"tipo": "arquivo", "path": "data/user/jogo_snake/game.js"}]

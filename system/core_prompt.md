@@ -93,7 +93,7 @@ Schema gerado pelo registry para o exemplo acima:
 Disponíveis em todos os agentes. Não precisam ser listadas
 no agente específico — já estão sempre presentes:
 
-read_file, write_file, write_files, edit_file, apply_patch, list_directory, create_directory, copy_template, search_files, start_preview, stop_preview, list_previews,
+read_file, write_file, write_files, edit_file, apply_patch, list_directory, create_directory, copy_template, prepare_kernel, search_files, start_preview, stop_preview, list_previews,
 list_sources, search_knowledge, read_source,
 calculator, get_local_datetime,
 create_tool, run_script, install_tool, http_request,

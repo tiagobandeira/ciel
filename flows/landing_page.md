@@ -1,15 +1,15 @@
-﻿## flow: landing_page
+## flow: landing_page
 objetivo: criar uma landing page completa e responsiva em data/user/landing_page
 formato: markdown
 como_testar: abra data/user/landing_page/index.html no navegador e teste o CTA e o menu mobile
 
 ## task: estrutura
 fase: Estrutura
-tools: copy_template, read_file, list_directory
+tools: prepare_kernel, read_file, list_directory
 pular_se_ok: true
-objetivo: criar os três arquivos base da landing page a partir do template
+objetivo: criar os três arquivos base da landing page a partir do kernel
 ações:
-- copiar o template landing para data/user/landing_page (template="landing", dest="data/user/landing_page") [tool: copy_template]
+- aplicar o kernel web_static, variante landing, em data/user/landing_page (kernel="web_static", variant="landing", dest="data/user/landing_page") [tool: prepare_kernel]
 - conferir index.html, style.css e script.js
 resultado esperado: os três arquivos existem em data/user/landing_page
 checagem: [{"tipo": "arquivo", "path": "data/user/landing_page/index.html"}, {"tipo": "arquivo", "path": "data/user/landing_page/style.css"}, {"tipo": "arquivo", "path": "data/user/landing_page/script.js"}]

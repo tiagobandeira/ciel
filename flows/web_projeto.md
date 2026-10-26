@@ -32,11 +32,11 @@ checagem: [{"tipo": "arquivo", "path": "data/user/app_web/SPEC.md", "contem": "a
 ## task: estrutura
 fase: Estrutura
 depende_de: spec
-tools: copy_template, read_file, list_directory
+tools: prepare_kernel, read_file, list_directory
 pular_se_ok: true
-objetivo: criar os arquivos base do app a partir do template
+objetivo: criar os arquivos base do app a partir do kernel
 ações:
-- copiar o template app_web para data/user/app_web (template="app_web", dest="data/user/app_web") [tool: copy_template]
+- aplicar o kernel web_static, variante app, em data/user/app_web (kernel="web_static", variant="app", dest="data/user/app_web") [tool: prepare_kernel]
 - conferir index.html, style.css e app.js
 resultado esperado: os três arquivos base existem em data/user/app_web
 checagem: [{"tipo": "arquivo", "path": "data/user/app_web/index.html"}, {"tipo": "arquivo", "path": "data/user/app_web/style.css"}, {"tipo": "arquivo", "path": "data/user/app_web/app.js"}]

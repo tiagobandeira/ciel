@@ -17,6 +17,7 @@ Presentes em todo agente, independente do caso de uso.
 | `edit_file.py` | substitui um trecho exato (`old` → `new`) sem reescrever o arquivo |
 | `apply_patch.py` | aplica vários hunks `{old,new}` atomicamente; se um falhar, nada é escrito |
 | `copy_template.py` | copia um template de `templates/` para o destino (scaffold) |
+| `prepare_kernel.py` | aplica um kernel de `kernels/` com variante, manifesto e smoke |
 | `start_preview.py` | sobe um servidor estático local em 127.0.0.1 e devolve a URL |
 | `stop_preview.py` | encerra um preview pelo id ou porta |
 | `list_previews.py` | lista previews ativos |
@@ -75,8 +76,8 @@ Estado atual — o que falta são `search_files` e `install_tool`:
 
 ```
 read_file         write_file        write_files       edit_file
-apply_patch       copy_template     list_directory    create_directory
-start_preview     stop_preview      list_previews
+apply_patch       copy_template     prepare_kernel   list_directory
+create_directory  start_preview     stop_preview      list_previews
 search_files(*)
 list_sources      search_knowledge  read_source
 calculator        get_local_datetime

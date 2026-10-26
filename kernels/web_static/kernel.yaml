@@ -1,0 +1,24 @@
+name: web_static
+version: 1
+description: Ambiente base para apps, landings e jogos estáticos em HTML/CSS/JS.
+variables:
+  title: "Ciel"
+variants:
+  app:
+    template: app_web
+    checks:
+      - index.html
+      - style.css
+      - app.js
+  landing:
+    template: landing
+    checks:
+      - index.html
+      - style.css
+      - script.js
+  game:
+    template: game
+    checks:
+      - index.html
+      - style.css
+      - game.js
