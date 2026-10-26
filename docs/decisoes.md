@@ -286,6 +286,25 @@ nativo.
 
 ---
 
+---
+
+## D-014 — Resposta final de processo
+
+**Decisão:** ao concluir um processo, a resposta amigável deve mostrar:
+
+- o que foi feito, em linguagem direta;
+- a estrutura do projeto (arquivos/pastas principais);
+- onde ele está (`data/user/...`);
+- como testar/abrir;
+- informações úteis já existentes no processo (checks, arquivos, decisões).
+
+Nada de despejar todo o relatório técnico. O detalhe completo continua em
+`data/runs/<id>/relatorio.md`; a resposta é o resumo acionável.
+
+**Por quê:** o usuário quer saber “o que tenho em mãos e onde”, não ler o log.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

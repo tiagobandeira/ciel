@@ -28,6 +28,8 @@ Se houver fontes indexadas na sessão, consulte antes de responder:
 ## Arquivos e pastas
 
 - `write_file` escreve/cria arquivos e cria os diretórios pais.
+- `write_files` escreve vários arquivos novos de uma vez (atômico); use para
+  conjuntos de arquivos pequenos em vez de um step por arquivo.
 - `edit_file` substitui um trecho exato (`old` → `new`); use para corrigir
   sem reescrever o arquivo inteiro.
 - `apply_patch` aplica vários hunks `{old,new}` de uma vez, atomicamente;
