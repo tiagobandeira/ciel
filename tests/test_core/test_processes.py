@@ -61,10 +61,11 @@ def test_get_process_por_id_ou_titulo():
 def test_laboratorio_notebook_e_um_fluxo_valido():
     flow = load_flow("laboratorio_notebook")
     board = build_board(flow)
-    assert len(board.tasks()) == 6
+    assert len(board.tasks()) == 7
     assert not board.validate()
     assert board.task("t1").titulo == "preparar"
     assert board.task("t2").depende_de == ["t1"]
+    assert board.task("t3").titulo == "implementar_script"
 
 
 def test_detect_process_por_intencao():
@@ -75,6 +76,7 @@ def test_detect_process_por_intencao():
     assert detect_process("escreva um artigo sobre grupos").id == "artigo_matematica"
     assert detect_process("monte um notebook jupyter sobre o tema").id == "notebook_matematica"
     assert detect_process("testar a hipotese de um artigo").id == "laboratorio_notebook"
+    assert detect_process("examinar um artigo pdf").id == "laboratorio_notebook"
     assert detect_process("analise este csv de vendas").id == "analise_dados"
     assert detect_process("audite a segurança deste repositório").id == "auditar_repo"
     assert detect_process("gere testes pytest para o módulo").id == "gerar_testes"

@@ -9,8 +9,9 @@ tools: create_directory, read_pdf, read_file, write_file, list_directory
 max_steps: 8
 objetivo: localizar a fonte, extrair o conteúdo e montar o esqueleto do laboratório
 ações:
-- criar data/labs/estudo, data/labs/estudo/fonte, src, resultados, figuras [tool: create_directory]
-- localizar no objetivo o PDF ou Markdown de origem; se for PDF, extrair o texto com read_pdf [tool: read_pdf]; se for Markdown, ler com read_file
+- criar data/labs/estudo, fonte, src, resultados e figuras [tool: create_directory]
+- localizar no objetivo o PDF ou Markdown de origem; se for PDF, extrair com read_pdf [tool: read_pdf]; se for Markdown, ler com read_file
+- se o caminho estiver fora do workspace e o acesso for negado, NÃO invente uma fonte substituta: escreva data/labs/estudo/FONTE_BLOQUEADA.md explicando que é preciso usar /workspace <pasta> ou copiar o arquivo para data/labs/estudo/fonte/ e encerre
 - salvar o texto extraído em data/labs/estudo/fonte/artigo.md
 - escrever data/labs/estudo/PLANO.md com pergunta, hipótese inicial, variáveis, dados e experimentos candidatos
 - se não houver fonte, registrar a ideia do objetivo como fonte e seguir
@@ -31,24 +32,37 @@ ações:
 resultado esperado: FORMALIZACAO.md tem hipótese, desenho, métrica e critério de falseabilidade
 checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/FORMALIZACAO.md", "tamanho_min": 250}]
 
-## task: implementar
+## task: implementar_script
 fase: Implementação
 depende_de: formalizar
-tools: create_directory, write_file, edit_file, read_file, list_directory, run_script, write_notebook
-max_steps: 14
-objetivo: implementar o experimento em script e notebook reproduzíveis
+tools: create_directory, write_file, edit_file, read_file, list_directory, run_script
+max_steps: 8
+objetivo: implementar e rodar o experimento em um script enxuto
 ações:
 - escrever data/labs/estudo/src/experimento.py com o experimento determinístico, parâmetros explícitos, sementes e saída em resultados/ e figuras/
+- o script deve ser pequeno e focado: uma hipótese por execução, sem tentar gerar o notebook
 - rodar src/experimento.py [tool: run_script] e salvar a saída em resultados/saida_experimento.txt
-- criar data/labs/estudo/laboratorio.ipynb com write_notebook [tool: write_notebook]: células markdown explicando a hipótese e células code executando o experimento, gerando tabela/gráfico e concluindo
-- o notebook deve ser compatível com Colab e funcionar localmente; usar caminhos relativos e não depender do Ciel
+- salvar resultados numéricos em resultados/resultados.json ou CSV e gráficos em figuras/
+resultado esperado: script executou e gerou saída, dados e pelo menos um artefato
+checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/src/experimento.py", "tamanho_min": 150}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/saida_experimento.txt", "tamanho_min": 40}]
+
+## task: implementar_notebook
+fase: Notebook
+depende_de: implementar_script
+tools: read_file, write_file, list_directory, write_notebook
+max_steps: 8
+objetivo: montar o notebook Colab e o README a partir dos resultados
+ações:
+- ler resultados/ e src/experimento.py
+- criar data/labs/estudo/laboratorio.ipynb com write_notebook [tool: write_notebook], com células pequenas: hipótese, método, parâmetros, execução, tabela/gráfico e conclusão
+- o notebook deve ser compatível com Colab, usar caminhos relativos e não depender do Ciel; se precisar do script, pode carregar resultados/ já gerados
 - escrever data/labs/estudo/README.md com como rodar localmente e no Colab
-resultado esperado: script, notebook nbformat 4, saída e README existem
-checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/src/experimento.py", "tamanho_min": 150}, {"tipo": "arquivo", "path": "data/labs/estudo/laboratorio.ipynb", "contem": "nbformat"}, {"tipo": "arquivo", "path": "data/labs/estudo/laboratorio.ipynb", "contem": "colab"}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/saida_experimento.txt", "tamanho_min": 40}]
+resultado esperado: notebook nbformat 4 e README existem
+checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/laboratorio.ipynb", "contem": "nbformat"}, {"tipo": "arquivo", "path": "data/labs/estudo/laboratorio.ipynb", "contem": "colab"}, {"tipo": "arquivo", "path": "data/labs/estudo/README.md", "tamanho_min": 80}]
 
 ## task: executar
 fase: Execução
-depende_de: implementar
+depende_de: implementar_notebook
 tools: read_file, write_file, list_directory, run_script, run_notebook
 max_steps: 8
 objetivo: executar o notebook e registrar a execução detalhada

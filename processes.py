@@ -91,7 +91,9 @@ PROCESSES: tuple[Process, ...] = (
         flow="laboratorio_notebook",
         keywords=(
             "laboratorio", "hipotese", "testar hipotese", "testar a hipotese",
-            "experimento", "simulacao", "colab", "artigo pdf", "ideia matematica",
+            "experimento", "simulacao", "colab", "pdf",
+            "examinar", "analisar artigo", "verificar artigo",
+            "prova", "ideia matematica",
         ),
     ),
     Process(

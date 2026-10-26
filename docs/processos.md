@@ -122,6 +122,15 @@ data/labs/estudo/
 Serve para matemática, dados ou simulação; não é específico de Goldbach.
 O notebook usa caminhos relativos e metadados Colab, sem depender do Ciel.
 
+Se a fonte estiver fora do workspace:
+
+```text
+/workspace "C:\Users\tiago\Workspace\Conjectura Goldback"
+```
+
+Sem isso o `read_pdf`/`read_file` é negado. Alternativa: copie o PDF para
+`data/labs/estudo/fonte/` e passe esse caminho no objetivo.
+
 ## Corrigir bug
 
 O `corrigir_bug` é parametrizado por um `ALVO.json`:
