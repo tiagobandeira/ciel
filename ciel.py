@@ -91,12 +91,7 @@ def _launch_tui(extra_argv: list[str]) -> None:
     args = p.parse_args(extra_argv)
 
     if args.modo == "build":
-        print(
-            "  modo build está disponível na CLI por enquanto.\n"
-            "  use: python ciel.py --cli --modo build",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        args.perfil = "nuvem"
 
     from ciel_tui import CielTUI
     app = CielTUI(

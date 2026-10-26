@@ -408,6 +408,22 @@ e obriga `verificar.py` a passar.
 
 ---
 
+---
+
+## D-021 — Build na TUI usa o mesmo runner
+
+**Decisão:** a TUI ganhou `/modo build`; a linguagem natural detecta o
+processo, monta o `Board` do fluxo e chama o mesmo `run_board` da CLI em uma
+worker thread. Eventos, checks, correção, revisão e preview são os mesmos.
+
+**Por quê:** duplicar o motor na TUI criaria dois comportamentos. A TUI é uma
+camada de apresentação; o harness continua sendo a fonte de verdade.
+
+**Consequência:** `--tui --modo build` sobe com perfil `nuvem`; o painel é
+atualizado via eventos sem bloquear a interface.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

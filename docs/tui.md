@@ -24,11 +24,39 @@ A tela é organizada em três regiões principais:
 | `/tool` | Lista e inspeciona ferramentas |
 | `/model <nome>` | Troca o modelo principal |
 | `/perfil [local\|nuvem]` | Mostra/troca o perfil da sessão |
+| `/modo [chat\|build]` | Mostra/troca o modo; build exige nuvem |
 | `/source <arquivo>` | Indexa arquivo na base de conhecimento |
 | `/history` | Lista, salva ou exporta sessões |
 | `/novo` | Inicia nova sessão |
 | `/tokens` | Exibe uso de tokens da sessão |
 | `/sair` | Encerra a aplicação |
+
+## Modo build
+
+Build exige perfil `nuvem`:
+
+```text
+/perfil nuvem
+/modo build
+```
+
+No prompt, descreva o processo em linguagem natural:
+
+```text
+quero um app de notas em markdown
+```
+
+A TUI detecta o processo, mostra as fases/tasks e executa o mesmo
+`run_board` da CLI, com checks, correção, revisão de fase e preview. O log
+recebe fases, tasks, resultados e o resumo final; nada bloqueia o painel.
+
+Também dá para iniciar direto:
+
+```powershell
+python ciel.py --tui --modo build
+```
+
+Nesse caso a TUI já sobe no perfil `nuvem`.
 
 ## Atalhos de teclado
 

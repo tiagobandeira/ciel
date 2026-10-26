@@ -341,6 +341,9 @@ COMMANDS: list[tuple[str, str]] = [
     ("/source --remover",  "remove fonte por id"),
     ("/source --limpar-orfas", "remove fontes órfãs"),
     ("/tokens",            "uso de tokens desta sessão"),
+    ("/modo",              "modo atual (chat/build)"),
+    ("/modo chat",         "volta para conversa"),
+    ("/modo build",        "ativa build (exige nuvem)"),
     ("/copiar",            "copia última resposta"),
     ("/safe",              "toggle modo seguro"),
     ("/workspace",         "mostra workspace ativo e grants"),
@@ -3361,6 +3364,17 @@ class CielTUI(App):
             if self._session_id is not None:
                 self._store.append_turn(self._session_id, "user", text, ts_str)
 
+            if self.modo == "build":
+                from processes import detect_process
+                _proc = detect_process(text)
+                if _proc is not None:
+                    self._build_turn(_proc, text, log)
+                    return
+                self._log_write(msg_system(
+                    "build: nenhum processo reconhecido; respondendo como chat.",
+                    "warn",
+                ))
+
             self._agent_turn(run_input, log, image_b64=run_img_b64)
 
     # ── modal helpers ─────────────────────────────────────────────────────────
@@ -3534,6 +3548,8 @@ class CielTUI(App):
                 ("/model <nome>",         "troca modelo local direto"),
                 ("/perfil",               "perfil local/nuvem da sessão"),
                 ("/perfil <local|nuvem>", "troca o orquestrador da sessão"),
+                ("/modo",                 "modo atual (chat/build)"),
+                ("/modo <chat|build>",    "troca o modo da sessão"),
                 ("/connect",             "configura provedor do modelo secundário"),
                 ("/novo",                 "nova sessão"),
                 ("/limpar",               "limpa display"),
@@ -3693,6 +3709,27 @@ class CielTUI(App):
                     self._log_write(msg_system(f"{len(self._tools)} tools ativas", "info"))
                 except Exception as e:
                     self._log_write(msg_system(f"agente '{nome}' não encontrado: {e}", "err"))
+
+        elif verb == "/modo":
+            arg = parts[1].lower() if len(parts) > 1 else ""
+            if not arg:
+                self._log_write(msg_system(
+                    f"modo atual: {self.modo}  ·  perfil: {self.perfil}", "info"
+                ))
+            elif arg not in ("chat", "build"):
+                self._log_write(msg_system(
+                    "uso: /modo chat  ·  /modo build", "warn"
+                ))
+            elif arg == "build" and self.perfil != PERFIL_NUVEM:
+                self._log_write(msg_system(
+                    "modo build exige perfil nuvem; use /perfil nuvem antes.",
+                    "warn",
+                ))
+            else:
+                self.modo = arg
+                self._log_write(msg_system(
+                    f"modo: {self.modo}  ·  perfil: {self.perfil}", "ok"
+                ))
 
         elif verb == "/perfil":
             arg = parts[1].lower() if len(parts) > 1 else ""
@@ -4385,6 +4422,202 @@ class CielTUI(App):
         )
         event.wait()
         return result[0]
+
+    @work(thread=True)
+    def _build_turn(self, process, user_text: str, log: RichLog) -> None:
+        """Executa um processo nativo do build dentro da TUI."""
+        from agent_loop import MAX_STEPS_TASK, MAX_STEPS_TASK_NUVEM
+        from board import BoardStore
+        from multitask.flow import build_board, load_flow
+        from multitask.runner import run_board
+
+        self.call_from_thread(self._set_thinking, True)
+        try:
+            flow = load_flow(process.flow)
+            board = build_board(
+                flow, objetivo=user_text, perfil=self.perfil,
+            )
+        except Exception as exc:
+            self.call_from_thread(self._set_thinking, False)
+            self.call_from_thread(
+                log.write,
+                msg_system(f"build: não foi possível montar o plano: {exc}", "err"),
+            )
+            return
+
+        self.call_from_thread(
+            log.write,
+            msg_system(
+                f"processo: {process.titulo}  ·  {len(board.tasks())} tasks  "
+                f"·  run {board.id}",
+                "info",
+            ),
+        )
+        for phase in board.fases:
+            self.call_from_thread(
+                log.write,
+                msg_system(
+                    f"  {phase.nome}: "
+                    + ", ".join(t.titulo for t in phase.tasks),
+                    "info",
+                ),
+            )
+
+        store = BoardStore()
+        try:
+            store.create(board)
+        except Exception:
+            store.save(board)
+
+        def on_step(step: int, label: str, content: str, status: str) -> None:
+            if status in ("tool", "error", "parse_error"):
+                self.call_from_thread(
+                    log.write, msg_tool(label, content, step)
+                )
+
+        def on_model_start(step: int) -> None:
+            self.call_from_thread(self._set_thinking, True)
+
+        def on_model_end(step: int) -> None:
+            self.call_from_thread(self._set_thinking, False)
+
+        def on_limit(step: int, t_in: int, t_out: int) -> None:
+            self.call_from_thread(
+                log.write,
+                msg_system("⚠ limite de steps da task atingido.", "warn"),
+            )
+
+        def on_error(kind: str, message: str) -> None:
+            self.call_from_thread(
+                log.write,
+                msg_system(f"build: erro de {kind}: {message}", "err"),
+            )
+
+        def on_event(event: dict) -> None:
+            tipo = event.get("tipo")
+            if tipo == "fase_iniciada":
+                self.call_from_thread(
+                    log.write,
+                    msg_system(f"fase › {event.get('fase', '')}", "info"),
+                )
+            elif tipo == "task_iniciada":
+                self.call_from_thread(
+                    log.write,
+                    msg_system(
+                        f"task {event.get('indice')}/{event.get('total')}  "
+                        f"{event.get('titulo', '')}",
+                        "info",
+                    ),
+                )
+            elif tipo == "task_concluida":
+                self.call_from_thread(
+                    log.write,
+                    msg_system(
+                        f"✓ {event.get('titulo', '')}  "
+                        f"{str(event.get('resumo') or '')[:90]}",
+                        "ok",
+                    ),
+                )
+            elif tipo == "task_falhou":
+                self.call_from_thread(
+                    log.write,
+                    msg_system(
+                        f"✗ {event.get('titulo', '')}  "
+                        f"{str(event.get('erro') or '')[:100]}",
+                        "err",
+                    ),
+                )
+            elif tipo == "fase_revisada":
+                self.call_from_thread(
+                    log.write,
+                    msg_system(
+                        f"revisão da fase {event.get('fase', '')}: "
+                        f"{str(event.get('resumo') or '')[:90]}",
+                        "info",
+                    ),
+                )
+            elif tipo == "fase_revisao_falhou":
+                self.call_from_thread(
+                    log.write,
+                    msg_system(
+                        f"revisão falhou em {event.get('fase', '')}", "warn"
+                    ),
+                )
+
+        callbacks = {
+            "on_step": on_step,
+            "on_model_start": on_model_start,
+            "on_model_end": on_model_end,
+            "on_limit": on_limit,
+            "on_error": on_error,
+            "on_confirm_tool": self._modal_confirm_tool,
+            "on_confirm_path": self._modal_confirm_path,
+            "on_ask_user": self._modal_ask_user,
+        }
+
+        try:
+            result = run_board(
+                board, self._tools, self._schema, self._agent_info,
+                store=store,
+                model="" if self._model_client is not None else self.current_model,
+                model_client=self._model_client,
+                session_id=(
+                    str(self._session_id) if self._session_id else None
+                ),
+                max_steps_per_task=(
+                    MAX_STEPS_TASK_NUVEM
+                    if self.perfil == PERFIL_NUVEM
+                    else MAX_STEPS_TASK
+                ),
+                mcp_manager=self._mcp_manager,
+                callbacks=callbacks,
+                on_event=on_event,
+                profile=self.perfil,
+                revisar_fases=(self.perfil == PERFIL_NUVEM),
+            )
+        except Exception as exc:
+            self.call_from_thread(self._set_thinking, False)
+            self.call_from_thread(
+                log.write,
+                msg_system(f"build: execução falhou: {exc}", "err"),
+            )
+            return
+
+        self.tok_in += result.tokens_in
+        self.tok_out += result.tokens_out
+        self.call_from_thread(self._set_thinking, False)
+        self.call_from_thread(
+            self.query_one("#info-panel", InfoPanel).update_state,
+            tok_in=result.tokens_in,
+            tok_out=result.tokens_out,
+            steps=len(result.tasks_ok) + len(result.tasks_fail),
+        )
+        self.call_from_thread(
+            self.query_one("#top-bar", TopBar).update_state,
+            tok_in=result.tokens_in,
+            tok_out=result.tokens_out,
+        )
+        status_style = "ok" if result.ok else "err"
+        self.call_from_thread(
+            log.write,
+            msg_system(
+                f"build {result.status} · "
+                f"{len(result.tasks_ok)}/{len(board.tasks())} tasks · "
+                f"↑{result.tokens_in} ↓{result.tokens_out}",
+                status_style,
+            ),
+        )
+        self.call_from_thread(log.write, Text(result.message))
+        self.call_from_thread(log.write, msg_sep())
+
+        ts_str = datetime.now().strftime("%a %H:%M")
+        self._history.append({
+            "role": "agent", "content": result.message, "ts": ts_str,
+        })
+        if self._session_id is not None and self._store is not None:
+            self._store.append_turn(
+                self._session_id, "agent", result.message, ts_str
+            )
 
     @work(thread=True)
     def _agent_turn(self, user_text: str, log: RichLog, max_steps: int = 6, image_b64: str | None = None) -> None:
