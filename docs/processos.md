@@ -53,6 +53,7 @@ esse motor.
 /processo web_projeto "app de notas com entrevista"
 /processo landing_page
 /processo --retomar <id>          # retoma um processo pausado
+/processo --analisar [id]         # analisa a execução (última por padrão)
 ```
 
 No modo build, basta falar:

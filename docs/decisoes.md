@@ -374,6 +374,23 @@ tem 6 e vai direto para `SPEC.md`.
 
 ---
 
+---
+
+## D-019 — Analisar o quadro, não o log
+
+**Decisão:** `/processo --analisar [id]` lê o quadro (tasks, checks, resumos e
+métricas) e produz uma análise curta. No `local` é determinístico e não chama
+modelo; no `nuvem` usa o secundário e informa os tokens.
+
+**Por quê:** o usuário precisa de “o que funcionou, o que falhou e o próximo
+passo”, não de outro despejo do relatório. E análise local não deve gastar
+API.
+
+**Consequência:** a análise é read-only; não altera o quadro nem retoma a
+execução.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

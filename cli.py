@@ -1422,7 +1422,7 @@ def main():
     # ── prompt_toolkit: autocomplete ──────────────────────────────────────────
     CMDS = [
         "/sair", "/limpar", "/novo", "/criar", "/criar agente", "/criar task", "/criar canal whatsapp", "/task", "/tools", "/agente",
-        "/modo chat", "/modo build", "/processo", "/processo app_web", "/processo web_projeto", "/processo landing_page", "/processo --retomar",
+        "/modo chat", "/modo build", "/processo", "/processo app_web", "/processo web_projeto", "/processo landing_page", "/processo --retomar", "/processo --analisar",
         "/preview", "/preview start", "/preview stop", "/preview listar",
         "/source", "/source --listar","/source --remover","/source --global","/source --limpar-orfas","/skill", "/limpar-temp",
         "/promover ", "/copiar", "/tokens", "/ajuda",
@@ -2456,6 +2456,7 @@ def main():
                 "  [tool]/perfil [white]local|nuvem[/white][/tool]    troca o orquestrador da sessão\n"
                 "  [tool]/modo [white]chat|build[/white][/tool]      modo da sessão (build exige nuvem)\n"
                 "  [tool]/processo[/tool]                lista e executa processos nativos do Ciel\n"
+                "  [tool]/processo --analisar [id][/tool]  analisa uma execução (sem modelo no local)\n"
                 "  [tool]/preview[/tool]                 lista/para previews locais sem chamar o modelo\n"
                 "  [tool]/tools-extras[/tool]            tools opcionais e exemplos disponíveis\n"
                 "  [tool]/ajuda[/tool]                   este menu",
@@ -2698,6 +2699,41 @@ def main():
                     "\n  [muted]uso:[/muted] /processo <nome> \"objetivo\"  "
                     "·  no modo build, fale em linguagem natural\n"
                 )
+                continue
+
+            if arg_processo.startswith("--analisar"):
+                from board import BoardNotFound, BoardStore
+                from multitask.analisar import analyze_board
+
+                alvo = arg_processo[len("--analisar"):].strip()
+                runs = BoardStore()
+                try:
+                    board_analise = runs.load(alvo) if alvo else runs.latest()
+                except BoardNotFound:
+                    board_analise = None
+                if board_analise is None:
+                    console.print(
+                        "  [err]nenhuma execução encontrada para analisar.[/err]\n"
+                    )
+                    continue
+                _client = _SESSION.get("client")
+                _analise = analyze_board(
+                    board_analise, _client,
+                    model="" if _client is not None else args.model,
+                )
+                console.print()
+                console.print(Panel(
+                    escape(_analise.texto),
+                    title=f"[user]análise — {board_analise.objetivo[:60]}[/user]",
+                    border_style=CLR_USER,
+                    padding=(0, 1),
+                ))
+                if _analise.usou_modelo:
+                    console.print(
+                        f"  [muted]tokens do analista: "
+                        f"↑{_analise.tokens_in} ↓{_analise.tokens_out}[/muted]"
+                    )
+                console.print()
                 continue
 
             if arg_processo.startswith("--retomar"):

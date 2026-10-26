@@ -208,6 +208,17 @@ não executa código do projeto. `list_previews` mostra o que está ativo.
 Na CLI, `/preview` lista, `/preview start <pasta> [porta]` inicia e
 `/preview stop [id|porta|todos]` encerra — **sem chamar o modelo**.
 
+## Analisar uma execução
+
+```text
+/processo --analisar <id>
+/processo --analisar            # última execução
+```
+
+Mostra o que funcionou, riscos/falhas e próximo passo. No perfil `nuvem`, usa
+o modelo para a análise e mostra os tokens gastos; no `local`, gera uma
+análise determinística a partir do quadro, sem chamar modelo.
+
 ## Perfis de modelo
 
 O fluxo pode declarar `perfil: nuvem` para usar o provider configurado como
