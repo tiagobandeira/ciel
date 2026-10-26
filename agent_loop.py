@@ -53,6 +53,7 @@ from trust.input_verifier import InputVerifier
 OLLAMA_URL    = "http://localhost:11434/api/chat"
 MAX_STEPS     = 9
 MAX_STEPS_TASK = 9
+MAX_STEPS_TASK_NUVEM = 12  # escrita longa no perfil nuvem
 
 # ── tipos dos callbacks ───────────────────────────────────────────────────────
 
