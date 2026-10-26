@@ -48,6 +48,10 @@ def main() -> int:
     if not isinstance(comando, list) or not comando:
         print("Erro: 'comando' inválido no ALVO.json")
         return 2
+    # "python" no ALVO pode resolver para outro interpretador (Windows Store);
+    # usa o mesmo Python que está rodando o Ciel/runner.
+    if str(comando[0]).lower() in ("python", "python.exe", "py"):
+        comando = [sys.executable, *comando[1:]]
 
     cwd_raw = data.get("cwd") or str(projeto)
     cwd = _resolve(str(cwd_raw))

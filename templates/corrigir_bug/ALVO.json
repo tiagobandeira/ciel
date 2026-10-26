@@ -2,5 +2,5 @@
   "projeto": "data/user/bugfix_demo",
   "comando": ["python", "-m", "pytest", "-q"],
   "cwd": "data/user/bugfix_demo",
-  "arquivo": ""
+  "arquivo": "data/user/bugfix_demo/calc.py"
 }
