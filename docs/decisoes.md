@@ -491,6 +491,26 @@ diretamente; só `pipeline` vira board.
 
 ---
 
+---
+
+## D-026 — `/skill` como interface única
+
+**Decisão:** a família de skills passa a ser:
+
+- `/skill import <path> [--executar] [--forcar]` — compila;
+- `/skill run <nome>` — executa o board;
+- `/multitask --skill <nome>` — executa pelo multitask;
+- `/replicar <nome>` — alias de `/skill run`;
+- `/analisar <path>` — alias legado de import.
+
+**Por quê:** `analisar` + `replicar` eram nomes desconexos para compilar e
+executar. O `/multitask` é o executor; a skill é só mais uma fonte de plano.
+
+**Consequência:** `--executar` faz o fluxo completo; sem ele, compila uma vez
+e reutiliza. Skills `plugin`/`context` não viram board.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

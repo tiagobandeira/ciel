@@ -209,6 +209,110 @@ def _process_summary(result, process_id: str) -> str:
     return "\n".join(lines)
 
 
+def _run_skill_board_cli(
+    name: str,
+    tools,
+    schema,
+    agent_info,
+    args,
+    session_flags,
+    console,
+    current_session_id,
+    mcp_manager,
+):
+    """Executa uma skill absorvida como board; usado por /replicar e /multitask --skill."""
+    from board import BoardStore
+    from multitask.runner import run_board
+    from multitask.skill_board import SkillBoardError, build_skill_board
+
+    try:
+        board = build_skill_board(
+            name, perfil=_SESSION.get("perfil", "local"),
+        )
+    except SkillBoardError as exc:
+        console.print(f"  [err]{escape(str(exc))}[/err]\n")
+        return None
+
+    tbl = Table(box=None, show_header=True, padding=(0, 1))
+    tbl.add_column("task", style="tool", no_wrap=True)
+    tbl.add_column("fase", style="muted")
+    tbl.add_column("checks", style="muted")
+    phase_by_id = {
+        task.id: phase.nome
+        for phase in board.fases
+        for task in phase.tasks
+    }
+    for task in board.tasks():
+        checks = task.checagem
+        n_checks = len(checks) if isinstance(checks, list) else (1 if checks else 0)
+        tbl.add_row(
+            f"{task.id} {task.titulo}",
+            phase_by_id.get(task.id, ""),
+            str(n_checks),
+        )
+    console.print()
+    console.print(tbl)
+    console.print()
+    confirmar = Prompt.ask(
+        "  executar a skill?", choices=["s", "n"], default="s",
+    )
+    if confirmar.lower() != "s":
+        return None
+
+    store = BoardStore()
+    store.create(board)
+    callbacks = _make_run_callbacks(session_flags)
+    callbacks.pop("_on_queue_action", None)
+
+    def on_event(event):
+        tipo = event.get("tipo")
+        if tipo == "task_iniciada":
+            console.print(
+                f"  [user]task {event.get('indice')}/{event.get('total')}"
+                f"[/user] {escape(str(event.get('titulo', '')))}"
+            )
+        elif tipo == "task_concluida":
+            console.print(
+                f"  [ok]✓[/ok] {escape(str(event.get('titulo', '')))}"
+            )
+        elif tipo == "task_falhou":
+            console.print(
+                f"  [err]✗[/err] {escape(str(event.get('titulo', '')))}"
+            )
+
+    resultado = run_board(
+        board, tools, schema, agent_info,
+        store=store,
+        model="" if _SESSION.get("client") is not None else args.model,
+        model_client=_SESSION.get("client"),
+        session_id=(
+            str(current_session_id) if current_session_id else None
+        ),
+        max_steps_per_task=(
+            MAX_STEPS_TASK_NUVEM
+            if _SESSION.get("perfil") == PERFIL_NUVEM
+            else MAX_STEPS_TASK
+        ),
+        mcp_manager=mcp_manager,
+        callbacks=callbacks,
+        on_event=on_event,
+        profile=_SESSION.get("perfil", "local"),
+        revisar_fases=(_SESSION.get("perfil") == PERFIL_NUVEM),
+    )
+    console.print()
+    console.print(Panel(
+        escape(resultado.message or ""),
+        title=f"[user]skill {name}[/user]",
+        border_style=CLR_USER,
+        padding=(0, 1),
+    ))
+    console.print(
+        f"  [muted]{resultado.status} · {len(resultado.tasks_ok)} tasks ok "
+        f"· ↑{resultado.tokens_in} ↓{resultado.tokens_out}[/muted]\n"
+    )
+    return resultado
+
+
 # ── nome da ferramenta ────────────────────────────────────────────────────────
 NAME = "Ciel CLI"   # altere aqui quando decidir o nome definitivo
 VERSION = "1.0.0"
@@ -1424,6 +1528,7 @@ def main():
         "/sair", "/limpar", "/novo", "/criar", "/criar agente", "/criar task", "/criar canal whatsapp", "/task", "/tools", "/agente",
         "/modo chat", "/modo build", "/processo", "/processo app_web", "/processo web_projeto", "/processo landing_page", "/processo --retomar", "/processo --analisar",
         "/replicar",
+        "/skill import", "/skill run", "/multitask --skill",
         "/preview", "/preview start", "/preview stop", "/preview listar",
         "/source", "/source --listar","/source --remover","/source --global","/source --limpar-orfas","/skill", "/limpar-temp",
         "/promover ", "/copiar", "/tokens", "/ajuda",
@@ -2336,7 +2441,14 @@ def main():
                 console.print()
             continue
 
-        if user_input.startswith("/skill "):
+        _skill_sub = (
+            user_input.split(None, 2)[1].lower()
+            if user_input.startswith("/skill ") and len(user_input.split(None, 2)) > 1
+            else ""
+        )
+        if user_input.startswith("/skill ") and _skill_sub not in (
+            "run", "import", "list", "listar",
+        ):
             partes       = user_input.split(None, 2)   # ['/skill', nome, prompt?]
             skill_name   = partes[1].strip() if len(partes) > 1 else ""
             skill_prompt = partes[2].strip() if len(partes) > 2 else ""
@@ -2443,7 +2555,10 @@ def main():
                 "  [tool]/skill[/tool]                   lista skills disponíveis\n"
                 "  [tool]/skill [white]<nome>[/white][/tool]            exibe conteúdo da skill\n"
                 "  [tool]/skill [white]<nome> <prompt>[/white][/tool]   executa prompt usando a skill\n"
-                "  [tool]/analisar [white]<caminho>[/white][/tool]       absorve skill externa como primitivas Ciel\n"
+                "  [tool]/skill import [white]<caminho>[/white][/tool]  compila skill (--executar/--forcar)\n"
+                "  [tool]/skill run [white]<nome>[/white][/tool]        executa skill absorvida como board\n"
+                "  [tool]/multitask --skill [white]<nome>[/white][/tool] executa skill pelo multitask\n"
+                "  [tool]/analisar [white]<caminho>[/white][/tool]       alias legado de /skill import\n"
                 "  [tool]/limpar-temp[/tool]             remove tools temporárias\n"
                 "  [tool]/promover[/tool]                promove tool temp → permanente\n"
                 "  [tool]/tokens[/tool]                  Mostra tokens gastos na sessão atual\n"
@@ -2685,106 +2800,108 @@ def main():
                 )
             continue
 
-        # ── /replicar — skill absorvida vira board executável ────────────────
+        # ── /replicar — atalho para executar skill absorvida ─────────────────
         if user_input.startswith("/replicar"):
-            from board import BoardStore
-            from multitask.runner import run_board
-            from multitask.skill_board import SkillBoardError, build_skill_board
-
             nome_skill = user_input[len("/replicar"):].strip()
             if not nome_skill:
                 console.print(
                     "  [tool]uso:[/tool] /replicar <skill>\n"
-                    "  [muted]a skill precisa ter sido absorvida por /analisar.[/muted]\n"
+                    "  [muted]equivalente a /skill run <skill>.[/muted]\n"
                 )
                 continue
-            try:
-                board = build_skill_board(
-                    nome_skill,
-                    perfil=_SESSION.get("perfil", "local"),
-                )
-            except SkillBoardError as exc:
-                console.print(f"  [err]{escape(str(exc))}[/err]\n")
-                continue
-
-            tbl = Table(box=None, show_header=True, padding=(0, 1))
-            tbl.add_column("task", style="tool", no_wrap=True)
-            tbl.add_column("fase", style="muted")
-            tbl.add_column("checks", style="muted")
-            phase_by_id = {
-                task.id: phase.nome
-                for phase in board.fases
-                for task in phase.tasks
-            }
-            for task in board.tasks():
-                tbl.add_row(
-                    f"{task.id} {task.titulo}",
-                    phase_by_id.get(task.id, ""),
-                    str(len(task.checagem or [])) if isinstance(task.checagem, list) else ("1" if task.checagem else "0"),
-                )
-            console.print()
-            console.print(tbl)
-            console.print()
-            confirmar = Prompt.ask(
-                "  executar a skill?", choices=["s", "n"], default="s"
-            )
-            if confirmar.lower() != "s":
-                continue
-
-            store = BoardStore()
-            store.create(board)
-            _callbacks = _make_run_callbacks(session_flags)
-            _callbacks.pop("_on_queue_action", None)
-
-            def on_replicar_event(event):
-                tipo = event.get("tipo")
-                if tipo == "task_iniciada":
-                    console.print(
-                        f"  [user]task {event.get('indice')}/{event.get('total')}"
-                        f"[/user] {escape(str(event.get('titulo', '')))}"
-                    )
-                elif tipo == "task_concluida":
-                    console.print(
-                        f"  [ok]✓[/ok] {escape(str(event.get('titulo', '')))}"
-                    )
-                elif tipo == "task_falhou":
-                    console.print(
-                        f"  [err]✗[/err] {escape(str(event.get('titulo', '')))}"
-                    )
-
-            resultado = run_board(
-                board, tools, schema, agent_info,
-                store=store,
-                model="" if _SESSION.get("client") is not None else args.model,
-                model_client=_SESSION.get("client"),
-                session_id=(
-                    str(current_session_id) if current_session_id else None
-                ),
-                max_steps_per_task=(
-                    MAX_STEPS_TASK_NUVEM
-                    if _SESSION.get("perfil") == PERFIL_NUVEM
-                    else MAX_STEPS_TASK
-                ),
-                mcp_manager=mcp_manager,
-                callbacks=_callbacks,
-                on_event=on_replicar_event,
-                profile=_SESSION.get("perfil", "local"),
-                revisar_fases=(_SESSION.get("perfil") == PERFIL_NUVEM),
-            )
-            console.print()
-            console.print(Panel(
-                escape(resultado.message or ""),
-                title=f"[user]replicar {nome_skill}[/user]",
-                border_style=CLR_USER,
-                padding=(0, 1),
-            ))
-            console.print(
-                f"  [muted]{resultado.status} · {len(resultado.tasks_ok)} tasks ok "
-                f"· ↑{resultado.tokens_in} ↓{resultado.tokens_out}[/muted]\n"
+            _run_skill_board_cli(
+                nome_skill, tools, schema, agent_info, args,
+                session_flags, console, current_session_id, mcp_manager,
             )
             continue
 
-        # ── /multitask — execução de fluxo em tasks ───────────────────────────
+        # ── /skill — listar, usar, importar e executar ───────────────────────
+        if user_input.strip() in ("/skill", "/skill list", "/skill listar"):
+            skills_dir = Path("skills")
+            nomes = sorted(p.stem for p in skills_dir.glob("*.md")) if skills_dir.exists() else []
+            if nomes:
+                console.print("  [tool]skills:[/tool] " + ", ".join(nomes) + "\n")
+            else:
+                console.print("  [muted]nenhuma skill em skills/[/muted]\n")
+            continue
+
+        if user_input.startswith("/skill "):
+            partes = user_input.split(None, 2)
+            sub = partes[1].strip().lower() if len(partes) > 1 else ""
+
+            if sub == "run":
+                nome_skill = partes[2].strip() if len(partes) > 2 else ""
+                if not nome_skill:
+                    console.print("  [tool]uso:[/tool] /skill run <nome>\n")
+                else:
+                    _run_skill_board_cli(
+                        nome_skill, tools, schema, agent_info, args,
+                        session_flags, console, current_session_id,
+                        mcp_manager,
+                    )
+                continue
+
+            if sub == "import":
+                import shlex
+
+                raw = user_input[len("/skill import"):].strip()
+                if not raw:
+                    console.print(
+                        "  [tool]uso:[/tool] /skill import <caminho> "
+                        "[--executar] [--forcar]\n"
+                    )
+                    continue
+                tokens = shlex.split(raw)
+                flags = {t for t in tokens if t.startswith("--")}
+                paths = [t for t in tokens if not t.startswith("--")]
+                if not paths:
+                    console.print("  [err]informe o caminho da skill.[/err]\n")
+                    continue
+                origem = paths[0]
+                executar = "--executar" in flags
+                forcar = "--forcar" in flags
+                import re as _re
+                from tools.skill_import import run as importar_skill
+
+                nome = _re.sub(r"[^\w\-]", "-", Path(origem).stem).strip("-").lower()
+                meta_path = Path("skills") / f"{nome}_meta.json"
+                if meta_path.exists() and not forcar:
+                    console.print(
+                        f"  [muted]skill já absorvida: {nome} "
+                        f"({meta_path})[/muted]\n"
+                        "  [muted]use --forcar para recompilar.[/muted]\n"
+                    )
+                else:
+                    console.print(
+                        f"\n  [user]skill import[/user] "
+                        f"[muted]{escape(origem)}[/muted]\n"
+                    )
+                    confirmar_import = Prompt.ask(
+                        "  isso escreve tasks/tools e pode instalar requirements; continuar?",
+                        choices=["s", "n"], default="n",
+                    )
+                    if confirmar_import.lower() != "s":
+                        continue
+                    resultado = importar_skill(origem)
+                    console.print(Panel(
+                        escape(resultado),
+                        title=f"[user]skill import — {nome}[/user]",
+                        border_style=CLR_USER,
+                        padding=(0, 1),
+                    ))
+                    console.print()
+                    tools, schema = _reload_tools(agent_info, args.safe)
+                    _apply_mcp_tools(tools, mcp_manager, agent_info)
+                    schema = tools_schema(tools)
+                    completer = make_completer(tools)
+                if executar:
+                    _run_skill_board_cli(
+                        nome, tools, schema, agent_info, args,
+                        session_flags, console, current_session_id,
+                        mcp_manager,
+                    )
+                continue
+
         # ── /processo — receitas nativas (usa o motor multitask por baixo) ─
         if user_input.startswith("/processo"):
             arg_processo = user_input[len("/processo"):].strip()
@@ -2877,6 +2994,20 @@ def main():
             arg      = user_input[len("/multitask"):].strip()
             parts_mt = arg.split()
             runs     = BoardStore()
+
+            if parts_mt and parts_mt[0] == "--skill":
+                nome_skill = parts_mt[1] if len(parts_mt) > 1 else ""
+                if not nome_skill:
+                    console.print(
+                        "  [tool]uso:[/tool] /multitask --skill <nome>\n"
+                    )
+                else:
+                    _run_skill_board_cli(
+                        nome_skill, tools, schema, agent_info, args,
+                        session_flags, console, current_session_id,
+                        mcp_manager,
+                    )
+                continue
 
             # visão geral / listagens
             if not arg or arg in ("--listar", "-l", "--fluxos"):
