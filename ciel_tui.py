@@ -344,6 +344,8 @@ COMMANDS: list[tuple[str, str]] = [
     ("/modo",              "modo atual (chat/build)"),
     ("/modo chat",         "volta para conversa"),
     ("/modo build",        "ativa build (exige nuvem)"),
+    ("/preview",           "lista previews locais"),
+    ("/preview stop",      "para o preview ativo, sem chamar modelo"),
     ("/copiar",            "copia última resposta"),
     ("/safe",              "toggle modo seguro"),
     ("/workspace",         "mostra workspace ativo e grants"),
@@ -3550,6 +3552,8 @@ class CielTUI(App):
                 ("/perfil <local|nuvem>", "troca o orquestrador da sessão"),
                 ("/modo",                 "modo atual (chat/build)"),
                 ("/modo <chat|build>",    "troca o modo da sessão"),
+                ("/preview",              "lista previews locais"),
+                ("/preview stop",         "para preview sem chamar modelo"),
                 ("/connect",             "configura provedor do modelo secundário"),
                 ("/novo",                 "nova sessão"),
                 ("/limpar",               "limpa display"),
@@ -3729,6 +3733,70 @@ class CielTUI(App):
                 self.modo = arg
                 self._log_write(msg_system(
                     f"modo: {self.modo}  ·  perfil: {self.perfil}", "ok"
+                ))
+
+        elif verb == "/preview":
+            from tools import preview_manager
+
+            sub = parts[1].lower() if len(parts) > 1 else "listar"
+            if sub in ("listar", "list", "ls"):
+                self._log_write(msg_system(preview_manager.list_all(), "info"))
+            elif sub in ("start", "iniciar"):
+                if len(parts) < 3:
+                    self._log_write(msg_system(
+                        "uso: /preview start <pasta> [porta]", "warn"
+                    ))
+                else:
+                    try:
+                        porta = int(parts[3]) if len(parts) > 3 else 8765
+                    except ValueError:
+                        porta = 8765
+                    self._log_write(msg_system(
+                        preview_manager.start(parts[2], porta), "info"
+                    ))
+            elif sub in ("stop", "parar", "encerrar"):
+                alvo = parts[2] if len(parts) > 2 else ""
+                if alvo in ("all", "todos"):
+                    ativos = preview_manager.active()
+                    for preview_id in ativos:
+                        self._log_write(msg_system(
+                            preview_manager.stop(preview_id), "info"
+                        ))
+                    if not ativos:
+                        self._log_write(msg_system("Nenhum preview ativo.", "warn"))
+                elif alvo:
+                    if alvo.startswith("preview-"):
+                        self._log_write(msg_system(
+                            preview_manager.stop(alvo), "info"
+                        ))
+                    elif alvo.isdigit():
+                        self._log_write(msg_system(
+                            preview_manager.stop(port=int(alvo)), "info"
+                        ))
+                    else:
+                        self._log_write(msg_system(
+                            f"Preview '{alvo}' não encontrado.", "warn"
+                        ))
+                else:
+                    ativos = preview_manager.active()
+                    if len(ativos) == 1:
+                        self._log_write(msg_system(
+                            preview_manager.stop(next(iter(ativos))), "info"
+                        ))
+                    elif not ativos:
+                        self._log_write(msg_system("Nenhum preview ativo.", "warn"))
+                    else:
+                        self._log_write(msg_system(
+                            "Há mais de um preview; use "
+                            "/preview stop <id|porta|todos>.\n"
+                            + preview_manager.list_all(),
+                            "warn",
+                        ))
+            else:
+                self._log_write(msg_system(
+                    "uso: /preview [listar|start <pasta> [porta]"
+                    "|stop [id|porta|todos]]",
+                    "warn",
                 ))
 
         elif verb == "/perfil":
