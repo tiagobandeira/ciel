@@ -45,6 +45,8 @@ Se houver fontes indexadas na sessão, consulte antes de responder:
   smoke). Prefira kernel para ambientes base reutilizáveis.
 - `write_notebook` cria um .ipynb nbformat 4 válido a partir de células
   markdown/code; `run_notebook` executa as células code localmente.
+- `prepare_lab` prepara um diretório de laboratório limpo e arquiva o anterior;
+  use antes de reescrever um lab.
 - `start_preview` sobe a pasta em `127.0.0.1` e devolve a URL; `stop_preview`
   encerra; `list_previews` lista. Use para validar app/landing no navegador.
 - Salve arquivos para o usuário em `data/user/`.

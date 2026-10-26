@@ -131,6 +131,10 @@ Se a fonte estiver fora do workspace:
 Sem isso o `read_pdf`/`read_file` é negado. Alternativa: copie o PDF para
 `data/labs/estudo/fonte/` e passe esse caminho no objetivo.
 
+Cada execução chama `prepare_lab`: o lab anterior é movido para
+`data/labs/_arquivo/` e o novo começa limpo. Isso evita herdar experimento e
+notebook de uma tentativa anterior.
+
 ## Corrigir bug
 
 O `corrigir_bug` é parametrizado por um `ALVO.json`:

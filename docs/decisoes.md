@@ -632,6 +632,22 @@ para matemática, dados e simulações, não para um tema específico.
 
 ---
 
+---
+
+## D-034 — Lab limpo por execução
+
+**Decisão:** o laboratório começa com `prepare_lab`, que arquiva o lab anterior
+em `data/labs/_arquivo/` e cria um diretório vazio.
+
+**Por quê:** a segunda execução do artigo leu `src/experimento.py` e
+`FORMALIZACAO.md` da tentativa anterior, gastou steps relendo e tentou editar
+arquivos velhos; o experimento nunca rodou.
+
+**Consequência:** execuções são idempotentes do zero; o histórico fica em
+`_arquivo/`. A fonte externa continua exigindo `/workspace`.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |
