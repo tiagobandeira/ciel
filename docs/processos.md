@@ -139,6 +139,12 @@ O `run_notebook` executa célula a célula e grava `stdout`, expressões, erros 
 figuras dentro do `.ipynb`; a verificação exige outputs reais, não apenas
 `nbformat`.
 
+A etapa `verificar` é uma **auditoria neutra**, não um debate: cada afirmação
+precisa de um script em `verificacao/contraexemplos.py` e de status em
+`resultados/verificacao.json` (`suportado`, `contraexemplo`, `inconclusivo`,
+`erro`). Refutar sem saída de execução não é aceito, e não há recompensa por
+achar erro.
+
 ## Corrigir bug
 
 O `corrigir_bug` é parametrizado por um `ALVO.json`:

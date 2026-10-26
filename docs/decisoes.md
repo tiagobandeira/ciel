@@ -666,6 +666,23 @@ células.
 
 ---
 
+---
+
+## D-036 — Auditoria neutra, não refutação competitiva
+
+**Decisão:** a etapa de verificação é uma auditoria de evidência. Cada
+afirmação precisa de script, saída e status (`suportado`, `contraexemplo`,
+`inconclusivo`, `erro`). Refutação sem execução é inválida; falha lógica exige
+trecho exato e passo questionado.
+
+**Por quê:** um agente com incentivo para “ganhar” pode inventar objeções ou
+argumentos que ele mesmo não verifica. O foco é análise, não debate.
+
+**Consequência:** `verificacao/contraexemplos.py` é obrigatório; o JSON de
+status é a fonte da verdade; “inconclusivo” é uma conclusão legítima.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |
