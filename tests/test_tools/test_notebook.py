@@ -87,3 +87,14 @@ def test_caminho_relativo_grava_no_lugar_certo(tmp_path, monkeypatch):
     data = json.loads(nb.read_text(encoding="utf-8"))
     assert data["cells"][0]["outputs"]
     assert not (tmp_path / "lab" / "lab.ipynb").exists()
+
+
+def test_display_tem_fallback(tmp_path):
+    nb = tmp_path / "lab.ipynb"
+    write_notebook.run(
+        str(nb),
+        [{"type": "code", "source": "display('visivel')"}],
+    )
+    result = run_notebook.run(str(nb), cwd=str(tmp_path))
+    assert "exit=0" in result
+    assert "visivel" in result

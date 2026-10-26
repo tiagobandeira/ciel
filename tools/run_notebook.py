@@ -40,6 +40,19 @@ def _lines(text: str) -> list[str]:
     return text.splitlines(keepends=True) if text else []
 
 
+def _display(*objects, **kwargs):
+    """Fallback de display() do IPython para execução local."""
+    for obj in objects:
+        try:
+            if hasattr(obj, "to_string"):
+                print(obj.to_string())
+            else:
+                print(obj)
+        except Exception:
+            print(repr(obj))
+
+
+
 def _run_cells(
     data: dict, notebook_path: Path, workdir: Path, timeout: int = 300,
 ) -> tuple[int, list[str]]:
@@ -51,7 +64,11 @@ def _run_cells(
         cell for cell in data.get("cells", [])
         if cell.get("cell_type") == "code"
     ]
-    namespace = {"__name__": "__main__", "__file__": str(notebook_path)}
+    namespace = {
+        "__name__": "__main__",
+        "__file__": str(notebook_path),
+        "display": _display,
+    }
     sys.path.insert(0, str(workdir))
     log: list[str] = []
     errors = 0
