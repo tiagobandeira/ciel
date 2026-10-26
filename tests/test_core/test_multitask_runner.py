@@ -223,6 +223,25 @@ class TestExecucaoFeliz:
         assert "context_peak_chars" in metricas
         assert "prompt_chars" in metricas
 
+    def test_cancel_event_pausa_sem_executar(self, store, workspace):
+        import threading
+
+        cancel = threading.Event()
+        cancel.set()
+        board = Board.new("x", run_id="run-cancel")
+        board.add_task("f", "t", acoes=["a"])
+
+        with patch("multitask.runner.run_agent") as fake:
+            result = run_board(
+                board, {}, [], AGENT,
+                store=store, workspace_root=workspace,
+                cancel_event=cancel,
+            )
+
+        fake.assert_not_called()
+        assert result.status == RUN_PAUSADA
+        assert board.task("t1").status == TASK_PENDENTE
+
     def test_parallel_readonly_roda_em_threads(self, store, workspace):
         import threading
         from agent_loop import AgentResult

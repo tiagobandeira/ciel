@@ -362,6 +362,7 @@ def run_board(
     profile: str = "local",
     revisar_fases: bool = False,
     max_parallel: int = 2,
+    cancel_event=None,
 ) -> RunResult:
     """
     Executa as tasks pendentes do quadro, em ordem, até concluir, falhar,
@@ -397,6 +398,7 @@ def run_board(
             profile=profile,
             revisar_fases=revisar_fases,
             max_parallel=max_parallel,
+            cancel_event=cancel_event,
         )
 
 
@@ -420,6 +422,7 @@ def _execute(
     profile: str = "local",
     revisar_fases: bool = False,
     max_parallel: int = 2,
+    cancel_event=None,
 ) -> RunResult:
     started = time.monotonic()
     tokens_in = 0
@@ -449,6 +452,13 @@ def _execute(
         while True:
             task = board.next_pending()
             if task is None:
+                break
+
+            if cancel_event is not None and cancel_event.is_set():
+                board.set_status(RUN_PAUSADA)
+                store.save(board)
+                _emit(store, board, on_event, "run_pausada",
+                      motivo="cancelado pelo usuário")
                 break
 
             if should_pause is not None and should_pause():
@@ -495,9 +505,11 @@ def _execute(
                         callbacks=callbacks,
                         root=root,
                         profile=profile,
+                        cancel_event=cancel_event,
                     )
                     phase_state = board.phase(phase)
                     batch_failed = False
+                    batch_cancelled = False
                     for original, branch, branch_task, outcome in results:
                         if phase_state is not None:
                             for index, current in enumerate(phase_state.tasks):
@@ -531,6 +543,11 @@ def _execute(
                                 checagem_ok=branch_task.checagem_ok,
                                 paralelo=True,
                             )
+                        elif outcome.status == "cancelled":
+                            batch_cancelled = True
+                            branch_task.status = TASK_PENDENTE
+                            branch_task.resumo = "cancelado pelo usuário"
+                            branch_task.erro = ""
                         else:
                             batch_failed = True
                             tasks_fail.append(original.id)
@@ -575,6 +592,12 @@ def _execute(
                                     tokens_in=review.tokens_in,
                                     tokens_out=review.tokens_out,
                                 )
+                    if batch_cancelled:
+                        board.set_status(RUN_PAUSADA)
+                        store.save(board)
+                        _emit(store, board, on_event, "run_pausada",
+                              motivo="cancelado pelo usuário")
+                        break
                     if batch_failed:
                         board.set_status(RUN_FALHOU)
                         store.save(board)
@@ -596,11 +619,19 @@ def _execute(
                 root=root,
                 tokens_before=(tokens_in, tokens_out),
                 profile=profile,
+                cancel_event=cancel_event,
             )
 
             tokens_in += outcome.tokens_in
             tokens_out += outcome.tokens_out
             _record_subagent(store, board, task, phase)
+
+            if outcome.status == "cancelled":
+                board.set_status(RUN_PAUSADA)
+                store.save(board)
+                _emit(store, board, on_event, "run_pausada",
+                      motivo="cancelado pelo usuário")
+                break
 
             if outcome.status == "done":
                 tasks_ok.append(task.id)
@@ -870,6 +901,7 @@ def _parallel_execute(
     callbacks: dict,
     root: Path,
     profile: str,
+    cancel_event=None,
 ):
     """Executa um lote em boards isolados e devolve (task_original, board, outcome)."""
     jobs = []
@@ -895,6 +927,7 @@ def _parallel_execute(
                 root=root,
                 tokens_before=(0, 0),
                 profile=profile,
+                cancel_event=cancel_event,
             )
             return original, branch, branch_task, outcome
         except Exception as exc:
@@ -931,6 +964,7 @@ def _execute_task(
     root: Path,
     tokens_before: tuple[int, int] = (0, 0),
     profile: str = "local",
+    cancel_event=None,
 ) -> _TaskOutcome:
     """
     Executa UMA task até concluir, esgotar as correções ou falhar.
@@ -1085,6 +1119,7 @@ def _execute_task(
             allow_tool_proposal=False,
             budget_tokens=budget_left,
             deadline=deadline,
+            cancel_event=cancel_event,
             **callbacks,
         )
 
@@ -1113,6 +1148,20 @@ def _execute_task(
         )
         metrics["history_chars"] += int(getattr(result, "history_chars", 0) or 0)
         metrics["prompt_chars"] += int(getattr(result, "prompt_chars", 0) or 0)
+
+        if result.status == "cancelled":
+            task.status = TASK_PENDENTE
+            task.resumo = "cancelado pelo usuário"
+            task.erro = ""
+            board.touch()
+            store.save(board)
+            _record_task_metrics(board, task, metrics)
+            return _TaskOutcome(
+                "cancelled",
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                motivo="cancelado pelo usuário",
+            )
 
         if result.status != "done":
             # Steps esgotados não significam necessariamente trabalho

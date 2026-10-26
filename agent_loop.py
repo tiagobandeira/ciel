@@ -596,6 +596,7 @@ def run_agent(
     # devolve status "limit"; o runner decide pela checagem.
     budget_tokens: int = 0,
     deadline: float | None = None,
+    cancel_event=None,
 ) -> AgentResult:
     """
     Executa o loop agêntico e retorna um AgentResult.
@@ -672,6 +673,13 @@ def run_agent(
         and getattr(model_client, "native_tools", False)
     )
     for step in range(1, max_steps + 1):
+        if cancel_event is not None and cancel_event.is_set():
+            _call(on_step, step, "cancelado", "subagente cancelado", "error")
+            return _mk(
+                "cancelled",
+                "Subagente cancelado.",
+                steps=max(0, step - 1),
+            )
         if deadline is not None and time.monotonic() >= deadline:
             _call(on_limit, step, total_in, total_out)
             return _mk(

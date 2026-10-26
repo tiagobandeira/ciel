@@ -72,6 +72,19 @@ class TestClienteInjetado:
         assert result.status == "timeout"
         assert client.chamadas == []
 
+    def test_cancel_event_nao_chama_modelo(self):
+        import threading
+
+        client = FakeClient([_done("não deveria")])
+        cancel = threading.Event()
+        cancel.set()
+        result = run_agent(
+            "oi", {}, [], "", AGENT_INFO, model_client=client,
+            cancel_event=cancel,
+        )
+        assert result.status == "cancelled"
+        assert client.chamadas == []
+
     def test_tool_call_e_depois_done(self):
         chamadas = []
 

@@ -346,6 +346,7 @@ COMMANDS: list[tuple[str, str]] = [
     ("/modo build",        "ativa build (exige nuvem)"),
     ("/subagente",         "lista subagentes da última execução"),
     ("/subagente t1",      "detalha subagente por id/título"),
+    ("/subagente stop",    "cancela o subagente em execução"),
     ("/preview",           "lista previews locais"),
     ("/preview stop",      "para o preview ativo, sem chamar modelo"),
     ("/copiar",            "copia última resposta"),
@@ -2731,6 +2732,7 @@ class CielTUI(App):
         self.modo                 = initial_modo if initial_modo in ("chat", "build") else "chat"
         self._model_client        = None
         self._model_label         = initial_model
+        self._subagent_cancel     = None
         self.safe_mode            = safe_mode
         self._trust_tool_creation = False  # True após o usuário escolher "auto"
         self._configure_perfil(initial_perfil, initial_model)
@@ -3556,6 +3558,7 @@ class CielTUI(App):
                 ("/modo <chat|build>",    "troca o modo da sessão"),
                 ("/subagente",            "lista subagentes da última execução"),
                 ("/subagente <id|titulo>", "detalha um subagente"),
+                ("/subagente stop",       "cancela o subagente em execução"),
                 ("/preview",              "lista previews locais"),
                 ("/preview stop",         "para preview sem chamar modelo"),
                 ("/connect",             "configura provedor do modelo secundário"),
@@ -3802,6 +3805,18 @@ class CielTUI(App):
                     "|stop [id|porta|todos]]",
                     "warn",
                 ))
+
+        elif verb == "/subagente" and len(parts) > 1 and parts[1].lower() in (
+            "stop", "parar", "cancelar",
+        ):
+            if self._subagent_cancel is not None:
+                self._subagent_cancel.set()
+                self._log_write(msg_system(
+                    "cancelamento solicitado; o subagente para no próximo step.",
+                    "warn",
+                ))
+            else:
+                self._log_write(msg_system("nenhum subagente em execução.", "warn"))
 
         elif verb == "/subagente":
             import json as _json
@@ -4690,6 +4705,9 @@ class CielTUI(App):
             "on_ask_user": self._modal_ask_user,
         }
 
+        import threading
+        cancel = threading.Event()
+        self._subagent_cancel = cancel
         try:
             result = run_board(
                 board, self._tools, self._schema, self._agent_info,
@@ -4709,14 +4727,17 @@ class CielTUI(App):
                 on_event=on_event,
                 profile=self.perfil,
                 revisar_fases=(self.perfil == PERFIL_NUVEM),
+                cancel_event=cancel,
             )
         except Exception as exc:
+            self._subagent_cancel = None
             self.call_from_thread(self._set_thinking, False)
             self.call_from_thread(
                 log.write,
                 msg_system(f"build: execução falhou: {exc}", "err"),
             )
             return
+        self._subagent_cancel = None
 
         self.tok_in += result.tokens_in
         self.tok_out += result.tokens_out

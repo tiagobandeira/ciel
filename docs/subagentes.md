@@ -24,6 +24,7 @@ max_steps: 4
 - `tools`: restringe o schema;
 - `read_only`: declara intenção somente leitura;
 - `parallel`: pode rodar junto com tasks irmãs read-only;
+- `timeout_s`: tempo máximo do subagente;
 - `max_steps`: orçamento de steps.
 
 ## Observar
@@ -40,6 +41,20 @@ max_steps: 4
 Cada task grava `data/runs/<id>/subagents/<task_id>.json`.
 O `/subagente` lê esses arquivos e mostra agente, status, tokens e se foi
 paralelo — sem chamar o modelo.
+
+## Cancelamento
+
+Na TUI, durante um build:
+
+```text
+/subagente stop
+```
+
+O runner marca o cancelamento e o subagente para no próximo step. A task volta
+para `pendente` e o run fica `pausada`, podendo ser retomado.
+
+O cancelamento é cooperativo: não interrompe uma chamada de modelo já em
+andamento; ele para antes do próximo step.
 
 ## Ciclo de vida
 

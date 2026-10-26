@@ -582,6 +582,21 @@ o perfil em `subagents/<task>.json`.
 
 ---
 
+---
+
+## D-031 — Cancelamento cooperativo de subagente
+
+**Decisão:** `run_agent` aceita `cancel_event` e `deadline`; o runner pausa a
+execução e devolve a task para `pendente` quando o evento é disparado.
+
+**Por quê:** cancelar no meio de uma chamada HTTP não é seguro sem matar a
+thread; a parada no próximo step é previsível e preserva o quadro.
+
+**Consequência:** TUI expõe `/subagente stop`; timeout e cancelamento não
+interrompem uma requisição em andamento, mas evitam novos steps.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |
