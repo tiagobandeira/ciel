@@ -92,17 +92,17 @@ checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/RELATORIO.md", "tamanho
 ## task: verificar
 fase: Verificação
 depende_de: relatorio
-tools: read_file, write_file, run_script, run_notebook
-max_steps: 8
-objetivo: auditar a evidência de forma neutra, com scripts e status explícito
+tools: read_file, write_file, run_script
+max_steps: 7
+objetivo: auditar a evidência de forma neutra, sem reexecutar o notebook
 ações:
-- ler NOTA.md, RELATORIO.md, FORMALIZACAO.md e resultados/metricas.json; não use list_directory
+- ler NOTA.md, RELATORIO.md e resultados/metricas.json; não use list_directory
 - extrair de 3 a 6 afirmações verificáveis e escrever data/labs/estudo/verificacao/contraexemplos.py
 - o script deve testar cada afirmação com aritmética exata, casos de borda e uma faixa pequena determinística; aleatoriedade só com semente fixa
 - rodar o script [tool: run_script] e salvar data/labs/estudo/resultados/verificacao.json com status: suportado, contraexemplo, inconclusivo ou erro
 - NÃO é um debate e não há recompensa por refutar: refutação sem saída de script é proibida; se não der para testar mecanicamente, use inconclusivo
 - falha lógica só pode ser registrada com trecho exato da prova e o passo questionado; sem encenação e sem acusação
-- validar o notebook com run_notebook [tool: run_notebook]
 - escrever data/labs/estudo/VERIFICACAO.md com tabela: afirmação, método, comando, saída, status e limitações
+- o notebook já foi executado em t5; não rode de novo e não o reescreva
 resultado esperado: script de verificação executado, JSON de status e VERIFICACAO.md existem
-checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/VERIFICACAO.md", "tamanho_min": 250}, {"tipo": "arquivo", "path": "data/labs/estudo/verificacao/contraexemplos.py", "tamanho_min": 150}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/verificacao.json", "tamanho_min": 40}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/metricas.json", "tamanho_min": 40}, {"tipo": "comando", "cmd": ["python", "data/labs/estudo/verificacao/contraexemplos.py"], "cwd": ".", "esperado": 0, "timeout": 120}, {"tipo": "comando", "cmd": ["python", "-c", "import json,pathlib; p='data/labs/estudo/laboratorio.ipynb'; d=json.load(open(p, encoding='utf-8')); code=[c for c in d['cells'] if c.get('cell_type')=='code']; assert code; assert any(c.get('outputs') for c in code), 'sem outputs'; assert not any(o.get('output_type')=='error' for c in code for o in c.get('outputs',[])), 'erro no notebook'; assert list(pathlib.Path('data/labs/estudo/figuras').glob('*.png')), 'sem figuras'; print('ok')"], "cwd": ".", "esperado": 0, "timeout": 30}]
+checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/VERIFICACAO.md", "tamanho_min": 250}, {"tipo": "arquivo", "path": "data/labs/estudo/verificacao/contraexemplos.py", "tamanho_min": 150}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/verificacao.json", "tamanho_min": 40}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/metricas.json", "tamanho_min": 40}, {"tipo": "comando", "cmd": ["python", "data/labs/estudo/verificacao/contraexemplos.py"], "cwd": ".", "esperado": 0, "timeout": 120}]

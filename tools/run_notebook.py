@@ -15,6 +15,8 @@ import time
 import traceback
 from pathlib import Path
 
+os.environ.setdefault("MPLBACKEND", "Agg")
+
 MAX_OUTPUT = 20000
 
 
@@ -75,8 +77,13 @@ def _run_cells(
     counter = 0
     try:
         os.chdir(workdir)
+        os.environ["MPLBACKEND"] = "Agg"
         try:
-            import matplotlib.pyplot as plt  # noqa: F401
+            import matplotlib
+            matplotlib.use("Agg", force=True)
+            import matplotlib.pyplot as plt
+            # Garante que plt.show() não abra janela nem bloqueie o runner.
+            plt.show = lambda *args, **kwargs: None
         except Exception:
             plt = None
 
@@ -165,7 +172,9 @@ def _run_cells(
                         })
                         figdir = workdir / "figuras"
                         figdir.mkdir(parents=True, exist_ok=True)
-                        fig.savefig(figdir / f"cell_{index}_fig_{num}.png")
+                        fig_path = figdir / f"cell_{index}_fig_{num}.png"
+                        fig.savefig(fig_path)
+                        log.append(f"figura: {fig_path}")
                     except Exception:
                         pass
                     finally:

@@ -98,3 +98,21 @@ def test_display_tem_fallback(tmp_path):
     result = run_notebook.run(str(nb), cwd=str(tmp_path))
     assert "exit=0" in result
     assert "visivel" in result
+
+
+def test_show_nao_bloqueia_e_salva_figura(tmp_path):
+    nb = tmp_path / "lab.ipynb"
+    write_notebook.run(
+        str(nb),
+        [{
+            "type": "code",
+            "source": (
+                "import matplotlib.pyplot as plt\n"
+                "plt.plot([1, 2, 3])\n"
+                "plt.show()"
+            ),
+        }],
+    )
+    result = run_notebook.run(str(nb), cwd=str(tmp_path))
+    assert "exit=0" in result
+    assert list((tmp_path / "figuras").glob("*.png"))
