@@ -24,6 +24,18 @@ max_steps: 4
 - `parallel`: pode rodar junto com tasks irmãs read-only;
 - `max_steps`: orçamento de steps.
 
+## Observar
+
+```text
+/subagente                  # lista da última execução
+/subagente <run_id>         # lista de uma execução
+/subagente <run_id> t1      # detalhe do subagente t1
+```
+
+Cada task grava `data/runs/<id>/subagents/<task_id>.json`.
+O `/subagente` lê esses arquivos e mostra agente, status, tokens e se foi
+paralelo — sem chamar o modelo.
+
 ## Ciclo de vida
 
 1. O runner monta o contexto da task a partir do quadro.

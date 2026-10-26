@@ -545,6 +545,36 @@ def _execute(
                     store.save(board)
                     if _phase_finished(board, phase):
                         _emit(store, board, on_event, "fase_concluida", fase=phase)
+                        if (
+                            revisar_fases
+                            and profile == PERFIL_NUVEM
+                            and model_client is not None
+                            and phase not in reviewed_phases
+                        ):
+                            reviewed_phases.add(phase)
+                            review = review_phase(
+                                board, phase, model_client, model=model,
+                                available_tools=set(tools),
+                            )
+                            tokens_in += review.tokens_in
+                            tokens_out += review.tokens_out
+                            store.save(board)
+                            if review.errors:
+                                _emit(
+                                    store, board, on_event, "fase_revisao_falhou",
+                                    fase=phase, erros=review.errors,
+                                    mudancas=review.applied,
+                                    tokens_in=review.tokens_in,
+                                    tokens_out=review.tokens_out,
+                                )
+                            else:
+                                _emit(
+                                    store, board, on_event, "fase_revisada",
+                                    fase=phase, resumo=review.resumo,
+                                    mudancas=review.applied,
+                                    tokens_in=review.tokens_in,
+                                    tokens_out=review.tokens_out,
+                                )
                     if batch_failed:
                         board.set_status(RUN_FALHOU)
                         store.save(board)

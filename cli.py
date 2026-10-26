@@ -1529,6 +1529,7 @@ def main():
         "/modo chat", "/modo build", "/processo", "/processo app_web", "/processo web_projeto", "/processo landing_page", "/processo --retomar", "/processo --analisar",
         "/replicar",
         "/skill import", "/skill run", "/multitask --skill",
+        "/subagente",
         "/preview", "/preview start", "/preview stop", "/preview listar",
         "/source", "/source --listar","/source --remover","/source --global","/source --limpar-orfas","/skill", "/limpar-temp",
         "/promover ", "/copiar", "/tokens", "/ajuda",
@@ -2574,6 +2575,7 @@ def main():
                 "  [tool]/processo[/tool]                lista e executa processos nativos do Ciel\n"
                 "  [tool]/processo --analisar [id][/tool]  analisa uma execução (sem modelo no local)\n"
                 "  [tool]/replicar <skill>[/tool]       executa uma skill absorvida como board\n"
+                "  [tool]/subagente [run] [task][/tool] lista/detalha resultados de subagentes\n"
                 "  [tool]/preview[/tool]                 lista/para previews locais sem chamar o modelo\n"
                 "  [tool]/tools-extras[/tool]            tools opcionais e exemplos disponíveis\n"
                 "  [tool]/ajuda[/tool]                   este menu",
@@ -2975,6 +2977,69 @@ def main():
                     f"  [tool]processo:[/tool] [white]{_processo.titulo}[/white]\n"
                 )
                 user_input = f"/multitask {_processo.flow} {_objetivo}"
+
+        # ── /subagente — inspeciona resultados de subagentes ──────────────────
+        if user_input.startswith("/subagente"):
+            import json as _json
+            from board import BoardStore
+
+            partes = user_input.split()
+            alvo = partes[1].strip() if len(partes) > 1 and partes[1] != "status" else ""
+            task_id = partes[2].strip() if len(partes) > 2 else ""
+            runs = BoardStore()
+            try:
+                board_sub = runs.load(alvo) if alvo else runs.latest()
+            except Exception:
+                board_sub = None
+            if board_sub is None:
+                console.print("  [err]nenhuma execução encontrada.[/err]\n")
+                continue
+            sub_dir = runs.run_dir(board_sub.id) / "subagents"
+            if not sub_dir.is_dir():
+                console.print(
+                    f"  [muted]nenhum subagente em {board_sub.id}.[/muted]\n"
+                )
+                continue
+            arquivos = sorted(sub_dir.glob("*.json"))
+            if task_id:
+                path = sub_dir / f"{task_id}.json"
+                if not path.exists():
+                    console.print(f"  [err]subagente '{task_id}' não encontrado.[/err]\n")
+                    continue
+                try:
+                    data = _json.loads(path.read_text(encoding="utf-8"))
+                except Exception as exc:
+                    console.print(f"  [err]erro ao ler {path}: {exc}[/err]\n")
+                    continue
+                console.print(Panel(
+                    escape(_json.dumps(data, ensure_ascii=False, indent=2)),
+                    title=f"[user]subagente {task_id}[/user]",
+                    border_style=CLR_USER,
+                    padding=(0, 1),
+                ))
+                continue
+            tbl = Table(box=None, show_header=True, padding=(0, 1))
+            tbl.add_column("task", style="tool")
+            tbl.add_column("agente")
+            tbl.add_column("status")
+            tbl.add_column("tok in/out")
+            tbl.add_column("par")
+            for path in arquivos:
+                try:
+                    data = _json.loads(path.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
+                tbl.add_row(
+                    str(data.get("id", path.stem)),
+                    str(data.get("agente", "")),
+                    str(data.get("status", "")),
+                    f"{data.get('tokens_in', 0)}/{data.get('tokens_out', 0)}",
+                    "sim" if data.get("parallel") else "",
+                )
+            console.print()
+            console.print(tbl)
+            console.print(f"  [muted]run: {board_sub.id}[/muted]\n")
+            continue
 
         if user_input.startswith("/multitask"):
             _proc_ativo = _SESSION.pop("processo_ativo", None)
