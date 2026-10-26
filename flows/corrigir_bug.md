@@ -21,7 +21,7 @@ checagem: [{"tipo": "arquivo", "path": "data/user/corrigir_bug/ALVO.json", "tama
 fase: Diagnóstico
 depende_de: preparar
 tools: read_file, write_file, run_script
-max_steps: 6
+max_steps: 7
 objetivo: reproduzir a falha e registrar a causa sem alterar o código
 ações:
 - ler data/user/corrigir_bug/ALVO.json

@@ -27,6 +27,20 @@ def _resolve(raw: str) -> Path:
     return path if path.is_absolute() else (ROOT / path)
 
 
+def _python_executable() -> str:
+    """Prefere o venv do próprio projeto ao Python do processo atual."""
+    candidatos = [
+        ROOT / "venv" / "Scripts" / "python.exe",
+        ROOT / "venv" / "bin" / "python",
+        ROOT / ".venv" / "Scripts" / "python.exe",
+        ROOT / ".venv" / "bin" / "python",
+    ]
+    for candidato in candidatos:
+        if candidato.is_file():
+            return str(candidato)
+    return sys.executable
+
+
 def main() -> int:
     if not ALVO.exists():
         print(f"Erro: ALVO.json não encontrado em {ALVO}")
@@ -48,10 +62,10 @@ def main() -> int:
     if not isinstance(comando, list) or not comando:
         print("Erro: 'comando' inválido no ALVO.json")
         return 2
-    # "python" no ALVO pode resolver para outro interpretador (Windows Store);
-    # usa o mesmo Python que está rodando o Ciel/runner.
+    # "python" no ALVO pode resolver para outro interpretador (PATH/Store);
+    # usa o venv do projeto quando existir.
     if str(comando[0]).lower() in ("python", "python.exe", "py"):
-        comando = [sys.executable, *comando[1:]]
+        comando = [_python_executable(), *comando[1:]]
 
     cwd_raw = data.get("cwd") or str(projeto)
     cwd = _resolve(str(cwd_raw))
