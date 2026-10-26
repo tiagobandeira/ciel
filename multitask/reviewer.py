@@ -231,12 +231,41 @@ def review_phase(
     except Exception as exc:
         return ReviewResult(errors=[f"falha no revisor: {exc}"])
     raw = result.text or ""
+    tokens_in = int(result.tokens_in or 0)
+    tokens_out = int(result.tokens_out or 0)
     data = _extract_json(raw)
+
+    if data is None:
+        # Uma segunda tentativa estrita; o provider às vezes devolve prosa.
+        retry_messages = messages + [
+            {"role": "assistant", "content": raw},
+            {
+                "role": "user",
+                "content": (
+                    "Sua resposta anterior não foi JSON válido. Responda "
+                    "APENAS com o objeto JSON, sem markdown e sem texto."
+                ),
+            },
+        ]
+        try:
+            retry: ChatResult = client.chat(
+                retry_messages, model=model or None, temperature=0.2,
+                max_tokens=max_tokens,
+            )
+            tokens_in += int(retry.tokens_in or 0)
+            tokens_out += int(retry.tokens_out or 0)
+            if retry.text:
+                data = _extract_json(retry.text)
+                if data is not None:
+                    raw = retry.text
+        except Exception:
+            pass
+
     if data is None:
         return ReviewResult(
             errors=["resposta do revisor não é JSON válido"],
-            tokens_in=int(result.tokens_in or 0),
-            tokens_out=int(result.tokens_out or 0),
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
             raw=raw,
         )
 
@@ -248,7 +277,7 @@ def review_phase(
         resumo=resumo,
         applied=applied,
         errors=errors,
-        tokens_in=int(result.tokens_in or 0),
-        tokens_out=int(result.tokens_out or 0),
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
         raw=raw,
     )

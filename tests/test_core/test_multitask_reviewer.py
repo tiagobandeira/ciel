@@ -19,6 +19,16 @@ class FakeReviewer:
         return ChatResult(text, tokens_in=7, tokens_out=3)
 
 
+class SequenceReviewer:
+    def __init__(self, texts):
+        self.texts = list(texts)
+        self.chamadas = []
+
+    def chat(self, messages, **kwargs):
+        self.chamadas.append(messages)
+        return ChatResult(self.texts.pop(0), tokens_in=2, tokens_out=1)
+
+
 def _board():
     board = Board.new("objetivo")
     board.add_task(
@@ -80,6 +90,26 @@ def test_revisor_json_invalido():
     result = review_phase(board, "Estrutura", FakeReviewer(text="não é json"))
     assert not result.ok
     assert "JSON" in result.errors[0]
+
+
+def test_revisor_tenta_de_novo_quando_primeira_resposta_e_prosa():
+    board = _board()
+    client = SequenceReviewer([
+        "vou revisar a fase agora",
+        json.dumps({"changes": []}),
+    ])
+    result = review_phase(board, "Estrutura", client)
+    assert result.ok
+    assert len(client.chamadas) == 2
+    assert result.tokens_in == 4
+
+
+def test_revisor_falha_depois_de_duas_respostas_invalidas():
+    board = _board()
+    result = review_phase(
+        board, "Estrutura", SequenceReviewer(["prosa", "ainda prosa"])
+    )
+    assert not result.ok
 
 
 def test_tools_inventadas_nao_quebram_a_task():

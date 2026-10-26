@@ -456,6 +456,24 @@ copiar os testes gerados para o repositório depois.
 
 ---
 
+---
+
+## D-024 — Corrigir bug parametrizado por ALVO
+
+**Decisão:** `corrigir_bug` deixou de ser amarrado ao `bugfix_demo`. A primeira
+task grava `data/user/corrigir_bug/ALVO.json` com projeto, comando, cwd e
+arquivo; o runner `verificar.py` executa esse comando. Sem objetivo explícito,
+o alvo padrão continua sendo o demo.
+
+**Por quê:** correção verificável é o nicho mais forte do Ciel; um fluxo que
+só funciona no demo não serve para uso real. O ALVO mantém os checks
+determinísticos mesmo com caminhos variáveis.
+
+**Consequência:** saídas em `data/user/corrigir_bug/`; o template do runner é
+copiado do repositório, não gerado pelo modelo.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

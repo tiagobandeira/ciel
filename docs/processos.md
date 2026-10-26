@@ -86,23 +86,39 @@ Processos iniciais:
 Os fluxos de exemplo (artigo, landing, jogo, notebook) continuam em `flows/`;
 `app_web` é o primeiro processo com fase de spec explícita.
 
-## Corrigir bug (demo)
+## Corrigir bug
 
-O processo `corrigir_bug` usa um demo em `data/user/bugfix_demo` com um teste
-falhando (`media([])` levanta `ZeroDivisionError`). Ele diagnostica, aplica a
-correção mínima e valida por comando.
+O `corrigir_bug` é parametrizado por um `ALVO.json`:
+
+- projeto;
+- comando de teste;
+- diretório de execução;
+- arquivo afetado, quando conhecido.
+
+Sem objetivo explícito, usa o demo em `data/user/bugfix_demo` com
+`media([])` falhando. Ele diagnostica, aplica a correção mínima e valida pelo
+runner em `data/user/corrigir_bug/verificar.py`.
 
 ```text
 /processo corrigir_bug
+/processo corrigir_bug "corrija data/meu_projeto; teste python -m pytest -q"
 ```
 
-Para rodar de novo depois de corrigido:
+Saídas:
+
+```text
+data/user/corrigir_bug/ALVO.json
+data/user/corrigir_bug/DIAGNOSTICO.md
+data/user/corrigir_bug/VERIFICACAO.md
+```
+
+Para rodar o demo de novo depois de corrigido:
 
 ```text
 python examples/reset_bugfix_demo.py
 ```
 
-Resultado do primeiro teste: **3/3 tasks, ~50k tokens** (47,4k input + 2,4k
+Resultado histórico do demo: **3/3 tasks, ~50k tokens** (47,4k input + 2,4k
 output), contra 1,5M de um app greenfield. É o caso onde o motor de checks se
 paga.
 

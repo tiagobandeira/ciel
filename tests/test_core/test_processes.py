@@ -82,9 +82,9 @@ def test_app_web_e_um_fluxo_valido():
 def test_corrigir_bug_e_um_fluxo_valido():
     flow = load_flow("corrigir_bug")
     board = build_board(flow)
-    assert len(board.tasks()) == 3
+    assert len(board.tasks()) == 4
     assert not board.validate()
-    assert board.task("t2").titulo == "corrigir"
+    assert board.task("t3").titulo == "corrigir"
 
 
 def test_resumo_curto_do_processo():
