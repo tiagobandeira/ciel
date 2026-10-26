@@ -648,6 +648,24 @@ arquivos velhos; o experimento nunca rodou.
 
 ---
 
+---
+
+## D-035 — Notebook executado com outputs reais
+
+**Decisão:** `run_notebook` executa as células code no mesmo namespace e grava
+`stdout`, `execute_result`, `error` e imagens PNG como outputs nbformat no
+próprio `.ipynb`.
+
+**Por quê:** executar como script linear não deixava evidência no notebook; o
+relatório citava números que o notebook não mostrava. Outputs persistidos
+tornam a análise auditável e o arquivo útil no Colab.
+
+**Consequência:** a verificação exige outputs, `metricas.json` e `VERIFICACAO`.
+O executor é local, não é um kernel Jupyter completo; timeout é checado entre
+células.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

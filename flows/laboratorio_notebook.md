@@ -100,4 +100,4 @@ ações:
 - escrever data/labs/estudo/VERIFICACAO.md com comandos, resultados e como reproduzir
 - não reescrever o notebook e não usar list_directory
 resultado esperado: notebook válido, execução sem erro e VERIFICACAO.md existe
-checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/VERIFICACAO.md", "tamanho_min": 200}, {"tipo": "comando", "cmd": ["python", "-c", "import json; p='data/labs/estudo/laboratorio.ipynb'; d=json.load(open(p, encoding='utf-8')); assert d['nbformat']==4; assert any(c.get('cell_type')=='code' for c in d['cells']); print('ok')"], "cwd": ".", "esperado": 0, "timeout": 30}]
+checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/VERIFICACAO.md", "tamanho_min": 200}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/metricas.json", "tamanho_min": 40}, {"tipo": "comando", "cmd": ["python", "-c", "import json; p='data/labs/estudo/laboratorio.ipynb'; d=json.load(open(p, encoding='utf-8')); assert d['nbformat']==4; code=[c for c in d['cells'] if c.get('cell_type')=='code']; assert code; assert any(c.get('outputs') for c in code), 'sem outputs'; print('ok')"], "cwd": ".", "esperado": 0, "timeout": 30}]

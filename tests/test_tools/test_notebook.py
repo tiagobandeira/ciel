@@ -45,6 +45,11 @@ def test_executa_notebook_e_grava_log(tmp_path):
     assert "ok" in result
     assert log.is_file()
     assert "exit=0" in log.read_text(encoding="utf-8")
+    data = json.loads(nb.read_text(encoding="utf-8"))
+    code = [c for c in data["cells"] if c["cell_type"] == "code"][0]
+    assert code["outputs"]
+    assert code["outputs"][0]["output_type"] == "stream"
+    assert "ok" in "".join(code["outputs"][0]["text"])
 
 
 def test_notebook_sem_code(tmp_path):
@@ -55,3 +60,19 @@ def test_notebook_sem_code(tmp_path):
     )
     result = run_notebook.run(str(nb), cwd=str(tmp_path))
     assert "não tem células de código" in result
+
+
+def test_grava_expressao_e_erro(tmp_path):
+    nb = tmp_path / "lab.ipynb"
+    write_notebook.run(
+        str(nb),
+        [
+            {"type": "code", "source": "1 + 1"},
+            {"type": "code", "source": "raise ValueError('falhou')"},
+        ],
+    )
+    result = run_notebook.run(str(nb), cwd=str(tmp_path))
+    assert "exit=1" in result
+    data = json.loads(nb.read_text(encoding="utf-8"))
+    assert data["cells"][0]["outputs"][0]["output_type"] == "execute_result"
+    assert data["cells"][1]["outputs"][0]["output_type"] == "error"

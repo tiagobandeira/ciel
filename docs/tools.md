@@ -20,7 +20,7 @@ Presentes em todo agente, independente do caso de uso.
 | `prepare_kernel.py` | aplica um kernel de `kernels/` com variante, manifesto e smoke |
 | `prepare_lab.py` | prepara um lab limpo e arquiva o diretório anterior |
 | `write_notebook.py` | cria um `.ipynb` nbformat 4 válido a partir de células |
-| `run_notebook.py` | executa as células code de um notebook localmente |
+| `run_notebook.py` | executa células code célula a célula e grava outputs no `.ipynb` |
 | `start_preview.py` | sobe um servidor estático local em 127.0.0.1 e devolve a URL |
 | `stop_preview.py` | encerra um preview pelo id ou porta |
 | `list_previews.py` | lista previews ativos |
