@@ -223,6 +223,23 @@ class TestExecucaoFeliz:
         assert "context_peak_chars" in metricas
         assert "prompt_chars" in metricas
 
+    def test_flow_pode_desligar_revisao(self, store, workspace):
+        board = Board.new("x", run_id="run-sem-revisao", perfil="nuvem")
+        board.meta["revisao"] = "false"
+        board.add_task("f", "t", acoes=["a"])
+        with patch(
+            "multitask.runner.run_agent",
+            side_effect=make_fake([done("ok")]),
+        ), patch("multitask.runner.review_phase") as review:
+            run_board(
+                board, {}, [], AGENT,
+                store=store, workspace_root=workspace,
+                profile="nuvem", revisar_fases=True,
+            )
+
+        review.assert_not_called()
+        assert board.status == RUN_CONCLUIDA
+
     def test_cancel_event_pausa_sem_executar(self, store, workspace):
         import threading
 

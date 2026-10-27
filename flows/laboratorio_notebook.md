@@ -1,5 +1,6 @@
 ## flow: laboratorio_notebook
 objetivo: transformar uma ideia/fonte (PDF, Markdown ou dataset) em um laboratório reproduzível com hipótese, experimento, notebook Colab, execução e relatório
+revisao: false
 formato: markdown
 como_testar: abra data/labs/estudo/laboratorio.ipynb no Jupyter/Colab ou rode python src/experimento.py
 

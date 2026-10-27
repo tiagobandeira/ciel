@@ -425,6 +425,9 @@ def _execute(
     cancel_event=None,
 ) -> RunResult:
     started = time.monotonic()
+    revisao_flow = str(board.meta.get("revisao", "")).strip().lower()
+    if revisao_flow in ("false", "0", "nao", "não", "off"):
+        revisar_fases = False
     tokens_in = 0
     tokens_out = 0
     tasks_ok: list[str] = []

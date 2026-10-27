@@ -68,6 +68,7 @@ def test_laboratorio_notebook_e_um_fluxo_valido():
     assert board.task("t3").titulo == "implementar_script"
     assert board.task("t7").titulo == "auditar"
     assert board.task("t8").titulo == "verificar"
+    assert board.meta.get("revisao") == "false"
 
 
 def test_detect_process_por_intencao():

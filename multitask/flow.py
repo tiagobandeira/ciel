@@ -102,6 +102,8 @@ def _header(text: str) -> tuple[dict, str]:
             meta["idioma"] = line.split(":", 1)[1].strip()
         elif low.startswith("tom:"):
             meta["tom"] = line.split(":", 1)[1].strip()
+        elif low.startswith("revisao:") or low.startswith("revisão:"):
+            meta["revisao"] = line.split(":", 1)[1].strip().lower()
 
     return meta, body
 
