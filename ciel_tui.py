@@ -182,22 +182,24 @@ except Exception:
 # ─── Paleta ───────────────────────────────────────────────────────────────────
 
 P = {
-    "bg":      "#0f111a",
-    "surface": "#13151f",
-    "panel":   "#181b27",
-    "border":  "#1e2235",
-    "dim":     "#252840",
-    "muted":   "#4a4f6a",
-    "silver":  "#7a85a8",
-    "text":    "#c5cfe8",
-    "accent":  "#4c8bf5",
-    "accent2": "#2d6be4",
-    "gold":    "#e8c84a",
-    "green":   "#4ec994",
-    "crimson": "#e05270",
-    "orange":  "#e8943a",
-    "cyan":    "#38d4e0",
-    "hi":      "#1e2a4a",   # highlight seleção
+    # Paleta única do Ciel: mesma familia do web/static/style.css. O site é
+    # a referencia; aqui entram os mesmos valores (16 hex, 372 usos).
+    "bg":      "#080d16",
+    "surface": "#0d1424",
+    "panel":   "#111c30",
+    "border":  "#1e2e48",
+    "dim":     "#162038",
+    "muted":   "#4a5e7a",
+    "silver":  "#94a8c4",
+    "text":    "#e2eaf5",
+    "accent":  "#38bdf8",
+    "accent2": "#0ea5e9",
+    "gold":    "#e8c84a",   # "você" — papel, não decoração
+    "green":   "#34d399",
+    "crimson": "#f87171",
+    "orange":  "#f59e0b",
+    "cyan":    "#22d3ee",   # tools
+    "hi":      "#1a3a52",   # highlight seleção
 }
 
 ASCII_LOGO = """\

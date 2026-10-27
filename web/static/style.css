@@ -13,6 +13,8 @@
   --accent:     #38bdf8;   /* azul céu — primary */
   --accent2:    #0ea5e9;   /* azul médio */
   --accent-dim: #1a3a52;   /* accent fundo escuro */
+  --voice:      #e8c84a;   /* "você" — dourado, papel e não decoração */
+  --voice-dim:  #6b5a1e;
   --cyan:       #22d3ee;   /* ciano highlight */
   --cyan-dim:   #0c2d38;
 
@@ -429,7 +431,8 @@ body {
   position: relative;
 }
 
-.msg.user  .msg-bubble { background: var(--accent-dim); border-color: var(--accent2); border-bottom-right-radius: 4px; }
+.msg.user  .msg-bubble { background: var(--surface2); border-color: var(--border2);
+  border-right: 2px solid var(--voice-dim); border-bottom-right-radius: 4px; }
 .msg.agent .msg-bubble { background: var(--surface2); border-color: var(--border2); border-bottom-left-radius: 4px; }
 .msg.warn  .msg-bubble { background: var(--warn-dim); border-color: var(--warn); border-bottom-left-radius: 4px; }
 .msg.sys   .msg-bubble {
@@ -445,8 +448,8 @@ body {
   margin-bottom: 2px;
   padding: 0 2px;
 }
-.msg.user  .msg-label { color: var(--accent);  text-align: right; }
-.msg.agent .msg-label { color: var(--cyan); }
+.msg.user  .msg-label { color: var(--voice);  text-align: right; }
+.msg.agent .msg-label { color: var(--accent); }
 .msg.warn  .msg-label { color: var(--warn); }
 
 /* Steps do agente */
@@ -1572,6 +1575,7 @@ body {
 
 .tl-step  { color: var(--muted); text-align: right; font-size: 10px; }
 .tl-glyph { color: var(--cyan); text-align: center; }
+.thought-line.st-model .tl-glyph { color: var(--accent); }
 .tl-label { color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tl-texto { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tl-ms    { color: var(--muted); font-size: 10px; text-align: right; }
