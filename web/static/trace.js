@@ -10,8 +10,6 @@
 (function () {
   'use strict';
 
-  const ABERTO_KEY = 'ciel:trace-aberto';
-
   // mesmo vocabulário de glifos da TUI (ciel_tui.msg_system / msg_tool)
   const GLIFO = {
     model: '✦', tool: '⚙', done: '✓', error: '✗',
@@ -44,14 +42,6 @@
     if (label === 'registry') return 'recarregando tools';
     if (label === 'done') return 'concluindo';
     return label || 'pensando';
-  }
-
-  function preferenciaAberto() {
-    try { return localStorage.getItem(ABERTO_KEY) === '1'; } catch (_) { return false; }
-  }
-
-  function salvarPreferencia(aberto) {
-    try { localStorage.setItem(ABERTO_KEY, aberto ? '1' : '0'); } catch (_) {}
   }
 
   function rolar() {
@@ -101,9 +91,12 @@
     raiz.dataset.tools = '0';
     raiz.dataset.ms = '0';
 
-    const aberto = preferenciaAberto();
+    // Nasce sempre recolhido, e o fim do turno NÃO mexe mais nesse estado:
+    // abrir/fechar é decisão do usuário. Antes, quem tinha expandido via o
+    // log fechar sozinho no fim (e o turno seguinte já nascia aberto), o que
+    // dava a impressão de que o pensamento sumia.
     raiz.innerHTML =
-      '<button class="thought-head" type="button" aria-expanded="' + aberto + '">' +
+      '<button class="thought-head" type="button" aria-expanded="false">' +
         '<span class="thought-glyph" aria-hidden="true">✦</span>' +
         '<span class="thought-title">pensando…</span>' +
         '<span class="thought-meta"></span>' +
@@ -113,13 +106,8 @@
         '<div class="thought-log" role="log" aria-live="polite"></div>' +
       '</div>';
 
-    if (aberto) raiz.classList.add('aberto');
-
     raiz.querySelector('.thought-head').addEventListener('click', () => {
-      const vaiAbrir = !raiz.classList.contains('aberto');
-      if (vaiAbrir) abrir(raiz); else fechar(raiz);
-      raiz.dataset.usuarioMexeu = '1';
-      salvarPreferencia(vaiAbrir);
+      if (raiz.classList.contains('aberto')) fechar(raiz); else abrir(raiz);
     });
 
     const msgs = document.getElementById('messages');
@@ -193,9 +181,8 @@
     raiz.classList.toggle('erro', !ok);
     mostrarMeta(raiz);
 
-    // respeita quem abriu manualmente; senão, recolhe no sucesso
+    // só força abrir quando deu errado — o resto é escolha do usuário
     if (!ok) abrir(raiz);
-    else if (raiz.dataset.usuarioMexeu !== '1') fechar(raiz);
     rolar();
   }
 
