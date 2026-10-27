@@ -112,6 +112,12 @@ class AppState:
         # force_safe: True quando --safe foi passado na CLI.
         # Quando False, o safe é decidido por request via _safe_for_request().
         self.force_safe  = safe
+        # perfil: "local" = orquestrador no Ollama; "nuvem" = orquestrador no
+        # provider secundário (mesma semântica da CLI/TUI). model_client None
+        # significa local; model_label é o que aparece na interface.
+        self.perfil       = "local"
+        self.model_client = None
+        self.model_label  = model
         self.history     = []          # list[dict]
         self.store       = HistoryStore(DB_PATH)
         self.session_id: int | None = None
@@ -135,7 +141,40 @@ class AppState:
         all_tools       = load_tools()
         self.tools      = filter_tools(all_tools, self.agent_info["allowed_tools"])
         self.tools      = filter_unsafe(self.tools, effective_safe)
+        if self.perfil == "nuvem":
+            # no perfil nuvem o próprio orquestrador é o modelo da API; chamar
+            # secondary_model seria chamar a si mesmo (mesmo corte da CLI)
+            self.tools.pop("secondary_model", None)
         self.schema = tools_schema(self.tools)
+
+    def aplicar_perfil(self, perfil: str) -> None:
+        """
+        Troca o orquestrador entre Ollama (local) e provider (nuvem).
+
+        Mesmo caminho da CLI: `load_roles` resolve o papel e `spec.client()`
+        instancia o cliente HTTP. Não recarrega tools — quem chama em contexto
+        de request faz `reload_tools_for_request()` em seguida.
+        """
+        from llm.roles import load_roles, normalize_perfil, PERFIL_NUVEM
+
+        perfil = normalize_perfil(perfil)
+        roles  = load_roles(self.model, perfil=perfil)
+
+        if roles.perfil == PERFIL_NUVEM:
+            spec = roles.orchestrator
+            if spec is None or spec.is_local:
+                raise RuntimeError(
+                    "perfil nuvem exige um provider configurado — "
+                    "salve uma chave em Ajustes → Provedores."
+                )
+            self.model_client = spec.client()
+            self.perfil       = PERFIL_NUVEM
+            self.model_label  = spec.label
+            return
+
+        self.perfil       = "local"
+        self.model_client = None
+        self.model_label  = self.model
 
     def reload_tools_for_request(self):
         """
@@ -336,6 +375,8 @@ def api_info():
         "model":         state.model,
         "version":       VERSION,
         "tools":         state.tools_as_list(),
+        "perfil":        state.perfil,
+        "perfil_label":  state.model_label,
         "authenticated": authenticated,
         "safe":          _safe_for_request(),
         "force_safe":    state.force_safe,
@@ -351,7 +392,7 @@ def api_info():
 CONFIG_PATH      = ROOT / "ciel_config.json"
 PROVIDERS_PATH   = ROOT / "providers.json"
 REPO_URL         = "https://github.com/tiagobandeira/ciel"
-SETTINGS_EDITAVEIS = {"model"}
+SETTINGS_EDITAVEIS = {"model", "perfil"}
 
 
 def _ler_json(caminho: Path) -> dict:
@@ -430,7 +471,9 @@ def api_settings():
         "agent_full": state.agent_info.get("name", state.agent_id),
         "agent_desc": state.agent_info.get("description", ""),
         "model":      state.model,
-        "perfil":     "local",     # o web ainda fala só Ollama
+        "perfil":     state.perfil,
+        "perfil_label": state.model_label,
+        "nuvem_disponivel": _nuvem_disponivel(state.model),
         "ollama":     _modelos_ollama(),
         "providers":  catalogo,
         "configurados": configurados,
@@ -447,6 +490,17 @@ def api_settings():
     })
 
 
+def _nuvem_disponivel(model: str) -> bool:
+    """True se o perfil nuvem consegue resolver um provider (sem chamar a API)."""
+    try:
+        from llm.roles import load_roles, PERFIL_NUVEM
+        roles = load_roles(model, perfil=PERFIL_NUVEM)
+        spec  = roles.orchestrator
+        return bool(spec is not None and not spec.is_local)
+    except Exception:
+        return False
+
+
 @app.route("/api/settings", methods=["PUT"])
 def api_settings_save():
     if not _is_authenticated():
@@ -460,22 +514,41 @@ def api_settings_save():
         return jsonify({"error": "chave não editável: " + ", ".join(sorted(desconhecidas))}), 400
 
     config = _ler_json(CONFIG_PATH)
+    web = config.get("web")
+    if not isinstance(web, dict):
+        web = {}
+
     if "model" in data:
         modelo = str(data["model"]).strip()[:80]
         if not modelo:
             return jsonify({"error": "modelo vazio"}), 400
-        web = config.get("web")
-        if not isinstance(web, dict):
-            web = {}
-        web["model"] = modelo
-        config["web"] = web
         state.model = modelo
+        if state.perfil == "local":
+            state.model_label = modelo
+        web["model"] = modelo
 
+    if "perfil" in data:
+        perfil = str(data["perfil"]).strip().lower()
+        if perfil not in ("local", "nuvem"):
+            return jsonify({"error": "perfil inválido (local|nuvem)"}), 400
+        try:
+            state.aplicar_perfil(perfil)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+        state.reload_tools_for_request()   # secondary_model sai/volta do schema
+        web["perfil"] = perfil
+
+    config["web"] = web
     try:
         _gravar_json(CONFIG_PATH, config)
     except OSError as e:
         return jsonify({"error": f"não consegui salvar: {e}"}), 500
-    return jsonify({"ok": True, "model": state.model})
+    return jsonify({
+        "ok":           True,
+        "model":        state.model,
+        "perfil":       state.perfil,
+        "perfil_label": state.model_label,
+    })
 
 
 @app.route("/api/settings/provider", methods=["POST"])
@@ -968,7 +1041,7 @@ def _chat_turn():
             user_input,
             tools,
             schema,
-            state.model,
+            "" if state.model_client else state.model,
             state.agent_info,
             history=state.history[:-1],
             image_b64=image_b64,
@@ -979,6 +1052,8 @@ def _chat_turn():
             on_confirm_path=_server_confirm_path,
             on_ask_user=None,           # tools INTERACTIVE não têm UI no server
             cancel_event=cancelar,      # botão "parar" do front
+            model_client=state.model_client,
+            profile=state.perfil,
             **ui_bus.callbacks(turn_id, coletor=trace),
         )
     finally:
@@ -1100,7 +1175,7 @@ def handle_command(cmd: str, turn_id: str | None = None) -> tuple[str, bool]:
                 task_prompt,
                 state.tools,
                 state.schema,
-                state.model,
+                "" if state.model_client else state.model,
                 state.agent_info,
                 history=state.history[:-1],
                 web_base_url=state.base_url,
@@ -1110,6 +1185,8 @@ def handle_command(cmd: str, turn_id: str | None = None) -> tuple[str, bool]:
                 on_confirm_path=_server_confirm_path,
                 on_ask_user=None,
                 cancel_event=cancelar,
+                model_client=state.model_client,
+                profile=state.perfil,
                 **ui_bus.callbacks(turn_id, coletor=trace),
             )
         finally:
@@ -1688,12 +1765,22 @@ def main():
         print(f"Erro: {e}")
         sys.exit(1)
 
+    # perfil salvo pela interface (web.perfil); se o provider sumiu, cai em local
+    web_salvo = _ler_json(CONFIG_PATH).get("web")
+    perfil_salvo = web_salvo.get("perfil") if isinstance(web_salvo, dict) else None
+    try:
+        state.aplicar_perfil(str(perfil_salvo or "local"))
+        state._load_agent(state.agent_id, safe=state.force_safe)
+    except Exception:
+        state.aplicar_perfil("local")
+
     auth_status = auth.status()
     exposto     = args.host not in ("127.0.0.1", "localhost", "::1")
 
     print(f"\n  ◈ ciel v{VERSION}")
     print(f"  agente  : {state.agent_info.get('name', args.agent)}")
-    print(f"  modelo  : {args.model}")
+    print(f"  perfil  : {state.perfil}")
+    print(f"  modelo  : {state.model_label}")
     print(f"  tools   : {len(state.tools)}")
     print(f"  endereço: http://{'127.0.0.1' if exposto else args.host}:{args.port}")
     if exposto:

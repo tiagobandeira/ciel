@@ -48,6 +48,7 @@ async function init() {
     // Info panel
     document.getElementById('info-agent').textContent = info.agent;
     document.getElementById('info-model').textContent = info.model;
+    setPerfilUI(info);
 
     // Tools count badge
     document.getElementById('tools-count').textContent = (info.tools || []).length;
@@ -1506,6 +1507,79 @@ document.getElementById('settings-modelos').addEventListener('click', (ev) => {
 document.getElementById('settings-provedores').addEventListener('click', (ev) => {
   const b = ev.target.closest('[data-prov]');
   if (b) preencherProvider(b.dataset.prov);
+});
+
+/* ══ Perfil do orquestrador (local / nuvem) ════════════════════
+   local = Ollama; nuvem = provider secundário como orquestrador (mesma
+   semântica de /perfil na CLI). A troca exige login (PUT /api/settings). */
+function setPerfilUI(d) {
+  const label = d.perfil_label || d.model || '';
+  const botao = document.getElementById('perfil-btn');
+  if (botao) {
+    botao.textContent = d.perfil || 'local';
+    botao.classList.toggle('nuvem', d.perfil === 'nuvem');
+    botao.title = `perfil ${d.perfil || 'local'} · ${label}`;
+  }
+  const topo = document.getElementById('topbar-model');
+  if (topo) topo.textContent = label;
+  const painel = document.getElementById('info-model');
+  if (painel) painel.textContent = label;
+  currentModel = label;
+}
+
+window.togglePerfilMenu = async (ev) => {
+  ev.stopPropagation();
+  const menu = document.getElementById('perfil-menu');
+  if (!menu.classList.contains('hidden')) { menu.classList.add('hidden'); return; }
+  try {
+    const d = await api('/api/settings');
+    setPerfilUI(d);
+    menu.innerHTML = `
+      <button class="perfil-opcao ${d.perfil === 'local' ? 'ativo' : ''}" data-perfil="local">
+        <span>local</span><span class="perfil-meta">${esc(d.model)}</span>
+      </button>
+      <button class="perfil-opcao ${d.perfil === 'nuvem' ? 'ativo' : ''}" data-perfil="nuvem"${d.nuvem_disponivel ? '' : ' disabled'}>
+        <span>nuvem</span><span class="perfil-meta">${d.nuvem_disponivel ? 'provider configurado' : 'configure um provedor'}</span>
+      </button>`;
+    menu.classList.remove('hidden');
+  } catch (e) {
+    addSysMsg(`erro ao ler ajustes: ${e.message}`);
+  }
+};
+
+window.aplicarPerfil = async (perfil) => {
+  try {
+    const r = await api('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ perfil }),
+    });
+    document.getElementById('perfil-menu').classList.add('hidden');
+    setPerfilUI(r);
+    addSysMsg(`perfil: ${r.perfil} · ${r.perfil_label}`);
+
+    // nuvem tira secondary_model do schema; mantém o painel de tools coerente
+    const info = await api('/api/info');
+    allTools = {};
+    (info.tools || []).forEach(t => { allTools[t.name] = t; });
+    renderToolsList(info.tools || []);
+    document.getElementById('tools-count').textContent = (info.tools || []).length;
+  } catch (e) {
+    addSysMsg(`não deu para trocar o perfil: ${e.message}`);
+  }
+};
+
+document.getElementById('perfil-menu').addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-perfil]');
+  if (b && !b.disabled) aplicarPerfil(b.dataset.perfil);
+});
+
+document.addEventListener('click', (ev) => {
+  const menu = document.getElementById('perfil-menu');
+  if (menu && !menu.classList.contains('hidden') &&
+      !menu.contains(ev.target) && !ev.target.closest('#perfil-btn')) {
+    menu.classList.add('hidden');
+  }
 });
 
 // O mesmo botão envia e para: o estado do turno decide o que ele faz.

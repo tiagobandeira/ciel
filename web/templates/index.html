@@ -21,7 +21,7 @@
   <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4V5z"/></symbol>
   <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 3 5 14h6l-1 7 8-11h-6l1-7z"/></symbol>
   <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 6C10 4.5 7 4 4 4v13c3 0 6 .5 8 2 2-1.5 5-2 8-2V4c-3 0-6 .5-8 2z"/><path d="M12 6v13"/></symbol>
-  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.2 5.2l2.1 2.1M16.7 16.7l2.1 2.1M18.8 5.2l-2.1 2.1M7.3 16.7l-2.1 2.1"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
   <symbol id="i-clip" viewBox="0 0 24 24"><path d="M8.5 12.5l6-6a3 3 0 1 1 4.2 4.2l-7.8 7.8a5 5 0 0 1-7-7l7.5-7.5"/></symbol>
   <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 20v-6h8v6"/></symbol>
   <symbol id="i-file" viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></symbol>
@@ -128,7 +128,6 @@
         <span id="safe-badge-label">safe</span>
       </button>
       <button class="icon-btn" onclick="openSettings()" title="ajustes"><svg class="ic" aria-hidden="true"><use href="#i-gear"></use></svg></button>
-      <button class="icon-btn" onclick="clearChat()" title="nova sessão">↺</button>
       <button class="icon-btn" onclick="toggleRightPanel()" title="painel" id="right-panel-btn">⊟</button>
     </div>
   </header>
@@ -165,6 +164,10 @@
           onkeydown="handleKey(event)"
           oninput="autoResize(this)"
         ></textarea>
+
+        <button id="perfil-btn" class="perfil-btn" onclick="togglePerfilMenu(event)"
+                title="perfil do orquestrador: local (Ollama) ou nuvem (provider)">local</button>
+        <div id="perfil-menu" class="perfil-menu hidden"></div>
 
         <button id="send-btn" class="send-btn" title="enviar" aria-label="Enviar">↑</button>
       </div>

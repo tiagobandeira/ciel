@@ -12,11 +12,23 @@ import server
 
 
 class EstadoFalso:
-    model      = "modelo-teste"
-    agent_id   = "general"
-    agent_info = {"name": "General Assistant", "description": "teste"}
-    tools      = {"read_file": {}, "write_file": {}}
-    force_safe = False
+    model       = "modelo-teste"
+    model_label = "modelo-teste"
+    perfil      = "local"
+    agent_id    = "general"
+    agent_info  = {"name": "General Assistant", "description": "teste"}
+    tools       = {"read_file": {}, "write_file": {}}
+    force_safe  = False
+
+    def aplicar_perfil(self, perfil):
+        # dublê do AppState: sem provider configurado, nuvem falha como na vida real
+        if perfil == "nuvem":
+            raise RuntimeError("perfil nuvem exige um provider configurado")
+        self.perfil = "local"
+        self.model_label = self.model
+
+    def reload_tools_for_request(self):
+        pass
 
 
 @pytest.fixture
@@ -33,6 +45,7 @@ def cliente(tmp_path, monkeypatch, secrets_tmp):
     monkeypatch.setattr(server, "CONFIG_PATH", tmp_path / "ciel_config.json")
     monkeypatch.setattr(server, "PROVIDERS_PATH", tmp_path / "providers.json")
     monkeypatch.setattr(server, "_modelos_ollama", lambda: ["gemma4:cloud"])
+    monkeypatch.setattr(server, "_nuvem_disponivel", lambda modelo: False)
     monkeypatch.setattr(server, "_is_authenticated", lambda: True)
     (tmp_path / "providers.json").write_text(
         json.dumps({"providers": [
@@ -109,6 +122,36 @@ class TestModelo:
         salvo = json.loads((tmp_path / "ciel_config.json").read_text(encoding="utf-8"))
         assert salvo["base_url"] == "https://api.deepseek.com"
         assert salvo["web"] == {"outra": 1, "model": "m2"}
+
+
+class TestPerfil:
+    def test_leitura_traz_perfil_e_disponibilidade(self, cliente):
+        d = cliente.get("/api/settings").get_json()
+
+        assert d["perfil"] == "local"
+        assert d["perfil_label"] == "modelo-teste"
+        assert d["nuvem_disponivel"] is False
+
+    def test_perfil_invalido_da_400(self, cliente):
+        r = cliente.put("/api/settings", json={"perfil": "build"})
+
+        assert r.status_code == 400
+        assert "perfil inválido" in r.get_json()["error"]
+
+    def test_nuvem_sem_provider_da_400(self, cliente):
+        r = cliente.put("/api/settings", json={"perfil": "nuvem"})
+
+        assert r.status_code == 400
+        assert "provider" in r.get_json()["error"]
+        assert server.state.perfil == "local"
+
+    def test_local_persiste_no_config(self, cliente, tmp_path):
+        r = cliente.put("/api/settings", json={"perfil": "local"})
+
+        assert r.status_code == 200
+        assert r.get_json()["perfil"] == "local"
+        salvo = json.loads((tmp_path / "ciel_config.json").read_text(encoding="utf-8"))
+        assert salvo["web"]["perfil"] == "local"
 
 
 class TestProvedor:
