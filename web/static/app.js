@@ -13,6 +13,8 @@ let tokenIn          = 0;
 let tokenOut         = 0;
 let allTools         = {};     // cache de tools
 let rightPanelOpen   = true;
+let currentTurn      = null;   // turn_id do turno em andamento (trace do SSE)
+const turnosFechados = new Set();
 
 const IMAGE_EXTS = new Set(['png','jpg','jpeg','gif','webp','bmp','svg']);
 
@@ -57,6 +59,9 @@ async function init() {
       ? ' · 🔒 safe permanente'
       : (info.authenticated ? ' · 🔓 autenticado' : ' · 🔒 modo seguro');
     addSysMsg(`ciel · ${info.agent} · ${(info.tools||[]).length} tools${safeHint}`);
+
+    // trace ao vivo: assina o SSE antes de qualquer turno
+    initEventos();
 
     // Sessões
     await loadSessions();
@@ -151,24 +156,31 @@ function addAgentMsg(text, role = 'agent') {
   scrollBottom();
 }
 
-function addTypingIndicator() {
-  const div = document.createElement('div');
-  div.className = 'msg agent';
-  div.id = 'typing-indicator';
-  div.innerHTML = `
-    <div class="msg-label">ciel</div>
-    <div class="msg-bubble">
-      <div class="typing-row">
-        <div class="typing-dots"><span></span><span></span><span></span></div>
-        <span class="typing-label">pensando…</span>
-      </div>
-    </div>`;
-  messagesEl().appendChild(div);
-  scrollBottom();
+/* ── Trace ao vivo (SSE) ────────────────────────────────────────
+   O POST /api/chat é bloqueante e devolve só a resposta final. O que
+   aconteceu no meio do caminho chega por aqui, etiquetado com turn_id. */
+function novoTurno() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID().slice(0, 18);
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-function removeTypingIndicator() {
-  document.getElementById('typing-indicator')?.remove();
+let _sse = null;
+function initEventos() {
+  if (_sse || !window.EventSource || !window.CielTrace) return;
+  _sse = new EventSource('/api/events');
+  _sse.onmessage = (e) => {
+    let m;
+    try { m = JSON.parse(e.data); } catch (_) { return; }
+    if (!m || !m.turn_id || m.turn_id !== currentTurn) return;
+    if (m.tipo === 'passo') {
+      CielTrace.passo(m.turn_id, m);
+    } else if (m.tipo === 'pensando') {
+      CielTrace.pensando(m.turn_id, m);
+    } else if (m.tipo === 'turno_fim') {
+      turnosFechados.add(m.turn_id);
+      CielTrace.fim(m.turn_id, m);
+    }
+  };
 }
 
 function addBranchNotice(text) {
@@ -243,7 +255,13 @@ window.sendMessage = async () => {
   addUserMsg(displayText, fileInfo);
   sendBtn().disabled = true;
   setStatus('loading');
-  addTypingIndicator();
+
+  // trace do turno: /task também mostra (roda o agente); os demais comandos
+  // são instantâneos e não precisam de acordeão
+  const temTrace = !text.startsWith('/') || /^\/task\b/.test(text);
+  const turno = novoTurno();
+  currentTurn = turno;
+  if (temTrace && window.CielTrace) CielTrace.criar(turno);
 
   const file = pendingFile;
   clearUpload();
@@ -257,6 +275,7 @@ window.sendMessage = async () => {
         image_b64: file.dataUrl.split(',')[1],
         filename:  file.file.name,
         session_id: currentSessionId,
+        turn_id:   turno,
       });
     } else if (file?.type === 'text') {
       body = JSON.stringify({
@@ -264,14 +283,20 @@ window.sendMessage = async () => {
         file_text: file.content,
         filename:  file.file.name,
         session_id: currentSessionId,
+        turn_id:   turno,
       });
     } else {
-      body = JSON.stringify({ message: text, session_id: currentSessionId });
+      body = JSON.stringify({ message: text, session_id: currentSessionId, turn_id: turno });
     }
 
     const data = await api('/api/chat', { method: 'POST', headers, body });
-    removeTypingIndicator();
     setStatus('online');
+
+    // se o SSE não entregou o turno_fim (ex.: reconexão), fecha pelo resultado
+    if (temTrace && window.CielTrace && !turnosFechados.has(turno)) {
+      turnosFechados.add(turno);
+      CielTrace.fim(turno, { status: data.status || 'done' });
+    }
 
     // aviso de branch criada (antes da resposta do agente)
     if (data.branch_notice) {
@@ -305,9 +330,14 @@ window.sendMessage = async () => {
     await loadSessions();
 
   } catch(e) {
-    removeTypingIndicator();
     setStatus('error');
-    addSysMsg(`erro: ${e.message}`);
+    const ocupado = /turno em execu[çc][ãa]o/i.test(e.message);
+    if (temTrace && window.CielTrace && !turnosFechados.has(turno)) {
+      CielTrace.falhar(turno, ocupado ? 'o servidor já está em outro turno' : e.message);
+    }
+    addSysMsg(ocupado
+      ? 'já existe um turno em execução — aguarde ele terminar'
+      : `erro: ${e.message}`);
   }
 
   sendBtn().disabled = false;

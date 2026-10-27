@@ -1491,3 +1491,108 @@ body {
   padding: 12px 20px;
   border-top: 1px solid var(--border);
 }
+/* ══ FIO DE PENSAMENTO (trace do turno) ═══════════════════════ */
+.thought {
+  align-self: flex-start;
+  width: min(100%, 760px);
+  max-width: 760px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent-dim);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.thought.ativo { border-left-color: var(--accent); }
+
+.thought-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: var(--text2);
+}
+.thought-head:hover { background: var(--surface2); }
+.thought-head:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+
+.thought-glyph { font-size: 12px; color: var(--accent); flex-shrink: 0; }
+.thought.ativo .thought-glyph { animation: thought-pulse 1.4s ease-in-out infinite; }
+.thought.fim .thought-glyph { animation: none; }
+
+.thought-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.thought-meta {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.thought-chevron {
+  font-size: 13px;
+  color: var(--muted);
+  transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+.thought.aberto .thought-chevron { transform: rotate(90deg); }
+
+.thought-body { display: none; border-top: 1px solid var(--border); }
+.thought.aberto .thought-body { display: block; }
+
+.thought-log { max-height: 220px; overflow-y: auto; padding: 6px 0; }
+
+.thought-line {
+  display: grid;
+  grid-template-columns: 24px 14px minmax(90px, 190px) 1fr auto;
+  align-items: baseline;
+  gap: 6px;
+  padding: 1px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.thought-line:hover { background: var(--surface2); }
+
+.tl-step  { color: var(--muted); text-align: right; font-size: 10px; }
+.tl-glyph { color: var(--cyan); text-align: center; }
+.tl-label { color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-texto { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-ms    { color: var(--muted); font-size: 10px; text-align: right; }
+
+.thought-line.st-error .tl-glyph,
+.thought-line.st-error .tl-label { color: var(--err); }
+.thought-line.st-parse_error .tl-glyph,
+.thought-line.st-parse_error .tl-label { color: var(--warn); }
+.thought-line.st-done .tl-glyph { color: var(--ok); }
+.thought-line.st-lote .tl-glyph,
+.thought-line.st-registry .tl-glyph { color: var(--accent); }
+
+.thought.tem-erro { border-left-color: var(--err); }
+.thought.erro .thought-title { color: var(--err); }
+
+@keyframes thought-pulse {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thought-chevron { transition: none; }
+  .thought.ativo .thought-glyph { animation: none; opacity: 1; }
+}
+
+@media (max-width: 640px) {
+  .thought-line { grid-template-columns: 20px 14px 1fr auto; }
+  .tl-texto { display: none; }
+}

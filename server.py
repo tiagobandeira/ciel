@@ -52,9 +52,11 @@ import base64
 import argparse
 import re
 import threading
+import time
+import uuid
 from pathlib import Path
 from datetime import datetime
-from flask import Flask, request, jsonify, send_from_directory, send_file, abort
+from flask import Flask, request, jsonify, send_from_directory, send_file, abort, Response
 
 # ── garante que o root do projeto está no path ─────────────────────────────
 ROOT = Path(__file__).resolve().parent
@@ -583,6 +585,45 @@ def api_feed_tema():
     return jsonify({"ok": True, "tema": tema}), 200
 
 
+# ── /api/events ──────────────────────────────────────────────────────────────
+@app.route("/api/events")
+def api_events():
+    """
+    SSE do turno em andamento (mesmo barramento do /ui). O cliente abre uma vez
+    e filtra por turn_id; o turno continua sendo o POST /api/chat.
+    """
+    return Response(
+        ui_bus.stream(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# O id do turno vem do cliente para ele conseguir filtrar antes da resposta
+# chegar; validado e curto para não virar canal de lixo no barramento.
+_TURN_ID_RX = re.compile(r"^[A-Za-z0-9_-]{6,40}$")
+
+
+def _turn_id_valido(bruto) -> str:
+    if isinstance(bruto, str) and _TURN_ID_RX.match(bruto):
+        return bruto
+    return uuid.uuid4().hex[:12]
+
+
+def _publica_fim(turn_id: str, status: str, steps: int,
+                 tok_in: int, tok_out: int, t0: float) -> None:
+    """Fecha o trace do turno — só o server tem o resultado completo."""
+    ui_bus.publish(
+        "turno_fim",
+        turn_id=turn_id,
+        status=status,
+        steps=steps,
+        tokens_in=tok_in,
+        tokens_out=tok_out,
+        ms=int((time.monotonic() - t0) * 1000),
+    )
+
+
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
     """
@@ -612,6 +653,11 @@ def _chat_turn():
     file_text   = data.get("file_text")
     filename    = data.get("filename", "arquivo")
 
+    # trace do turno (SSE): o id vem do cliente para ele conseguir filtrar os
+    # eventos antes da resposta do POST chegar
+    turn_id = _turn_id_valido(data.get("turn_id"))
+    t0      = time.monotonic()
+
     if not user_input and not image_b64 and not file_text:
         return jsonify({"error": "mensagem vazia"}), 400
 
@@ -624,12 +670,14 @@ def _chat_turn():
 
     # ── comandos especiais (/task, /tools, /tokens, /history ...) ────────────
     if user_input.startswith("/"):
-        reply, changed = handle_command(user_input)
+        reply, changed = handle_command(user_input, turn_id=turn_id)
+        _publica_fim(turn_id, "done", 0, 0, 0, t0)
         return jsonify({
             "status":       "done",
             "reply":        reply,
             "tools_changed": changed,
             "session_id":   state.session_id,
+            "turn_id":      turn_id,
         })
 
     # ── branch automática no primeiro input após visualização ────────────────
@@ -694,7 +742,7 @@ def _chat_turn():
         on_confirm_tool=None,       # create_tool bloqueado por filter_unsafe quando safe=True
         on_confirm_path=_server_confirm_path,
         on_ask_user=None,           # tools INTERACTIVE não têm UI no server
-        **ui_bus.callbacks(),
+        **ui_bus.callbacks(turn_id),
     )
 
     t_in  = result.tokens_in
@@ -716,6 +764,7 @@ def _chat_turn():
             f"Use `/criar-tool {proposal.get('nome','')}` para criar permanente "
             f"ou `/criar-tool-temp {proposal.get('nome','')}` para temporária."
         )
+        _publica_fim(turn_id, "needs_tool", result.steps, t_in, t_out, t0)
         return jsonify({
             "status":   "needs_tool",
             "reply":    reply,
@@ -723,6 +772,7 @@ def _chat_turn():
             "tokens_in":  t_in,
             "tokens_out": t_out,
             "session_id": state.session_id,
+            "turn_id":    turn_id,
         })
 
     if result.status == "error":
@@ -734,6 +784,7 @@ def _chat_turn():
     state.history.append({"role": "agent", "content": final_reply, "ts": ts})
     state.store.append_turn(state.session_id, "agent", final_reply, ts)
 
+    _publica_fim(turn_id, result.status, result.steps, t_in, t_out, t0)
     return jsonify({
         "status":        result.status,   # "done" | "limit" | "error"
         "reply":         final_reply,
@@ -742,11 +793,12 @@ def _chat_turn():
         "tokens_out":    t_out,
         "tools_changed": tools_changed,
         "session_id":    state.session_id,
+        "turn_id":       turn_id,
     })
 
 
 # ── handler de comandos internos ──────────────────────────────────────────────
-def handle_command(cmd: str) -> tuple[str, bool]:
+def handle_command(cmd: str, turn_id: str | None = None) -> tuple[str, bool]:
     """
     Processa /comandos do frontend.
     Retorna (reply_str, tools_changed_bool).
@@ -809,7 +861,7 @@ def handle_command(cmd: str) -> tuple[str, bool]:
             on_confirm_tool=None,
             on_confirm_path=_server_confirm_path,
             on_ask_user=None,
-            **ui_bus.callbacks(),
+            **ui_bus.callbacks(turn_id),
         )
         state.tokens_in  += result.tokens_in
         state.tokens_out += result.tokens_out
