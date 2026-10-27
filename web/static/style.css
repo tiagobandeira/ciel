@@ -1494,6 +1494,11 @@ body {
 /* ══ FIO DE PENSAMENTO (trace do turno) ═══════════════════════ */
 .thought {
   align-self: flex-start;
+  /* flex: none — .messages é uma coluna flex com altura definida e rolagem.
+     Um item com overflow:hidden tem min-height automático 0, então o
+     flex-shrink o esmagava até sumir quando a conversa enchia (sobrava
+     só a border de 1px). Foi o que fazia o trace desaparecer. */
+  flex: none;
   width: min(100%, 760px);
   max-width: 760px;
   background: var(--surface);
