@@ -41,13 +41,16 @@ def stream():
             _subs.discard(q)
 
 
-def callbacks(turn_id: str | None = None) -> dict:
+def callbacks(turn_id: str | None = None, coletor: list | None = None) -> dict:
     """Callbacks prontos para run_agent(..., **ui_bus.callbacks()).
 
     `turn_id` etiqueta os eventos do turno: a interface web monta o "fio de
     pensamento" só do turno atual e ignora o que vier de outra aba. O /ui não
     usa o campo — continua lendo os eventos antigos (estado/tool/erro/fala),
     que são publicados junto para não regredir aquela tela.
+
+    `coletor`, se passado, recebe os mesmos eventos de `passo` para o server
+    persistir no histórico (o acordeão reaparece ao reabrir a sessão).
 
     Eventos por turno (consumidos pelo site):
       pensando   {turn_id, step, ativo, ms}  começo/fim de cada chamada ao modelo
@@ -60,6 +63,11 @@ def callbacks(turn_id: str | None = None) -> dict:
 
     def _ms() -> int:
         return int((time.monotonic() - t0) * 1000)
+
+    def _emit(evento: dict) -> None:
+        publish(**evento)
+        if coletor is not None:
+            coletor.append(evento)
 
     def on_model_start(step):
         publish("estado", valor="pensando", step=step)
@@ -75,16 +83,16 @@ def callbacks(turn_id: str | None = None) -> dict:
         elif status in ("error", "parse_error"):
             publish("passo_erro", step=step, texto=str(content)[:120])
         # evento estruturado — consumido pelo site
-        publish(
-            "passo",
-            turn_id=turn_id,
-            seq=int(next(seq)),
-            step=step,
-            label=str(label),
-            texto=str(content)[:400],
-            status=status,
-            ms=_ms(),
-        )
+        _emit({
+            "tipo": "passo",
+            "turn_id": turn_id,
+            "seq": int(next(seq)),
+            "step": step,
+            "label": str(label),
+            "texto": str(content)[:400],
+            "status": status,
+            "ms": _ms(),
+        })
 
     def on_done(msg, steps, tok_in, tok_out):
         publish("fala", texto=msg, steps=steps)

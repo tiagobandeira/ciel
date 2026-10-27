@@ -9,6 +9,7 @@ nenhum teste toca o agent_history.db real do projeto.
 """
 
 import pytest
+import sqlite3
 from pathlib import Path
 from unittest.mock import patch
 
@@ -162,6 +163,73 @@ class TestTurnos:
         sid2 = store.new_session("geral", "S2")
         store.append_turn(sid1, "user", "apenas na S1")
         assert store.get_turns(sid2) == []
+
+
+# ── trace do turno (acordeão do front) ────────────────────────────────────────
+
+class TestTraceDoTurno:
+    def test_guarda_e_devolve_o_trace(self, store):
+        import json
+        sid = store.new_session("geral", "S")
+        trace = json.dumps({
+            "passos": [{"seq": 1, "step": 1, "label": "modelo", "status": "model"}],
+            "fim": {"status": "done", "steps": 1, "ms": 1200},
+        }, ensure_ascii=False)
+
+        store.append_turn(sid, "agent", "pronto", trace=trace)
+
+        turns = store.get_turns(sid)
+        assert json.loads(turns[0]["trace"])["fim"]["steps"] == 1
+
+    def test_sem_trace_fica_nulo(self, store):
+        sid = store.new_session("geral", "S")
+        store.append_turn(sid, "agent", "pronto")
+        assert store.get_turns(sid)[0]["trace"] is None
+
+    def test_trace_passa_pela_redaction(self, store):
+        sid = store.new_session("geral", "S")
+        trace = '{"passos": [{"texto": "api_key=sk-abc123xyz456abc123xyz456"}]}'
+
+        store.append_turn(sid, "agent", "ok", trace=trace)
+
+        assert "sk-abc123xyz456" not in store.get_turns(sid)[0]["trace"]
+
+    def test_migra_banco_antigo_sem_a_coluna(self, tmp_path):
+        # bancos criados antes do trace não têm a coluna; o ALTER é idempotente
+        db = tmp_path / "antigo.db"
+        con = sqlite3.connect(db)
+        try:
+            con.executescript("""
+                CREATE TABLE sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    agent_id TEXT NOT NULL,
+                    title TEXT NOT NULL DEFAULT '',
+                    summary TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    parent_session_id INTEGER
+                );
+                CREATE TABLE conversations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id INTEGER NOT NULL,
+                    role TEXT NOT NULL CHECK(role IN ('user', 'agent')),
+                    content TEXT NOT NULL,
+                    ts TEXT NOT NULL
+                );
+            """)
+            con.commit()
+        finally:
+            con.close()
+
+        s = HistoryStore(db)
+        try:
+            colunas = {r["name"] for r in s._conn.execute("PRAGMA table_info(conversations)")}
+            assert "trace" in colunas
+            sid = s.new_session("geral", "S")
+            s.append_turn(sid, "agent", "ok", trace='{"passos": []}')
+            assert s.get_turns(sid)[0]["trace"] == '{"passos": []}'
+        finally:
+            s.close()
 
 
 # ── redaction em append_turn ──────────────────────────────────────────────────

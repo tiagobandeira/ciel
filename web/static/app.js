@@ -820,10 +820,12 @@ window.loadSession = async (sessionId) => {
       addParentSeparator(data.parent);
     }
 
-    // renderiza histórico da sessão (modo leitura)
+    // renderiza histórico da sessão (modo leitura), com o trace salvo
     (data.turns || []).forEach(t => {
-      if (t.role === 'user')       addUserMsg(t.content);
-      else if (t.role === 'agent') addAgentMsg(t.content);
+      if (t.role === 'user') { addUserMsg(t.content); return; }
+      if (t.role !== 'agent') return;
+      replayTrace(t);
+      addAgentMsg(t.content);
     });
 
     // aviso de modo leitura
@@ -840,6 +842,15 @@ window.loadSession = async (sessionId) => {
     addSysMsg(`erro ao carregar sessão: ${e.message}`);
   }
 };
+
+/* Reconstrói o acordeão de um turno salvo (modo leitura do histórico). */
+function replayTrace(turn) {
+  if (!turn.trace || !window.CielTrace) return;
+  const id = 'hist-' + turn.id;
+  CielTrace.criar(id);
+  (turn.trace.passos || []).forEach(p => CielTrace.passo(id, p));
+  CielTrace.fim(id, turn.trace.fim || { status: 'done' });
+}
 
 // ── Sessões sidebar ────────────────────────────────────────────
 async function loadSessions() {

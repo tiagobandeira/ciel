@@ -624,6 +624,26 @@ def _publica_fim(turn_id: str, status: str, steps: int,
     )
 
 
+def _trace_json(passos: list, status: str, steps: int,
+                tok_in: int, tok_out: int, t0: float) -> str | None:
+    """Serializa o trace do turno para o histórico (None se não houve passo)."""
+    if not passos:
+        return None
+    return json.dumps(
+        {
+            "passos": passos,
+            "fim": {
+                "status":     status,
+                "steps":      steps,
+                "tokens_in":  tok_in,
+                "tokens_out": tok_out,
+                "ms":         int((time.monotonic() - t0) * 1000),
+            },
+        },
+        ensure_ascii=False,
+    )
+
+
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
     """
@@ -728,6 +748,8 @@ def _chat_turn():
     else:
         context_injection = state.context_injection
 
+    trace = []
+
     result = run_agent(
         user_input,
         tools,
@@ -742,7 +764,7 @@ def _chat_turn():
         on_confirm_tool=None,       # create_tool bloqueado por filter_unsafe quando safe=True
         on_confirm_path=_server_confirm_path,
         on_ask_user=None,           # tools INTERACTIVE não têm UI no server
-        **ui_bus.callbacks(turn_id),
+        **ui_bus.callbacks(turn_id, coletor=trace),
     )
 
     t_in  = result.tokens_in
@@ -782,7 +804,10 @@ def _chat_turn():
 
     ts = datetime.now().strftime("%a %H:%M")
     state.history.append({"role": "agent", "content": final_reply, "ts": ts})
-    state.store.append_turn(state.session_id, "agent", final_reply, ts)
+    state.store.append_turn(
+        state.session_id, "agent", final_reply, ts,
+        trace=_trace_json(trace, result.status, result.steps, t_in, t_out, t0),
+    )
 
     _publica_fim(turn_id, result.status, result.steps, t_in, t_out, t0)
     return jsonify({
@@ -848,6 +873,8 @@ def handle_command(cmd: str, turn_id: str | None = None) -> tuple[str, bool]:
         ts = datetime.now().strftime("%a %H:%M")
         state.history.append({"role": "user", "content": f"/task {task['nome']}", "ts": ts})
 
+        trace = []
+        t0_task = time.monotonic()
         result = run_agent(
             task_prompt,
             state.tools,
@@ -861,7 +888,7 @@ def handle_command(cmd: str, turn_id: str | None = None) -> tuple[str, bool]:
             on_confirm_tool=None,
             on_confirm_path=_server_confirm_path,
             on_ask_user=None,
-            **ui_bus.callbacks(turn_id),
+            **ui_bus.callbacks(turn_id, coletor=trace),
         )
         state.tokens_in  += result.tokens_in
         state.tokens_out += result.tokens_out
@@ -875,7 +902,13 @@ def handle_command(cmd: str, turn_id: str | None = None) -> tuple[str, bool]:
         ts = datetime.now().strftime("%a %H:%M")
         state.history.append({"role": "agent", "content": final, "ts": ts})
         if state.session_id:
-            state.store.append_turn(state.session_id, "agent", final, ts)
+            state.store.append_turn(
+                state.session_id, "agent", final, ts,
+                trace=_trace_json(
+                    trace, result.status, result.steps,
+                    result.tokens_in, result.tokens_out, t0_task,
+                ),
+            )
         return final, changed
 
     # /tools
@@ -1096,6 +1129,23 @@ def _copy_session_sources(parent_session_id: int | None, new_session_id: str):
         pass   # fontes são melhorias, não impedem a branch de funcionar
 
 
+def _turn_json(t) -> dict:
+    """Turno para o front: `trace` volta como objeto (ou None)."""
+    trace = None
+    if t["trace"]:
+        try:
+            trace = json.loads(t["trace"])
+        except (ValueError, TypeError):
+            trace = None
+    return {
+        "id":      t["id"],
+        "role":    t["role"],
+        "content": t["content"],
+        "ts":      t["ts"],
+        "trace":   trace,
+    }
+
+
 # ── /api/session/<id>/load ────────────────────────────────────────────────────
 @app.route("/api/session/<int:session_id>/load", methods=["POST"])
 def api_load_session(session_id):
@@ -1118,10 +1168,7 @@ def api_load_session(session_id):
 
     # turnos para exibição
     turn_rows = state.store.get_turns(session_id)
-    turns = [
-        {"id": t["id"], "role": t["role"], "content": t["content"], "ts": t["ts"]}
-        for t in turn_rows
-    ]
+    turns = [_turn_json(t) for t in turn_rows]
 
     # fontes desta sessão
     sources = []
@@ -1189,15 +1236,7 @@ def api_get_session(session_id):
         "created_at": sess_row["created_at"][:16],
         "updated_at": sess_row["updated_at"][:16],
     }
-    turns = [
-        {
-            "id":      t["id"],
-            "role":    t["role"],
-            "content": t["content"],
-            "ts":      t["ts"],
-        }
-        for t in turn_rows
-    ]
+    turns = [_turn_json(t) for t in turn_rows]
     return jsonify({"session": session, "turns": turns})
 
 

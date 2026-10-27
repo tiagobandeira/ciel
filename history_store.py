@@ -75,7 +75,8 @@ CREATE TABLE IF NOT EXISTS conversations (
     session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     role       TEXT    NOT NULL CHECK(role IN ('user', 'agent')),
     content    TEXT    NOT NULL,
-    ts         TEXT    NOT NULL
+    ts         TEXT    NOT NULL,
+    trace      TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_conv_session ON conversations(session_id);
@@ -91,7 +92,22 @@ class HistoryStore:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._conn.executescript(_DDL)
+        self._migrar()
         self._conn.commit()
+
+    def _migrar(self) -> None:
+        """
+        Ajusta bancos criados por versões anteriores.
+
+        `trace` guarda o passo a passo do turno (JSON) para o acordeão do
+        front ao reabrir uma sessão. CREATE TABLE IF NOT EXISTS não altera
+        tabela existente, então a coluna entra por ALTER quando falta.
+        """
+        colunas = {row["name"] for row in self._conn.execute(
+            "PRAGMA table_info(conversations)"
+        )}
+        if "trace" not in colunas:
+            self._conn.execute("ALTER TABLE conversations ADD COLUMN trace TEXT")
 
     # ── sessões ──────────────────────────────────────────────────────────────
 
@@ -185,12 +201,21 @@ class HistoryStore:
 
     # ── turnos ───────────────────────────────────────────────────────────────
 
-    def append_turn(self, session_id: int, role: str, content: str, ts: str = ""):
-        """Salva um turno e atualiza updated_at da sessão."""
+    def append_turn(self, session_id: int, role: str, content: str, ts: str = "",
+                    trace: str | None = None):
+        """
+        Salva um turno e atualiza updated_at da sessão.
+
+        `trace` é o JSON do passo a passo do turno (só faz sentido para
+        `role="agent"`). Passa pela mesma redaction do content: o texto dos
+        passos inclui trechos de arquivos e args de tool.
+        """
         ts = ts or _now()
         self._conn.execute(
-            "INSERT INTO conversations (session_id, role, content, ts) VALUES (?, ?, ?, ?)",
-            (session_id, role, _redact(content), ts),
+            "INSERT INTO conversations (session_id, role, content, ts, trace) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (session_id, role, _redact(content), ts,
+             _redact(trace) if trace else None),
         )
         self._conn.execute(
             "UPDATE sessions SET updated_at=? WHERE id=?", (_now(), session_id)

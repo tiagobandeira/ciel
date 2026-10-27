@@ -89,6 +89,26 @@ class TestPensando:
         assert all(p["turn_id"] == "t1" for p in pensando)
 
 
+class TestColetor:
+    def test_coletor_recebe_os_passos_para_o_historico(self, eventos):
+        coletor = []
+        cb = ui_bus.callbacks("t1", coletor=coletor)
+
+        cb["on_model_start"](1)   # pensando não entra no trace salvo
+        cb["on_step"](1, "modelo", "x", "model")
+        cb["on_step"](1, "tool › read_file", "{}", "tool")
+
+        assert [p["seq"] for p in coletor] == [1, 2]
+        assert [p["tipo"] for p in coletor] == ["passo", "passo"]
+        assert coletor[1]["status"] == "tool"
+        assert coletor[1]["turn_id"] == "t1"
+
+    def test_sem_coletor_nao_quebra(self, eventos):
+        cb = ui_bus.callbacks("t1")
+        cb["on_step"](1, "modelo", "x", "model")
+        assert len(eventos.por_tipo("passo")) == 1
+
+
 class TestContratoDoServer:
     def test_turn_id_do_cliente_e_validado(self):
         from server import _turn_id_valido
