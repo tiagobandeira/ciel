@@ -64,3 +64,6 @@ mcp/whatsapp/node_modules/
 
 # Bot
 iniciar_bot.bat
+
+# Credenciais locais (nunca versionar; ver auth/manager.py e trust/secrets.py)
+.ciel-secrets.json

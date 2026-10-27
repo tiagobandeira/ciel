@@ -28,25 +28,59 @@ Uso:
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
-_CIEL_DIR    = Path.home() / ".ciel"
-_SECRETS_FILE = _CIEL_DIR / "secrets.json"
+
+def _default_path() -> Path:
+    """Mesmo arquivo do auth/manager.py: CIEL_SECRETS_PATH tem prioridade.
+
+    Os dois módulos escrevem no mesmo secrets.json (providers + ciel_auth).
+    Se resolverem caminhos diferentes, cada um grava num arquivo e o reset de
+    senha deixa de preservar as chaves de provider.
+    """
+    override = os.environ.get("CIEL_SECRETS_PATH", "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".ciel" / "secrets.json"
+
+
+_SECRETS_FILE = _default_path()
 
 
 class SecretsManager:
 
-    def __init__(self, path: Path = _SECRETS_FILE):
-        self._path = path
+    def __init__(self, path: Path | None = None):
+        self._path = path if path is not None else _SECRETS_FILE
 
     # ── leitura ──────────────────────────────────────────────────────────────
 
-    def _load(self) -> dict:
+    def _load(self, *, strict: bool = False) -> dict:
+        """
+        Lê o arquivo de segredos.
+
+        strict=False (leituras): arquivo ausente ou inválido vira
+        {"providers": {}} — o agente não cai por causa de um JSON quebrado.
+        strict=True (antes de gravar): JSON inválido LEVANTA ValueError.
+        Nunca devolver {} num caminho de escrita: a gravação seguinte
+        sobrescreveria o arquivo e apagaria `ciel_auth` (senha web) e os
+        outros providers em silêncio.
+        """
         if not self._path.exists():
             return {"providers": {}}
         try:
-            return json.loads(self._path.read_text(encoding="utf-8"))
-        except Exception:
+            # utf-8-sig: Bloco de Notas grava BOM; sem isso o arquivo inteiro
+            # "some" e a próxima gravação apagaria o bloco ciel_auth (senha web)
+            dados = json.loads(self._path.read_text(encoding="utf-8-sig"))
+            if not isinstance(dados, dict):
+                raise ValueError("esperava um objeto JSON")
+            return dados
+        except (ValueError, OSError) as e:   # JSONDecodeError é ValueError
+            if strict:
+                raise ValueError(
+                    f"arquivo de segredos inválido ({self._path}): {e}. "
+                    "Corrija o JSON ou renomeie o arquivo — nada foi alterado."
+                ) from e
             return {"providers": {}}
 
     def list_providers(self) -> list[str]:
@@ -61,16 +95,49 @@ class SecretsManager:
     # ── escrita ──────────────────────────────────────────────────────────────
 
     def _save(self, data: dict) -> None:
+        """
+        Grava de forma atômica (tmp + replace), no mesmo padrão do
+        AuthManager._save_secrets: um crash no meio não deixa o arquivo pela
+        metade. Se o ambiente bloquear CRIAR arquivo na pasta (antivírus,
+        ACL parcial, sandbox) mas deixar escrever no existente, cai para
+        gravação direta.
+        """
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(
-            json.dumps(data, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
-        # permissão restrita — só o dono lê/escreve (Unix)
+        conteudo = json.dumps(data, indent=2, ensure_ascii=False)
+        tmp = self._path.with_suffix(".tmp")
+
+        def _limpa_tmp() -> None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+        _limpa_tmp()   # sobra somente-leitura de tentativa anterior
+        erro_atomico = None
+        try:
+            tmp.write_text(conteudo, encoding="utf-8")
+            try:
+                tmp.chmod(0o600)   # só o dono lê/escreve (Unix)
+            except OSError:
+                pass               # Windows não suporta chmod, ignora
+            tmp.replace(self._path)
+            return
+        except PermissionError as e:
+            erro_atomico = e
+            _limpa_tmp()
+
+        try:
+            self._path.write_text(conteudo, encoding="utf-8")
+        except PermissionError:
+            raise PermissionError(
+                f"sem permissão para gravar {self._path}. Causas comuns: "
+                "pasta somente-leitura, Windows Defender (Controlled Folder "
+                "Access) ou terminal dentro de sandbox. Nada foi alterado."
+            ) from erro_atomico
         try:
             self._path.chmod(0o600)
-        except Exception:
-            pass  # Windows não suporta chmod, ignora
+        except OSError:
+            pass
 
     def save_provider(
         self,
@@ -86,7 +153,7 @@ class SecretsManager:
         vários modelos com chaves diferentes (ex: NVIDIA gera chave por modelo).
         Campos em branco mantêm o valor anterior.
         """
-        data  = self._load()
+        data  = self._load(strict=True)
         # chave composta: garante que nvidia/llama e nvidia/deepseek coexistam
         key   = f"{name}:{model}" if model else name
         existing = data.setdefault("providers", {}).get(key, {})
@@ -114,7 +181,7 @@ class SecretsManager:
 
     def delete_provider(self, name: str, model: str = "") -> bool:
         key = f"{name}:{model}" if model else name
-        data = self._load()
+        data = self._load(strict=True)
         providers = data.get("providers", {})
 
         # tenta chave exata primeiro

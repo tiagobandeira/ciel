@@ -15,6 +15,8 @@ Uso:
     python ciel.py --modo build
     python ciel.py --safe
     python ciel.py --list-agents
+    python ciel.py --reset-password         # nova senha do web (pede confirmação)
+    python ciel.py --reset-password --sim   # idem, sem confirmação (automação)
 
     python ciel.py bot          # Modo Bot WhatsApp (terminal fica aberto com logs)
     python ciel.py bot --safe
@@ -130,6 +132,14 @@ def _wants_build_mode(argv: list[str]) -> bool:
 
 
 def main() -> None:
+    argv = sys.argv[1:]
+
+    # Reset de senha não abre TUI nem CLI: é comando de nível de sistema e
+    # roda antes de qualquer launcher (não depende de Textual/agente/model).
+    if "--reset-password" in argv:
+        from auth.cli import main as reset_main
+        sys.exit(reset_main([a for a in argv if a != "--reset-password"]))
+
     mode, rest = _parse_mode()
 
     if mode == "bot":

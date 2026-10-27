@@ -1124,8 +1124,8 @@ function showLoginPanel(status) {
 
   if (status && status.is_default && status.default_password) {
     hintTx.innerHTML =
-      `Primeira execução. Senha padrão: <strong style="font-family:var(--font-mono);letter-spacing:.05em">`
-      + esc(status.default_password) + `</strong>. Troque-a após entrar.`;
+      `Senha padrão ativa: <strong style="font-family:var(--font-mono);letter-spacing:.05em">`
+      + esc(status.default_password) + `</strong>. Entre e troque-a em seguida.`;
     hint.classList.remove('hidden');
   } else {
     hint.classList.add('hidden');

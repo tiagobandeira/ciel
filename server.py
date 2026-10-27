@@ -14,10 +14,10 @@ Rotas:
   GET  /api/sessions            → histórico de sessões salvas
   GET  /api/session/<id>        → turnos de uma sessão
   POST /api/session/save        → salva sessão atual
-  POST /api/source              → indexa arquivo/URL como fonte
+  POST /api/source              → indexa arquivo/URL como fonte (requer login)
   GET  /api/sources             → lista fontes da sessão atual
   DELETE /api/source/<id>       → remove fonte
-  GET  /download                → download de arquivo gerado
+  GET  /download                → download de arquivo em data/ (requer login)
 
   --- autenticação ---
   GET  /api/auth/status         → { configured, is_default, default_password? }
@@ -31,10 +31,19 @@ Comportamento de segurança:
   - Flag --safe na CLI força safe=True permanentemente, ignorando autenticação.
   - Na primeira execução uma senha padrão é gerada em ~/.ciel/secrets.json.
 
+Exposição:
+  - Por padrão escuta só em 127.0.0.1 (esta máquina).
+  - --lan escuta em 0.0.0.0 para acessar de outro dispositivo da rede. Não há
+    HTTPS: use só em rede confiável.
+  - /download e /api/source são restritos: só data/ é baixado e indexar
+    caminho local exige login (mais o workspace guard).
+
 Uso:
   python server.py
   python server.py --agent dev_helper --model gemma4:cloud --port 5000
   python server.py --safe   # sempre em modo seguro, ignora autenticação
+  python server.py --lan    # expõe na rede local (sem HTTPS)
+  python server.py --reset-password   # esqueci a senha: gera outra e sai
 """
 
 import sys
@@ -42,6 +51,7 @@ import json
 import base64
 import argparse
 import re
+import threading
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory, send_file, abort
@@ -55,6 +65,7 @@ from agent_loader   import load_agent, filter_tools, list_agents
 from history_store  import HistoryStore, DB_PATH
 from history_ui     import build_context_injection
 from auth           import AuthManager
+from auth.cli       import exibir_senha
 import ui_bus
 from feed_builder import build_painel as construir_feed_painel
 from feed_builder import build_mais as construir_feed_mais
@@ -67,8 +78,11 @@ DEFAULT_AGENT  = "general"
 VERSION        = "2.0.0"
 AUTH_COOKIE    = "ciel_auth"
 
-# ── auth (singleton, inicializado uma vez junto com o processo) ───────────────
-auth = AuthManager()
+# ── auth ─────────────────────────────────────────────────────────────────────
+# Criado no main(), depois do comando de reset. Construir o AuthManager não
+# grava nada — o `--reset-password` precisa rodar mesmo com o arquivo ausente
+# ou a pasta sem permissão (ver auth/cli.py).
+auth: AuthManager | None = None
 
 # ── importações do core ───────────────────────────────────────────────────────
 # run_agent vem do agent_loop (fonte única após refatoração da CLI)
@@ -235,6 +249,13 @@ def _safe_for_request() -> bool:
 # Inicializado no startup
 state: AppState = None
 
+# ── trava de turno ───────────────────────────────────────────────────────────
+# `state` é um singleton: uma sessão por processo. Sem trava, duas abas (ou um
+# duplo envio) rodam dois loops ao mesmo tempo sobre o MESMO histórico, a mesma
+# conexão SQLite e o mesmo session_id — o resultado é turno intercalado e sessão
+# inconsistente. Um turno por vez; o segundo recebe 409 e pode tentar de novo.
+_turno_lock = threading.Lock()
+
 
 # ── rotas estáticas ───────────────────────────────────────────────────────────
 @app.route("/")
@@ -245,18 +266,39 @@ def index():
 def static_files(filename):
     return send_from_directory(app.static_folder, filename)
 
+# ── /download ─────────────────────────────────────────────────────────────────
+# Só o que foi gerado PARA o usuário sai daqui: data/ (inclui data/user/).
+# Antes, qualquer arquivo dentro do ROOT era baixável — inclusive
+# ciel_config.json (com chaves de API em texto puro), agent_history.db e o
+# .ciel_workspace.json — e a rota nem exigia cookie: um GET na rede bastava.
+_DOWNLOAD_ROOT = (ROOT / "data").resolve()
+
+
+def _resolver_download(path: str) -> Path | None:
+    """Resolve `path` e devolve o arquivo, ou None se cair fora de data/."""
+    try:
+        full = (ROOT / path).resolve()
+        full.relative_to(_DOWNLOAD_ROOT)
+    except (ValueError, OSError):
+        return None
+    return full if full.is_file() else None
+
+
 @app.route("/download")
 def download():
+    if not _is_authenticated():
+        # texto em vez da página HTML do Werkzeug: quem clicou num link do chat
+        # vê o motivo, não um "Unauthorized" seco.
+        return (
+            "Entre na interface (cadeado no topo) para baixar arquivos.",
+            401,
+            {"Content-Type": "text/plain; charset=utf-8"},
+        )
     path = request.args.get("path", "")
     if not path:
         abort(400)
-    full = ROOT / path
-    if not full.exists() or not full.is_file():
-        abort(404)
-    # segurança: só permite paths dentro do ROOT
-    try:
-        full.relative_to(ROOT)
-    except ValueError:
+    full = _resolver_download(path)
+    if full is None:
         abort(403)
     return send_file(str(full), as_attachment=True, download_name=full.name)
 
@@ -543,6 +585,24 @@ def api_feed_tema():
 
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
+    """
+    Um turno por vez. O estado é singleton: dois turnos simultâneos
+    intercalariam o mesmo histórico, o mesmo session_id e a mesma conexão
+    SQLite. 409 é diferente de erro — o front deve avisar "turno em
+    andamento" e reenviar depois.
+    """
+    if not _turno_lock.acquire(blocking=False):
+        return jsonify({
+            "error": "já existe um turno em execução neste servidor",
+            "busy":  True,
+        }), 409
+    try:
+        return _chat_turn()
+    finally:
+        _turno_lock.release()
+
+
+def _chat_turn():
     # garante que as tools refletem o estado de auth desta request
     state.reload_tools_for_request()
 
@@ -808,8 +868,21 @@ def handle_command(cmd: str) -> tuple[str, bool]:
         if not state.session_id:
             return "salve a conversa primeiro com `/history salvar`", False
         try:
-            out = state.store.export_markdown(state.session_id)
-            return f"exportado: `{out}`", False
+            # exporta dentro de data/user/exports: é o único lugar que o
+            # /download serve, então o link do chat continua funcionando.
+            out_dir = ROOT / "data" / "user" / "exports"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            sess   = state.store.get_session(state.session_id)
+            titulo = (sess["title"] if sess else "") or f"sessao_{state.session_id}"
+            safe   = "".join(
+                c if c.isalnum() or c in "-_ " else "_" for c in titulo
+            )[:40].strip() or "sessao"
+            out = state.store.export_markdown(
+                state.session_id,
+                out_path=out_dir / f"history_{state.session_id}_{safe}.md",
+            )
+            rel = Path(out).resolve().relative_to(ROOT).as_posix()
+            return f"arquivo salvo em: {rel}", False
         except Exception as e:
             return f"erro ao exportar: {e}", False
 
@@ -1150,6 +1223,21 @@ def api_add_source():
     if not path:
         return jsonify({"error": "path vazio"}), 400
 
+    # Indexar caminho local faz o SERVIDOR ler o arquivo do disco — sem login,
+    # isso era um leitor arbitrário de arquivos (basta indexar e ler via
+    # search_knowledge). URL remota também passa por aqui: SSRF tem guard
+    # próprio em knowledge/ingest_url, mas o login evita abuso anônimo.
+    if not _is_authenticated():
+        return jsonify({
+            "error": "indexar fonte exige login (o servidor lê o arquivo do disco)."
+        }), 401
+
+    if not path.lower().startswith(("http://", "https://")):
+        from workspace import get_workspace
+        _, erro = get_workspace().check(path, need_write=False)
+        if erro:
+            return jsonify({"error": erro}), 403
+
     aid = state.agent_id
     if is_global:
         sid = "_shared"
@@ -1224,16 +1312,55 @@ def api_delete_source(source_id):
 
 # ── main ──────────────────────────────────────────────────────────────────────
 def main():
-    global state
+    global state, auth
+
+    # Windows em locale cp1252: os glifos do banner (◈, ⚠, 🔒) levantam
+    # UnicodeEncodeError quando stdout/stderr são redirecionados para arquivo
+    # (serviço, log, `python server.py > out.log`). UTF-8 com replace resolve
+    # sem depender de PYTHONUTF8 no ambiente.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
     parser = argparse.ArgumentParser(description="Ciel Web Server")
     parser.add_argument("--agent",  default=DEFAULT_AGENT)
     parser.add_argument("--model",  default=DEFAULT_MODEL)
     parser.add_argument("--port",   default=5000, type=int)
-    parser.add_argument("--host",   default="0.0.0.0")
+    parser.add_argument("--host",   default="127.0.0.1",
+                        help="endereço de escuta (padrão: só esta máquina)")
+    parser.add_argument("--lan",    action="store_true",
+                        help="escuta em 0.0.0.0: acessível por outros dispositivos "
+                             "da rede local (sem HTTPS, use só em rede confiável)")
+    parser.add_argument("--reset-password", action="store_true",
+                        help="gera uma nova senha do server e sai "
+                             "(preserva as chaves de provider em ~/.ciel/secrets.json)")
+    parser.add_argument("--sim",    action="store_true",
+                        help="não pede confirmação no --reset-password (automação)")
     parser.add_argument("--safe",   action="store_true")
     parser.add_argument("--debug",  action="store_true")
     args = parser.parse_args()
+    if args.lan:
+        args.host = "0.0.0.0"
+    if args.sim and not args.reset_password:
+        parser.error("--sim exige --reset-password")
+
+    # Reset de senha é operação de NÍVEL DE SISTEMA: roda antes de AppState,
+    # não usa token nem workspace guard, e delega para auth/cli.py — o mesmo
+    # comando do `ciel.py --reset-password`. O agente continua bloqueado: tool
+    # que tente ler ~/.ciel/secrets.json é barrada, e isto não existe por HTTP.
+    if args.reset_password:
+        from auth.cli import main as reset_main
+        sys.exit(reset_main(["--sim"] if args.sim else []))
+
+    # Sem gravar no import: se a pasta estiver sem permissão, a mensagem é
+    # clara e o --reset-password acima ainda funciona.
+    try:
+        auth = AuthManager()
+        auth.ensure_configured()   # primeira execução gera a senha padrão
+    except (ValueError, OSError) as e:
+        sys.exit(f"\n  ✗ {e}")
 
     try:
         state = AppState(args.agent, args.model, safe=args.safe)
@@ -1242,22 +1369,23 @@ def main():
         sys.exit(1)
 
     auth_status = auth.status()
+    exposto     = args.host not in ("127.0.0.1", "localhost", "::1")
 
     print(f"\n  ◈ ciel v{VERSION}")
     print(f"  agente  : {state.agent_info.get('name', args.agent)}")
     print(f"  modelo  : {args.model}")
     print(f"  tools   : {len(state.tools)}")
-    print(f"  endereço: http://{args.host}:{args.port}")
+    print(f"  endereço: http://{'127.0.0.1' if exposto else args.host}:{args.port}")
+    if exposto:
+        print(f"  rede    : ⚠ escutando em {args.host} sem HTTPS — rede confiável apenas")
 
     if args.safe:
         print(f"  modo    : 🔒 safe permanente (--safe)")
     else:
         print(f"  modo    : autenticação habilitada (safe por padrão)")
-        if auth_status.get("is_default"):
-            print(f"\n  ┌─ primeira execução ─────────────────────────────────┐")
-            print(f"  │  senha padrão: {auth_status['default_password']:<36}│")
-            print(f"  │  Acesse a interface web e troque a senha.            │")
-            print(f"  └─────────────────────────────────────────────────────┘")
+        if auth_status.get("is_default") and auth_status.get("default_password"):
+            print()
+            exibir_senha(auth_status["default_password"])
     print()
 
     init_workspace()   # workspace padrão = cwd de onde o server foi chamado

@@ -29,10 +29,46 @@ precisar de garantia mais forte.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 CONFIG_FILENAME = ".ciel_workspace.json"
+
+
+# ── credenciais: fora do alcance do agente ───────────────────────────────────
+# O arquivo de segredos guarda as chaves de provider e o hash da senha do web.
+# Ele mora fora do workspace por design; quando CIEL_SECRETS_PATH aponta para
+# dentro do projeto (contorno de ambiente), a regra de workspace sozinha o
+# liberaria — e o modelo poderia ler as chaves com read_file. Estes caminhos
+# são negados SEMPRE, mesmo com grant do usuário.
+#
+# Fonte canônica do caminho: auth/manager._secrets_path() e
+# trust/secrets._default_path() (devem concordar; há teste para isso).
+#
+# Cacheado: `resolve()` é syscall por componente e este check roda a cada
+# argumento de path de tool — em máquina com filtro de AV isso custa ~1 ms.
+# O cache é invalidado quando CIEL_SECRETS_PATH muda.
+_credenciais_cache: tuple[str, frozenset[Path]] | None = None
+
+
+def _caminhos_de_credenciais() -> frozenset[Path]:
+    global _credenciais_cache
+    override = os.environ.get("CIEL_SECRETS_PATH", "").strip()
+    if _credenciais_cache is not None and _credenciais_cache[0] == override:
+        return _credenciais_cache[1]
+
+    candidatos = [Path.home() / ".ciel" / "secrets.json"]
+    if override:
+        candidatos.append(Path(override).expanduser())
+    caminhos: set[Path] = set()
+    for candidato in candidatos:
+        try:
+            caminhos.add(candidato.resolve())
+        except OSError:
+            pass
+    _credenciais_cache = (override, frozenset(caminhos))
+    return _credenciais_cache[1]
 
 
 @dataclass
@@ -88,6 +124,12 @@ class Workspace:
             resolved = Path(raw_path).expanduser().resolve()
         except Exception as e:
             return None, f"Path inválido: {e}"
+
+        if resolved in _caminhos_de_credenciais():
+            return None, (
+                f"Acesso negado: '{raw_path}' é o arquivo de credenciais do "
+                "Ciel (chaves de provider e senha do web) e nunca é liberado."
+            )
 
         grant = self._find_grant(resolved)
         if grant is None:

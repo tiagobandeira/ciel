@@ -225,12 +225,23 @@ O **Ciel Server** oferece uma interface web para executar o Ciel localmente atra
 python server.py
 ```
 
-O servidor pode ser acessado localmente ou por outros dispositivos na mesma rede:
+Por padrão escuta só nesta máquina:
 
 ```text
 http://127.0.0.1:5000
+```
+
+Para abrir na rede local (outro dispositivo), use `--lan`. Não há HTTPS: use só em rede confiável.
+
+```bash
+python server.py --lan
+```
+
+```text
 http://192.168.x.x:5000
 ```
+
+O servidor roda **um turno por vez** (o estado é de uma sessão por processo): um segundo envio simultâneo recebe `409` em vez de intercalar o histórico. Downloads servem apenas arquivos de `data/`, e indexar fonte local exige login.
 
 ![Ciel Local Server](docs/assets/screenshot_server.png)
 
@@ -550,6 +561,17 @@ Escolher `a` persiste o grant em `.ciel_workspace.json` (gitignored) e o path ap
 ```
 
 Em sessões headless (`--task`), qualquer acesso fora do workspace é recusado automaticamente sem prompt.
+
+**Senha do server web** — a interface web tem senha própria, guardada como hash em `~/.ciel/secrets.json` (o mesmo arquivo das chaves de provider). Se esquecer, gere outra sem perder as chaves:
+
+```bash
+python ciel.py --reset-password         # pede confirmação ("resetar")
+python ciel.py --reset-password --sim   # sem confirmação (automação)
+```
+
+Também funciona como `python server.py --reset-password`. Sem terminal interativo o comando recusa, a menos que você passe `--sim` de propósito. A senha nova aparece uma vez no terminal e fica ativa até você trocar em **cadeado → trocar senha**; as sessões já abertas no navegador caem junto. Não apague `~/.ciel/secrets.json` para recuperar a senha: leva as chaves de provider no mesmo arquivo.
+
+O reset é operação de **nível de sistema**: roda no terminal, sem token e sem passar pelo workspace guard — é o usuário do SO, dono do arquivo, quem executa. O agente continua sem acesso a esse caminho (é fora do workspace, de propósito). Para guardar os segredos em outro lugar, defina `CIEL_SECRETS_PATH`.
 
 **Limitações:**
 
