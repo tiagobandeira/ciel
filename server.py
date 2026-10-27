@@ -342,6 +342,183 @@ def api_info():
     })
 
 
+# ── /api/settings ────────────────────────────────────────────────────────────
+# Configuração pela interface: modelo ativo e chaves de provedor. Regras:
+#   - leitura devolve tudo MENOS segredo (só "tem_chave" booleano);
+#   - escrita exige login e passa por allowlist;
+#   - o resto do ciel_config.json é preservado (o arquivo é compartilhado com
+#     o CLI/TUI, que também o editam).
+CONFIG_PATH      = ROOT / "ciel_config.json"
+PROVIDERS_PATH   = ROOT / "providers.json"
+REPO_URL         = "https://github.com/tiagobandeira/ciel"
+SETTINGS_EDITAVEIS = {"model"}
+
+
+def _ler_json(caminho: Path) -> dict:
+    """Lê JSON tolerando BOM e arquivo ausente/corrompido."""
+    try:
+        dados = json.loads(caminho.read_text(encoding="utf-8-sig"))
+        return dados if isinstance(dados, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _gravar_json(caminho: Path, dados: dict) -> None:
+    """Grava atômico (tmp + replace): crash no meio não deixa arquivo pela metade."""
+    tmp = caminho.with_suffix(".tmp")
+    tmp.write_text(json.dumps(dados, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(caminho)
+
+
+def _modelo_salvo() -> str:
+    """Modelo escolhido pela interface, usado quando --model não é passado."""
+    web = _ler_json(CONFIG_PATH).get("web") or {}
+    return str(web.get("model") or "").strip() if isinstance(web, dict) else ""
+
+
+def _modelos_ollama() -> list[str]:
+    """Modelos instalados no Ollama. Lista vazia se ele não responder."""
+    base = OLLAMA_URL.rsplit("/api/", 1)[0]
+    try:
+        import requests
+        r = requests.get(f"{base}/api/tags", timeout=2)
+        r.raise_for_status()
+        return sorted(m["name"] for m in r.json().get("models", []) if m.get("name"))
+    except Exception:
+        return []
+
+
+def _catalogo_providers() -> list[dict]:
+    return [
+        p for p in (_ler_json(PROVIDERS_PATH).get("providers") or [])
+        if isinstance(p, dict) and p.get("id")
+    ]
+
+
+@app.route("/api/settings")
+def api_settings():
+    from trust.secrets import SecretsManager
+    from auth.manager import SECRETS_PATH
+
+    configurados = sorted(SecretsManager().list_providers())
+    catalogo = []
+    for p in _catalogo_providers():
+        pid = p["id"]
+        tem_chave = pid in configurados or any(
+            c.startswith(f"{pid}:") for c in configurados
+        )
+        catalogo.append({
+            "id":        pid,
+            "name":      p.get("name", pid),
+            "base_url":  p.get("base_url", ""),
+            "model":     p.get("model", ""),
+            "needs_key": bool(p.get("needs_key", True)),
+            "key_url":   p.get("key_url", ""),
+            "notes":     p.get("notes", ""),
+            "tem_chave": tem_chave,
+        })
+
+    try:
+        from workspace import get_workspace
+        workspace = str(get_workspace().default_root)
+    except Exception:
+        workspace = ""
+
+    return jsonify({
+        "version":    VERSION,
+        "agent":      state.agent_id,
+        "agent_full": state.agent_info.get("name", state.agent_id),
+        "agent_desc": state.agent_info.get("description", ""),
+        "model":      state.model,
+        "perfil":     "local",     # o web ainda fala só Ollama
+        "ollama":     _modelos_ollama(),
+        "providers":  catalogo,
+        "configurados": configurados,
+        "caminhos": {
+            "workspace": workspace,
+            "historico": str(Path(DB_PATH).resolve()),
+            "segredos":  str(SECRETS_PATH),
+        },
+        "contagem": {
+            "agents": len(list_agents()),
+            "tools":  len(state.tools),
+        },
+        "repo": REPO_URL,
+    })
+
+
+@app.route("/api/settings", methods=["PUT"])
+def api_settings_save():
+    if not _is_authenticated():
+        return jsonify({"error": "autenticação necessária para alterar ajustes."}), 401
+    data = request.get_json(force=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "payload inválido"}), 400
+
+    desconhecidas = set(data) - SETTINGS_EDITAVEIS
+    if desconhecidas:
+        return jsonify({"error": "chave não editável: " + ", ".join(sorted(desconhecidas))}), 400
+
+    config = _ler_json(CONFIG_PATH)
+    if "model" in data:
+        modelo = str(data["model"]).strip()[:80]
+        if not modelo:
+            return jsonify({"error": "modelo vazio"}), 400
+        web = config.get("web")
+        if not isinstance(web, dict):
+            web = {}
+        web["model"] = modelo
+        config["web"] = web
+        state.model = modelo
+
+    try:
+        _gravar_json(CONFIG_PATH, config)
+    except OSError as e:
+        return jsonify({"error": f"não consegui salvar: {e}"}), 500
+    return jsonify({"ok": True, "model": state.model})
+
+
+@app.route("/api/settings/provider", methods=["POST"])
+def api_settings_provider():
+    if not _is_authenticated():
+        return jsonify({"error": "autenticação necessária para salvar chave."}), 401
+
+    from trust.secrets import SecretsManager
+
+    data     = request.get_json(force=True) or {}
+    pid      = str(data.get("provider", "")).strip()
+    base_url = str(data.get("base_url", "")).strip()[:200]
+    model    = str(data.get("model", "")).strip()[:120]
+    api_key  = str(data.get("api_key", "")).strip()
+
+    # id do provider é chave no secrets.json: sem barra, sem ponto inicial e
+    # sem "..", para não virar caminho nem poluir o arquivo
+    if (not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,39}", pid or "")
+            or ".." in (pid or "")):
+        return jsonify({"error": "provider inválido"}), 400
+    if base_url and not base_url.lower().startswith(("http://", "https://")):
+        return jsonify({"error": "base_url inválida"}), 400
+
+    needs_key = next(
+        (bool(p.get("needs_key", True)) for p in _catalogo_providers() if p["id"] == pid),
+        True,
+    )
+    if needs_key and not api_key:
+        return jsonify({"error": "chave vazia"}), 400
+
+    sm = SecretsManager()
+    try:
+        sm.save_provider(pid, base_url=base_url, model=model, api_key=api_key)
+    except (OSError, ValueError) as e:
+        return jsonify({"error": f"não consegui salvar: {e}"}), 500
+
+    return jsonify({
+        "ok":        True,
+        "provider":  pid,
+        "tem_chave": bool(sm.get_api_key(pid, model)),
+    })
+
+
 # ── /api/auth/* ────────────────────────────────────────────────────────────────
 
 @app.route("/api/auth/status")
@@ -1465,7 +1642,9 @@ def main():
 
     parser = argparse.ArgumentParser(description="Ciel Web Server")
     parser.add_argument("--agent",  default=DEFAULT_AGENT)
-    parser.add_argument("--model",  default=DEFAULT_MODEL)
+    parser.add_argument("--model",  default=None,
+                        help="modelo do Ollama (padrão: o salvo pela interface, "
+                             f"senão {DEFAULT_MODEL})")
     parser.add_argument("--port",   default=5000, type=int)
     parser.add_argument("--host",   default="127.0.0.1",
                         help="endereço de escuta (padrão: só esta máquina)")
@@ -1480,6 +1659,8 @@ def main():
     parser.add_argument("--safe",   action="store_true")
     parser.add_argument("--debug",  action="store_true")
     args = parser.parse_args()
+    # --model explícito manda; senão vale o que foi salvo pela interface
+    args.model = (args.model or _modelo_salvo() or DEFAULT_MODEL).strip()
     if args.lan:
         args.host = "0.0.0.0"
     if args.sim and not args.reset_password:

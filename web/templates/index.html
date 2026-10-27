@@ -127,6 +127,7 @@
         <span id="safe-badge-icon"><svg class="ic" aria-hidden="true"><use href="#i-lock"></use></svg></span>
         <span id="safe-badge-label">safe</span>
       </button>
+      <button class="icon-btn" onclick="openSettings()" title="ajustes"><svg class="ic" aria-hidden="true"><use href="#i-gear"></use></svg></button>
       <button class="icon-btn" onclick="clearChat()" title="nova sessão">↺</button>
       <button class="icon-btn" onclick="toggleRightPanel()" title="painel" id="right-panel-btn">⊟</button>
     </div>
@@ -419,6 +420,34 @@
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- Modal: Ajustes ──────────────────────────────────────────── -->
+<div id="settings-modal" class="modal-backdrop hidden" onclick="closeModal('settings-modal')">
+  <div class="modal modal-settings" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span>ajustes</span>
+      <button class="icon-btn" onclick="closeModal('settings-modal')">✕</button>
+    </div>
+    <div class="settings-body">
+      <nav class="settings-nav">
+        <button class="settings-tab active" data-aba="modelos" onclick="settingsTab('modelos')">modelos</button>
+        <button class="settings-tab" data-aba="provedores" onclick="settingsTab('provedores')">provedores</button>
+        <button class="settings-tab" data-aba="sobre" onclick="settingsTab('sobre')">sobre</button>
+      </nav>
+      <div class="settings-panes">
+        <div id="settings-modelos" class="settings-pane active">
+          <div class="panel-empty">carregando…</div>
+        </div>
+        <div id="settings-provedores" class="settings-pane">
+          <div class="panel-empty">carregando…</div>
+        </div>
+        <div id="settings-sobre" class="settings-pane">
+          <div class="panel-empty">carregando…</div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 

@@ -1316,6 +1316,198 @@ async function doChangePassword() {
   }
 }
 
+/* ══ Ajustes ═══════════════════════════════════════════════════
+   Modal com menu lateral: modelos, provedores e sobre. Toda a leitura vem de
+   /api/settings, que nunca devolve chave — só "tem_chave". */
+let _settings = null;
+
+window.openSettings = async () => {
+  document.getElementById('settings-modal').classList.remove('hidden');
+  closeSidebar();
+  settingsTab('modelos');
+  ['modelos', 'provedores', 'sobre'].forEach(aba => {
+    document.getElementById('settings-' + aba).innerHTML =
+      '<div class="panel-empty">carregando…</div>';
+  });
+  try {
+    _settings = await api('/api/settings');
+    renderSettingsModelos();
+    renderSettingsProvedores();
+    renderSettingsSobre();
+  } catch (e) {
+    document.getElementById('settings-modelos').innerHTML =
+      `<div class="panel-empty">erro ao carregar: ${esc(e.message)}</div>`;
+  }
+};
+
+window.settingsTab = (nome) => {
+  document.querySelectorAll('.settings-tab').forEach(el =>
+    el.classList.toggle('active', el.dataset.aba === nome));
+  document.querySelectorAll('.settings-pane').forEach(el =>
+    el.classList.toggle('active', el.id === 'settings-' + nome));
+};
+
+function renderSettingsModelos() {
+  const d = _settings;
+  const modelos = d.ollama || [];
+  document.getElementById('settings-modelos').innerHTML = `
+    <div class="sett-row">
+      <div>
+        <div class="sett-label">modelo ativo</div>
+        <div class="sett-value">${esc(d.model)}</div>
+      </div>
+      <span class="sett-pill">${esc(d.agent_full || d.agent)}</span>
+    </div>
+    <div class="sett-hint">Modelos instalados no Ollama. Se ele não responder,
+      digite o nome abaixo (ex.: <code>gemma4:cloud</code>).</div>
+    <div class="sett-list">
+      ${modelos.length ? modelos.map(m => `
+        <button class="sett-item ${m === d.model ? 'ativo' : ''}" data-modelo="${esc(m)}">
+          <span>${esc(m)}</span>
+          <span class="sett-item-meta">${m === d.model ? 'em uso' : 'usar'}</span>
+        </button>`).join('') : '<div class="panel-empty">nenhum modelo listado</div>'}
+    </div>
+    <div class="sett-form-row">
+      <input id="sett-modelo-input" class="panel-search" placeholder="nome do modelo" value="${esc(d.model)}">
+      <button class="btn-primary btn-sm" id="sett-modelo-btn">aplicar</button>
+    </div>
+    <div id="sett-modelo-msg" class="sett-msg"></div>`;
+  document.getElementById('sett-modelo-btn').onclick = () =>
+    aplicarModelo(document.getElementById('sett-modelo-input').value);
+}
+
+window.aplicarModelo = async (nome) => {
+  const modelo = String(nome || '').trim();
+  if (!modelo) return;
+  try {
+    const r = await api('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: modelo }),
+    });
+    currentModel = r.model;
+    document.getElementById('topbar-model').textContent = r.model;
+    document.getElementById('info-model').textContent   = r.model;
+    addSysMsg(`modelo: ${r.model}`);
+    _settings.model = r.model;
+    renderSettingsModelos();
+    const msg = document.getElementById('sett-modelo-msg');
+    msg.textContent = `aplicado: ${r.model}`;
+    msg.className = 'sett-msg ok';
+  } catch (e) {
+    const msg = document.getElementById('sett-modelo-msg');
+    if (msg) { msg.textContent = e.message; msg.className = 'sett-msg err'; }
+  }
+};
+
+function renderSettingsProvedores() {
+  const d = _settings;
+  document.getElementById('settings-provedores').innerHTML = `
+    <div class="sett-hint">A chave fica em <code>${esc(d.caminhos.segredos)}</code>
+      e não volta para a tela — só o indicador “chave salva”.</div>
+    <div class="sett-list">
+      ${d.providers.map(p => `
+        <div class="sett-prov ${p.tem_chave ? 'ok' : ''}">
+          <div class="sett-prov-top">
+            <span>${esc(p.name)}</span>
+            <span class="sett-pill ${p.tem_chave ? 'ok' : ''}">${p.tem_chave ? 'chave salva' : 'sem chave'}</span>
+          </div>
+          <div class="sett-prov-meta">${esc(p.base_url || '—')} · ${esc(p.model || '—')}</div>
+          ${p.notes ? `<div class="sett-prov-notes">${esc(p.notes)}</div>` : ''}
+          <div class="sett-prov-actions">
+            <button class="btn-outline btn-sm" data-prov="${esc(p.id)}">configurar</button>
+            ${p.key_url ? `<a class="sett-link" href="${esc(p.key_url)}" target="_blank" rel="noopener">obter chave</a>` : ''}
+          </div>
+        </div>`).join('')}
+    </div>
+    <div class="sett-divider"></div>
+    <div class="sett-form">
+      <div class="sett-label">salvar chave</div>
+      <select id="sett-prov-id" class="panel-search">
+        ${d.providers.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}
+      </select>
+      <input id="sett-prov-base"  class="panel-search" placeholder="base_url">
+      <input id="sett-prov-model" class="panel-search" placeholder="modelo (opcional)">
+      <input id="sett-prov-key"   class="panel-search" type="password"
+             autocomplete="new-password" placeholder="api_key">
+      <button class="btn-primary btn-sm" id="sett-prov-btn">salvar</button>
+      <div id="sett-prov-msg" class="sett-msg"></div>
+    </div>`;
+  document.getElementById('sett-prov-btn').onclick = salvarProvider;
+  preencherProvider(d.providers[0] ? d.providers[0].id : '');
+}
+
+window.preencherProvider = (id) => {
+  const p = (_settings.providers || []).find(x => x.id === id);
+  if (!p) return;
+  const sel = document.getElementById('sett-prov-id');
+  if (sel) sel.value = id;
+  const base  = document.getElementById('sett-prov-base');
+  const model = document.getElementById('sett-prov-model');
+  const key   = document.getElementById('sett-prov-key');
+  if (base)  base.value  = p.base_url || '';
+  if (model) model.value = p.model || '';
+  if (key)   key.value   = '';
+};
+
+window.salvarProvider = async () => {
+  try {
+    const r = await api('/api/settings/provider', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider: document.getElementById('sett-prov-id').value,
+        base_url: document.getElementById('sett-prov-base').value.trim(),
+        model:    document.getElementById('sett-prov-model').value.trim(),
+        api_key:  document.getElementById('sett-prov-key').value.trim(),
+      }),
+    });
+    _settings = await api('/api/settings');
+    renderSettingsProvedores();
+    preencherProvider(r.provider);
+    const msg = document.getElementById('sett-prov-msg');
+    msg.textContent = `chave salva para ${r.provider}`;
+    msg.className = 'sett-msg ok';
+  } catch (e) {
+    const msg = document.getElementById('sett-prov-msg');
+    if (msg) { msg.textContent = e.message; msg.className = 'sett-msg err'; }
+  }
+};
+
+function renderSettingsSobre() {
+  const d = _settings;
+  const linhas = [
+    ['versão',    d.version],
+    ['agente',    `${d.agent_full} (${d.agent})`],
+    ['modelo',    d.model],
+    ['agentes',   d.contagem.agents],
+    ['tools',     d.contagem.tools],
+    ['workspace', d.caminhos.workspace],
+    ['histórico', d.caminhos.historico],
+    ['segredos',  d.caminhos.segredos],
+  ];
+  document.getElementById('settings-sobre').innerHTML = `
+    <div class="sett-info">
+      ${linhas.map(([k, v]) => `
+        <div class="sett-info-row"><span>${esc(k)}</span><code>${esc(v)}</code></div>`).join('')}
+    </div>
+    <div class="sett-divider"></div>
+    <div class="sett-links">
+      <a class="sett-link" href="${esc(d.repo)}" target="_blank" rel="noopener">${icone('book')} repositório</a>
+      <a class="sett-link" href="${esc(d.repo)}/blob/main/README.md" target="_blank" rel="noopener">${icone('book')} documentação</a>
+    </div>`;
+}
+
+// delegação: os painéis são re-renderizados a cada mudança
+document.getElementById('settings-modelos').addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-modelo]');
+  if (b) aplicarModelo(b.dataset.modelo);
+});
+document.getElementById('settings-provedores').addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-prov]');
+  if (b) preencherProvider(b.dataset.prov);
+});
+
 // O mesmo botão envia e para: o estado do turno decide o que ele faz.
 document.getElementById('send-btn').addEventListener('click', (ev) => {
   ev.preventDefault();
