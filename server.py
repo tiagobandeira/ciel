@@ -393,7 +393,7 @@ def api_info():
 CONFIG_PATH      = ROOT / "ciel_config.json"
 PROVIDERS_PATH   = ROOT / "providers.json"
 REPO_URL         = "https://github.com/tiagobandeira/ciel"
-SETTINGS_EDITAVEIS = {"model", "perfil"}
+SETTINGS_EDITAVEIS = {"model", "perfil", "provedor"}
 
 
 def _ler_json(caminho: Path) -> dict:
@@ -450,12 +450,40 @@ def _catalogo_providers() -> list[dict]:
     ]
 
 
+def _provedores_configurados(sm) -> list[dict]:
+    """Entradas salvas em secrets (provider:model), com base_url/model reais."""
+    itens = []
+    for chave in sm.list_providers():
+        pid, _, modelo = chave.partition(":")
+        entrada = sm.load_provider(pid, modelo) or {}
+        itens.append({
+            "chave":    chave,
+            "provider": pid,
+            "model":    str(entrada.get("model") or modelo),
+            "base_url": str(entrada.get("base_url") or ""),
+        })
+    return itens
+
+
+def _secundario_ativo(sm) -> dict | None:
+    """O provider que o perfil nuvem usaria agora (mesmo caminho do run_agent)."""
+    try:
+        from llm.roles import secondary_spec
+        spec = secondary_spec(config_path=str(CONFIG_PATH), secrets_manager=sm)
+    except Exception:
+        return None
+    if spec is None:
+        return None
+    return {"provider": spec.provider, "model": spec.model, "base_url": spec.base_url}
+
+
 @app.route("/api/settings")
 def api_settings():
     from trust.secrets import SecretsManager
     from auth.manager import SECRETS_PATH
 
-    configurados = sorted(SecretsManager().list_providers())
+    sm = SecretsManager()
+    configurados = sorted(sm.list_providers())
     catalogo = []
     for p in _catalogo_providers():
         pid = p["id"]
@@ -491,6 +519,8 @@ def api_settings():
         "ollama":     _modelos_ollama(),
         "providers":  catalogo,
         "configurados": configurados,
+        "provedores_configurados": _provedores_configurados(sm),
+        "secundario_ativo": _secundario_ativo(sm),
         "caminhos": {
             "workspace": workspace,
             "historico": str(Path(DB_PATH).resolve()),
@@ -551,6 +581,32 @@ def api_settings_save():
             return jsonify({"error": str(e)}), 400
         state.reload_tools_for_request()   # secondary_model sai/volta do schema
         web["perfil"] = perfil
+
+    if "provedor" in data:
+        # escolhe qual provider:model salvo vira o secundário ativo. Escreve as
+        # mesmas chaves que o /connect da CLI usa (config compartilhado).
+        from trust.secrets import SecretsManager
+        chave = str(data["provedor"]).strip()[:160]
+        sm = SecretsManager()
+        if chave not in sm.list_providers():
+            return jsonify({"error": "provedor não configurado"}), 400
+        pid, _, modelo = chave.partition(":")
+        entrada = sm.load_provider(pid, modelo) or {}
+        base    = str(entrada.get("base_url") or "").strip()
+        modelo  = str(entrada.get("model") or modelo).strip()
+        if not base or not modelo:
+            return jsonify({
+                "error": "entrada sem base_url/model — salve a chave de novo na aba Provedores"
+            }), 400
+        config["provider_id"] = pid
+        config["model"]       = modelo
+        config["base_url"]    = base
+        if state.perfil == "nuvem":
+            try:
+                state.aplicar_perfil("nuvem")
+                state.reload_tools_for_request()
+            except Exception as e:
+                return jsonify({"error": str(e)}), 400
 
     config["web"] = web
     try:

@@ -1352,31 +1352,63 @@ window.settingsTab = (nome) => {
 function renderSettingsModelos() {
   const d = _settings;
   const modelos = d.ollama || [];
+  const cloud = d.provedores_configurados || [];
+  const ativo = d.secundario_ativo;
+  const mesmo = (p) => !!ativo && ativo.provider === p.provider && ativo.model === p.model;
+
   document.getElementById('settings-modelos').innerHTML = `
     <div class="sett-row">
       <div>
-        <div class="sett-label">modelo ativo</div>
-        <div class="sett-value">${esc(d.model)}</div>
+        <div class="sett-label">perfil ativo</div>
+        <div class="sett-value">${esc(d.perfil)} · ${esc(d.perfil_label || d.model)}</div>
       </div>
       <span class="sett-pill">${esc(d.agent_full || d.agent)}</span>
     </div>
-    <div class="sett-hint">Modelos instalados no Ollama. Se ele não responder,
+
+    <div class="sett-secao">Ollama (local)</div>
+    <div class="sett-hint">Usado quando o perfil é <strong>local</strong>. Se o Ollama não responder,
       digite o nome abaixo (ex.: <code>gemma4:cloud</code>).</div>
     <div class="sett-list">
       ${modelos.length ? modelos.map(m => `
-        <button class="sett-item ${m === d.model ? 'ativo' : ''}" data-modelo="${esc(m)}">
+        <button class="sett-item ${m === d.model && d.perfil === 'local' ? 'ativo' : ''}" data-modelo="${esc(m)}">
           <span>${esc(m)}</span>
-          <span class="sett-item-meta">${m === d.model ? 'em uso' : 'usar'}</span>
+          <span class="sett-item-meta">${m === d.model ? (d.perfil === 'local' ? 'em uso' : 'local salvo') : 'usar'}</span>
         </button>`).join('') : '<div class="panel-empty">nenhum modelo listado</div>'}
     </div>
     <div class="sett-form-row">
       <input id="sett-modelo-input" class="panel-search" placeholder="nome do modelo" value="${esc(d.model)}">
       <button class="btn-primary btn-sm" id="sett-modelo-btn">aplicar</button>
     </div>
-    <div id="sett-modelo-msg" class="sett-msg"></div>`;
+    <div id="sett-modelo-msg" class="sett-msg"></div>
+
+    <div class="sett-secao">Provedores configurados</div>
+    <div class="sett-hint">Usado quando o perfil é <strong>nuvem</strong> — só aparecem os provedores
+      com chave salva.</div>
+    <div class="sett-list">
+      ${cloud.length ? cloud.map(p => `
+        <button class="sett-item ${mesmo(p) ? 'ativo' : ''}" data-provedor="${esc(p.chave)}">
+          <span>${esc(p.chave)}</span>
+          <span class="sett-item-meta">${mesmo(p) ? 'em uso' : 'usar na nuvem'}</span>
+        </button>`).join('') : '<div class="panel-empty">nenhuma chave salva — veja a aba Provedores</div>'}
+    </div>`;
   document.getElementById('sett-modelo-btn').onclick = () =>
     aplicarModelo(document.getElementById('sett-modelo-input').value);
 }
+
+window.aplicarProvedor = async (chave) => {
+  try {
+    await api('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provedor: chave }),
+    });
+    _settings = await api('/api/settings');
+    renderSettingsModelos();
+    addSysMsg(`provedor da nuvem: ${chave}`);
+  } catch (e) {
+    addSysMsg(`não deu para trocar o provedor: ${e.message}`);
+  }
+};
 
 window.aplicarModelo = async (nome) => {
   const modelo = String(nome || '').trim();
@@ -1502,8 +1534,10 @@ function renderSettingsSobre() {
 
 // delegação: os painéis são re-renderizados a cada mudança
 document.getElementById('settings-modelos').addEventListener('click', (ev) => {
-  const b = ev.target.closest('[data-modelo]');
-  if (b) aplicarModelo(b.dataset.modelo);
+  const m = ev.target.closest('[data-modelo]');
+  if (m) { aplicarModelo(m.dataset.modelo); return; }
+  const p = ev.target.closest('[data-provedor]');
+  if (p) aplicarProvedor(p.dataset.provedor);
 });
 document.getElementById('settings-provedores').addEventListener('click', (ev) => {
   const b = ev.target.closest('[data-prov]');

@@ -163,6 +163,51 @@ class TestProvedor:
 
         assert r.status_code == 401
 
+
+class TestProvedorAtivo:
+    def _salva(self, cliente):
+        return cliente.post("/api/settings/provider", json={
+            "provider": "nvidia", "base_url": "https://x/v1",
+            "model": "m", "api_key": "chave",
+        })
+
+    def test_lista_vazia_no_comeco(self, cliente):
+        d = cliente.get("/api/settings").get_json()
+
+        assert d["provedores_configurados"] == []
+        assert d["secundario_ativo"] is None
+
+    def test_entrada_salva_aparece_na_lista(self, cliente):
+        self._salva(cliente)
+
+        d = cliente.get("/api/settings").get_json()
+
+        assert [p["chave"] for p in d["provedores_configurados"]] == ["nvidia:m"]
+        entrada = d["provedores_configurados"][0]
+        assert entrada["base_url"] == "https://x/v1"
+        assert entrada["model"] == "m"
+
+    def test_escolher_provedor_grava_no_config(self, cliente, tmp_path):
+        self._salva(cliente)
+
+        r = cliente.put("/api/settings", json={"provedor": "nvidia:m"})
+
+        assert r.status_code == 200
+        cfg = json.loads((tmp_path / "ciel_config.json").read_text(encoding="utf-8"))
+        assert cfg["provider_id"] == "nvidia"
+        assert cfg["model"] == "m"
+        assert cfg["base_url"] == "https://x/v1"
+
+        d = cliente.get("/api/settings").get_json()
+        assert d["secundario_ativo"]["provider"] == "nvidia"
+        assert d["secundario_ativo"]["model"] == "m"
+
+    def test_provedor_desconhecido_da_400(self, cliente):
+        r = cliente.put("/api/settings", json={"provedor": "foo:bar"})
+
+        assert r.status_code == 400
+        assert "não configurado" in r.get_json()["error"]
+
     def test_salva_e_marca_tem_chave(self, cliente, secrets_tmp):
         r = cliente.post("/api/settings/provider", json={
             "provider": "nvidia", "base_url": "https://x/v1",
