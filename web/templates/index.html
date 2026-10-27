@@ -12,6 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" defer></script>
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/icons.js" defer></script>
+<script src="/static/palette.js" defer></script>
 <script src="/static/trace.js" defer></script>
 <script src="/static/app.js" defer></script>
 </head>
@@ -156,7 +157,7 @@
           <input type="file" id="file-input" style="display:none"
             accept="image/*,.txt,.md,.py,.csv,.json,.yaml,.yml,.toml,.log,.pdf">
           <button class="input-action-btn" onclick="openTaskModal()" title="executar task"><svg class="ic" aria-hidden="true"><use href="#i-zap"></use></svg></button>
-          <button class="input-action-btn" onclick="toggleCommandMenu()" title="comandos">/</button>
+          <button class="input-action-btn" onclick="Paleta.botao()" title="comandos">/</button>
         </div>
 
         <textarea
@@ -174,21 +175,10 @@
         </div>
 
         <button id="send-btn" class="send-btn" title="enviar" aria-label="Enviar">↑</button>
+
+        <div id="paleta" class="paleta hidden" role="listbox" aria-label="comandos e ações"></div>
       </div>
 
-      <!-- Menu de comandos rápidos -->
-      <div id="command-menu" class="command-menu hidden">
-        <div class="command-menu-header">comandos</div>
-        <button class="command-item" onclick="quickCommand('/history salvar')"><svg class="ic" aria-hidden="true"><use href="#i-save"></use></svg> salvar sessão</button>
-        <button class="command-item" onclick="quickCommand('/history exportar')"><svg class="ic" aria-hidden="true"><use href="#i-file"></use></svg> exportar .md</button>
-        <button class="command-item" onclick="quickCommand('/tools')"><svg class="ic" aria-hidden="true"><use href="#i-gear"></use></svg> listar tools</button>
-        <button class="command-item" onclick="quickCommand('/tokens')"><svg class="ic" aria-hidden="true"><use href="#i-chart"></use></svg> ver tokens</button>
-        <button class="command-item" onclick="quickCommand('/limpar-temp')"><svg class="ic" aria-hidden="true"><use href="#i-trash"></use></svg> limpar tools temp</button>
-        <button class="command-item" onclick="quickCommand('/novo')">✦ nova sessão</button>
-        <div class="command-menu-header">sources</div>
-        <button class="command-item" onclick="openSourceModal()"><svg class="ic" aria-hidden="true"><use href="#i-book"></use></svg> gerenciar fontes</button>
-        <button class="command-item" onclick="quickCommand('/source --listar')"><svg class="ic" aria-hidden="true"><use href="#i-clipboard"></use></svg> listar fontes</button>
-      </div>
     </div>
 
     <!-- Painel direito -->

@@ -1732,3 +1732,37 @@ body {
   font-size: 10px; text-transform: uppercase; letter-spacing: .07em;
   color: var(--muted);
 }
+
+/* ══ PALETA DE COMANDOS ═══════════════════════════════════════ */
+.paleta {
+  position: absolute; left: 12px; bottom: calc(100% + 8px);
+  width: min(560px, calc(100% - 24px));
+  max-height: 320px; overflow-y: auto;
+  padding: 4px; z-index: 35;
+  background: var(--surface2); border: 1px solid var(--border2);
+  border-radius: var(--radius); box-shadow: 0 10px 34px rgba(0,0,0,.55);
+}
+.paleta-grupo {
+  padding: 8px 9px 4px;
+  font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+}
+.paleta-item {
+  display: grid; grid-template-columns: 18px minmax(90px, 190px) 1fr;
+  align-items: center; gap: 8px;
+  width: 100%; padding: 7px 9px; background: none; border: 0; border-radius: 4px;
+  color: var(--text2); font: inherit; text-align: left; cursor: pointer;
+}
+.paleta-item:hover { background: var(--surface3); }
+.paleta-item.ativo { background: var(--surface3); }
+.paleta-ic { display: flex; color: var(--muted); }
+.paleta-item.ativo .paleta-ic { color: var(--accent); }
+.paleta-rot {
+  font-family: var(--font-mono); font-size: 12px; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.paleta-item.ativo .paleta-rot { color: var(--accent); }
+.paleta-desc {
+  font-size: 10px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.paleta-vazia { padding: 10px; font-size: 11px; color: var(--muted); text-align: center; }

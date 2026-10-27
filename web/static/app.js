@@ -294,7 +294,7 @@ window.sendMessage = async () => {
   const displayText = text || (pendingFile ? `[arquivo: ${pendingFile.file.name}]` : '');
   inputEl().value = '';
   autoResize(inputEl());
-  closeCommandMenu();
+  if (window.Paleta) Paleta.fechar();
   removeViewModeBanner();
 
   const fileInfo = pendingFile ? pendingFile.file.name : null;
@@ -408,7 +408,7 @@ window.newSession = () => clearChat();
 
 // ── Quick command ─────────────────────────────────────────────
 window.quickCommand = (cmd) => {
-  closeCommandMenu();
+  if (window.Paleta) Paleta.fechar();
   inputEl().value = cmd;
   sendMessage();
 };
@@ -1016,23 +1016,6 @@ window.clearUpload = () => {
   document.getElementById('prev-type').textContent = '';
 };
 
-// ── Command menu ───────────────────────────────────────────────
-window.toggleCommandMenu = () => {
-  document.getElementById('command-menu').classList.toggle('hidden');
-};
-
-function closeCommandMenu() {
-  document.getElementById('command-menu').classList.add('hidden');
-}
-
-// Fecha menu ao clicar fora
-document.addEventListener('click', e => {
-  const menu = document.getElementById('command-menu');
-  if (!menu.classList.contains('hidden') && !menu.contains(e.target)) {
-    const btn = e.target.closest('.input-action-btn');
-    if (!btn) closeCommandMenu();
-  }
-});
 
 // ── Markdown ───────────────────────────────────────────────────
 function renderMarkdown(text) {
@@ -1090,11 +1073,22 @@ window.showView = (view) => {
 
 // ── Keyboard ───────────────────────────────────────────────────
 window.handleKey = e => {
+  // paleta aberta: setas navegam, Enter/Tab executa, Esc fecha
+  if (window.Paleta && Paleta.aberta()) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); Paleta.mover(1); return; }
+    if (e.key === 'ArrowUp')   { e.preventDefault(); Paleta.mover(-1); return; }
+    if (e.key === 'Escape')    { e.preventDefault(); Paleta.fechar(); return; }
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      Paleta.executar(Paleta.selecionado());
+      return;
+    }
+  }
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     if (!turnoAtivo) sendMessage();
   }
-  if (e.key === 'Escape') closeCommandMenu();
+  if (e.key === 'Escape' && window.Paleta) Paleta.fechar();
 };
 
 window.autoResize = el => {
@@ -1631,6 +1625,11 @@ document.addEventListener('click', (ev) => {
       !menu.contains(ev.target) && !ev.target.closest('#perfil-btn')) {
     menu.classList.add('hidden');
   }
+});
+
+// Digitar "/" (ou filtrar) abre a paleta de comandos
+document.getElementById('msg-input').addEventListener('input', () => {
+  if (window.Paleta) Paleta.atualizar();
 });
 
 // O mesmo botão envia e para: o estado do turno decide o que ele faz.
