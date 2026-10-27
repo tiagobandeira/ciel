@@ -80,10 +80,11 @@ checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/EXECUCAO.md", "tamanho_
 fase: Relatório
 depende_de: executar
 tools: read_file, write_file
-max_steps: 6
+max_steps: 9
 objetivo: produzir relatório e nota curta com o que foi aprendido
 ações:
-- ler FORMALIZACAO.md, EXECUCAO.md e resultados/resultados.json; não use list_directory
+- ler FORMALIZACAO.md, EXECUCAO.md e resultados/saida_experimento.txt; resultados/resultados.json é opcional
+- não use list_directory e não invente números: use a saída do experimento e o log do notebook
 - escrever data/labs/estudo/RELATORIO.md com pergunta, método, resultados numéricos, evidências, limitações, o que confirma/refuta e próximos experimentos
 - escrever data/labs/estudo/NOTA.md com uma formalização curta: definições, conjectura/hipótese, evidência e possível nota/artigo
 - separar evidência de interpretação
@@ -97,7 +98,7 @@ tools: read_file, write_file, run_script
 max_steps: 6
 objetivo: escrever e rodar um script pequeno de auditoria de evidência
 ações:
-- ler NOTA.md, RELATORIO.md e resultados/metricas.json; leia no máximo 6.000 caracteres por arquivo e não use list_directory
+- ler NOTA.md, RELATORIO.md e resultados/saida_experimento.txt; leia no máximo 6.000 caracteres por arquivo e não use list_directory
 - extrair de 3 a 4 afirmações verificáveis e escrever data/labs/estudo/verificacao/contraexemplos.py
 - o script deve testar cada afirmação com aritmética exata, casos de borda e uma faixa pequena determinística; aleatoriedade só com semente fixa
 - rodar o script [tool: run_script] e salvar data/labs/estudo/resultados/verificacao.json com status: suportado, contraexemplo, inconclusivo ou erro
@@ -105,7 +106,7 @@ ações:
 - falha lógica só pode ser registrada com trecho exato da prova e o passo questionado; sem encenação e sem acusação
 - não escrever VERIFICACAO.md aqui; isso é a próxima task
 resultado esperado: script executado e verificacao.json com status
-checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/verificacao/contraexemplos.py", "tamanho_min": 150}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/verificacao.json", "tamanho_min": 40}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/metricas.json", "tamanho_min": 40}, {"tipo": "comando", "cmd": ["python", "data/labs/estudo/verificacao/contraexemplos.py"], "cwd": ".", "esperado": 0, "timeout": 120}]
+checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/verificacao/contraexemplos.py", "tamanho_min": 150}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/verificacao.json", "tamanho_min": 40}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/saida_experimento.txt", "tamanho_min": 40}, {"tipo": "comando", "cmd": ["python", "data/labs/estudo/verificacao/contraexemplos.py"], "cwd": ".", "esperado": 0, "timeout": 120}]
 
 ## task: verificar
 fase: Verificação
