@@ -14,6 +14,8 @@ let tokenOut         = 0;
 let allTools         = {};     // cache de tools
 let rightPanelOpen   = true;
 let currentTurn      = null;   // turn_id do turno em andamento (trace do SSE)
+let turnoAtivo       = false;  // há um POST /api/chat em andamento
+let cancelando       = false;  // "parar" já foi pedido, evita duplo clique
 const turnosFechados = new Set();
 
 const IMAGE_EXTS = new Set(['png','jpg','jpeg','gif','webp','bmp','svg']);
@@ -164,9 +166,34 @@ function novoTurno() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
+/* O botão de enviar vira "parar" (quadrado) enquanto o turno roda — padrão de
+   outras interfaces e mais visível que um botão dentro do acordeão. */
+function entrarModoParar() {
+  const btn = sendBtn();
+  btn.classList.add('parando');
+  btn.innerHTML = '■';
+  btn.title = 'parar';
+  btn.setAttribute('aria-label', 'Parar o turno');
+}
+
+function sairModoParar() {
+  const btn = sendBtn();
+  turnoAtivo = false;
+  cancelando = false;
+  btn.classList.remove('parando');
+  btn.style.opacity = '';
+  btn.innerHTML = '↑';
+  btn.title = 'enviar';
+  btn.setAttribute('aria-label', 'Enviar');
+  btn.disabled = false;
+}
+
 /* Para o turno em andamento. O server cancela no começo do próximo passo:
    a chamada ao modelo em curso não é interrompível. */
 async function cancelarTurno(turno) {
+  if (!turnoAtivo || cancelando) return;
+  cancelando = true;
+  sendBtn().style.opacity = '0.6';
   try {
     await api('/api/chat/cancel', {
       method: 'POST',
@@ -260,7 +287,7 @@ function scrollBottom() {
 // ── Envio de mensagem ─────────────────────────────────────────
 window.sendMessage = async () => {
   const text = inputEl().value.trim();
-  if ((!text && !pendingFile) || sendBtn().disabled) return;
+  if (turnoAtivo || (!text && !pendingFile)) return;
 
   const displayText = text || (pendingFile ? `[arquivo: ${pendingFile.file.name}]` : '');
   inputEl().value = '';
@@ -270,17 +297,17 @@ window.sendMessage = async () => {
 
   const fileInfo = pendingFile ? pendingFile.file.name : null;
   addUserMsg(displayText, fileInfo);
-  sendBtn().disabled = true;
   setStatus('loading');
+  turnoAtivo = true;
+  cancelando = false;
+  entrarModoParar();
 
   // trace do turno: /task também mostra (roda o agente); os demais comandos
   // são instantâneos e não precisam de acordeão
   const temTrace = !text.startsWith('/') || /^\/task\b/.test(text);
   const turno = novoTurno();
   currentTurn = turno;
-  if (temTrace && window.CielTrace) {
-    CielTrace.criar(turno, { onParar: () => cancelarTurno(turno) });
-  }
+  if (temTrace && window.CielTrace) CielTrace.criar(turno);
 
   const file = pendingFile;
   clearUpload();
@@ -359,10 +386,9 @@ window.sendMessage = async () => {
       : `erro: ${e.message}`);
   }
 
-  sendBtn().disabled = false;
+  sairModoParar();
   inputEl().focus();
 };
-
 // ── Limpar / nova sessão ──────────────────────────────────────
 window.clearChat = async () => {
   try { await api('/api/clear', { method: 'POST' }); } catch(_) {}
@@ -1062,7 +1088,10 @@ window.showView = (view) => {
 
 // ── Keyboard ───────────────────────────────────────────────────
 window.handleKey = e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    if (!turnoAtivo) sendMessage();
+  }
   if (e.key === 'Escape') closeCommandMenu();
 };
 
@@ -1286,6 +1315,13 @@ async function doChangePassword() {
     err.classList.remove('hidden');
   }
 }
+
+// O mesmo botão envia e para: o estado do turno decide o que ele faz.
+document.getElementById('send-btn').addEventListener('click', (ev) => {
+  ev.preventDefault();
+  if (turnoAtivo) cancelarTurno(currentTurn);
+  else sendMessage();
+});
 
 // ── Boot ───────────────────────────────────────────────────────
 init();

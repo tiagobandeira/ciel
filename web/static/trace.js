@@ -79,11 +79,9 @@
 
   /* ── API ─────────────────────────────────────────────────────── */
 
-  function criar(turnId, opcoes) {
+  function criar(turnId) {
     const existente = document.getElementById('thought-' + turnId);
     if (existente) return existente;
-
-    const podeParar = !!(opcoes && typeof opcoes.onParar === 'function');
 
     const raiz = document.createElement('div');
     raiz.className = 'thought';
@@ -97,42 +95,20 @@
     // abrir/fechar é decisão do usuário. Antes, quem tinha expandido via o
     // log fechar sozinho no fim (e o turno seguinte já nascia aberto), o que
     // dava a impressão de que o pensamento sumia.
-    //
-    // O cabeçalho é um div com role=button (não um <button>) porque precisa
-    // conter o botão "parar" — botão dentro de botão é HTML inválido.
     raiz.innerHTML =
-      '<div class="thought-head" role="button" tabindex="0" aria-expanded="false">' +
+      '<button class="thought-head" type="button" aria-expanded="false">' +
         '<span class="thought-glyph" aria-hidden="true">✦</span>' +
         '<span class="thought-title">pensando…</span>' +
         '<span class="thought-meta"></span>' +
-        (podeParar ? '<button class="thought-stop" type="button">parar</button>' : '') +
         '<span class="thought-chevron" aria-hidden="true">›</span>' +
-      '</div>' +
+      '</button>' +
       '<div class="thought-body">' +
         '<div class="thought-log" role="log" aria-live="polite"></div>' +
       '</div>';
 
-    const head = raiz.querySelector('.thought-head');
-    const alternar = () => {
+    raiz.querySelector('.thought-head').addEventListener('click', () => {
       if (raiz.classList.contains('aberto')) fechar(raiz); else abrir(raiz);
-    };
-    head.addEventListener('click', alternar);
-    head.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter' || ev.key === ' ') {
-        ev.preventDefault();
-        alternar();
-      }
     });
-
-    const parar = raiz.querySelector('.thought-stop');
-    if (parar) {
-      parar.addEventListener('click', (ev) => {
-        ev.stopPropagation();          // não abre/fecha o acordeão
-        parar.disabled = true;
-        parar.textContent = 'parando…';
-        opcoes.onParar();
-      });
-    }
 
     const msgs = document.getElementById('messages');
     if (msgs) msgs.appendChild(raiz);
@@ -187,11 +163,6 @@
     }
   }
 
-  function tirarParar(raiz) {
-    const botao = raiz.querySelector('.thought-stop');
-    if (botao) botao.remove();
-  }
-
   function fim(turnId, ev) {
     const raiz = document.getElementById('thought-' + turnId);
     if (!raiz) return;
@@ -199,7 +170,6 @@
 
     raiz.classList.add('fim');
     raiz.classList.remove('ativo');
-    tirarParar(raiz);
     if (ev.ms) raiz.dataset.ms = String(ev.ms);
     if (ev.steps) raiz.dataset.passos = String(ev.steps);
 
@@ -220,7 +190,6 @@
     const raiz = document.getElementById('thought-' + turnId);
     if (!raiz) return;
     raiz.classList.add('fim', 'erro', 'tem-erro');
-    tirarParar(raiz);
     const t = raiz.querySelector('.thought-title');
     const g = raiz.querySelector('.thought-glyph');
     if (t) t.textContent = mensagem || 'falhou antes de começar';
