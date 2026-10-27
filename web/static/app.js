@@ -244,7 +244,7 @@ function addViewModeBanner(sessionId, title) {
   banner.id = 'view-mode-banner';
   banner.className = 'view-mode-banner';
   banner.innerHTML = `
-    <span>👁 visualizando sessão #${sessionId} — ${esc(title || 'sem título')}</span>
+    <span>${icone('eye')} visualizando sessão #${sessionId} — ${esc(title || 'sem título')}</span>
     <span class="view-mode-hint">envie uma mensagem para retomar com branch automática</span>
   `;
   // insere antes das mensagens
@@ -422,7 +422,7 @@ function renderToolsList(tools) {
     const isTemp = t.cat === 'temp';
     return `<div class="tool-item">
       <div class="tool-item-name">
-        ⚙ ${esc(t.name)}
+        ${icone('gear')} ${esc(t.name)}
         <span class="tool-cat-badge${isTemp?' temp':''}">
           ${isTemp?'temp':'perm'}
         </span>
@@ -656,13 +656,13 @@ async function refreshSources() {
     }
     list.innerHTML = data.sources.map(s => `
       <div class="source-item">
-        <span class="source-item-name">📄 ${esc(s.filename)}</span>
+        <span class="source-item-name">${icone('file')} ${esc(s.filename)}</span>
         <span class="source-item-meta">${s.n_chunks} chunks · ${s.scope}</span>
         <button class="source-item-del" onclick="removeSource(${s.id})" title="remover">✕</button>
       </div>`).join('');
     miniList.innerHTML = data.sources.slice(0, 5).map(s => `
       <div class="source-mini-item">
-        <span class="source-mini-name">📄 ${esc(s.filename)}</span>
+        <span class="source-mini-name">${icone('file')} ${esc(s.filename)}</span>
         <button class="source-mini-del" onclick="removeSource(${s.id})">✕</button>
       </div>`).join('');
   } catch(e) {
@@ -854,7 +854,7 @@ window.loadSession = async (sessionId) => {
     if (data.sources?.length) {
       miniList.innerHTML = data.sources.map(s => `
         <div class="source-mini-item">
-          <span class="source-mini-name">📄 ${esc(s.filename)}</span>
+          <span class="source-mini-name">${icone('file')} ${esc(s.filename)}</span>
         </div>`).join('');
     } else {
       miniList.innerHTML = '<div class="panel-empty">nenhuma fonte</div>';
@@ -1002,7 +1002,7 @@ function showUploadPreview(type, src, name) {
   if (type === 'img' && src) {
     document.getElementById('prev-thumb').innerHTML = `<img src="${src}" alt="">`;
   } else {
-    document.getElementById('prev-thumb').textContent = '📄';
+    document.getElementById('prev-thumb').innerHTML = icone('file');
   }
 }
 
@@ -1072,9 +1072,9 @@ function buildDownloadLinks(refs) {
   return refs.map(p => {
     const ext  = p.split('.').pop().toLowerCase();
     const name = p.split(/[\\/]/).pop();
-    const icon = IMAGE_EXTS.has(ext) ? '🖼' : '⬇';
+    const ic = icone(IMAGE_EXTS.has(ext) ? 'image' : 'download');
     return `<a class="dl-link" href="/download?path=${encodeURIComponent(p)}" 
-               download="${esc(name)}" target="_blank">${icon} ${esc(name)}</a>`;
+               download="${esc(name)}" target="_blank">${ic} ${esc(name)}</a>`;
   }).join('');
 }
 
@@ -1157,17 +1157,17 @@ function _renderAuthBadge() {
   badge.classList.remove('authed', 'force-safe');
 
   if (_authState.force_safe) {
-    icon.textContent  = '🔒';
+    icon.innerHTML = icone('lock');
     label.textContent = 'safe';
     badge.classList.add('force-safe');
     badge.title = 'modo seguro permanente (--safe)';
   } else if (_authState.authenticated) {
-    icon.textContent  = '🔓';
+    icon.innerHTML = icone('unlock');
     label.textContent = 'autenticado';
     badge.classList.add('authed');
     badge.title = 'autenticado — clique para gerenciar';
   } else {
-    icon.textContent  = '🔒';
+    icon.innerHTML = icone('lock');
     label.textContent = 'safe';
     badge.title = 'modo seguro ativo — clique para autenticar';
   }

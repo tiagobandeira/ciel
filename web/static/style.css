@@ -1609,3 +1609,16 @@ body {
 /* botão de enviar em modo "parar" (durante o turno) */
 .send-btn.parando { background: var(--err); font-size: 12px; }
 .send-btn.parando:hover { background: var(--err); }
+
+/* ══ ÍCONES DE LINHA (sprite em index.html) ═════════════════════ */
+.ic-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+.ic {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.14em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

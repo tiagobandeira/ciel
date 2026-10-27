@@ -11,10 +11,34 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" defer></script>
 <link rel="stylesheet" href="/static/style.css">
+<script src="/static/icons.js" defer></script>
 <script src="/static/trace.js" defer></script>
 <script src="/static/app.js" defer></script>
 </head>
 <body>
+
+<svg class="ic-sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4V5z"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 3 5 14h6l-1 7 8-11h-6l1-7z"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 6C10 4.5 7 4 4 4v13c3 0 6 .5 8 2 2-1.5 5-2 8-2V4c-3 0-6 .5-8 2z"/><path d="M12 6v13"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.2 5.2l2.1 2.1M16.7 16.7l2.1 2.1M18.8 5.2l-2.1 2.1M7.3 16.7l-2.1 2.1"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="M8.5 12.5l6-6a3 3 0 1 1 4.2 4.2l-7.8 7.8a5 5 0 0 1-7-7l7.5-7.5"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 20v-6h8v6"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M5 20h14"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M8 18v-5M12 18V8M16 18v-8"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M7 9l3 3-3 3"/><path d="M13 15h4"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M4 12h16"/><path d="M12 4c2.4 2.6 3.5 5.2 3.5 8s-1.1 5.4-3.5 8M12 4c-2.4 2.6-3.5 5.2-3.5 8s1.1 5.4 3.5 8"/></symbol>
+  <symbol id="i-clipboard" viewBox="0 0 24 24"><path d="M8 4h8v3H8z"/><path d="M6 5H5v16h14V5h-1"/><path d="M9 11h6M9 15h6"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 11v6M12 7.5v.01"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><path d="M5.5 10h13v10h-13z"/><path d="M8.5 10V7a3.5 3.5 0 0 1 7 0v3"/></symbol>
+  <symbol id="i-unlock" viewBox="0 0 24 24"><path d="M5.5 10h13v10h-13z"/><path d="M8.5 10V7a3.5 3.5 0 0 1 6.6-1.7"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><circle cx="8.5" cy="9.5" r="1.4"/><path d="M4 16l5-4 4 3 3-2 4 3"/></symbol>
+</svg>
 
 <!-- ── Sidebar overlay (mobile) ────────────────────────── -->
 <div id="sidebar-overlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
@@ -44,19 +68,19 @@
   <!-- Nav -->
   <nav class="sidebar-nav">
     <button class="nav-item active" onclick="showView('chat')">
-      <span class="nav-icon">💬</span>
+      <span class="nav-icon"><svg class="ic" aria-hidden="true"><use href="#i-chat"></use></svg></span>
       <span>chat</span>
     </button>
     <button class="nav-item" onclick="openTaskModal()">
-      <span class="nav-icon">⚡</span>
+      <span class="nav-icon"><svg class="ic" aria-hidden="true"><use href="#i-zap"></use></svg></span>
       <span>tasks</span>
     </button>
     <button class="nav-item" onclick="openSourceModal()">
-      <span class="nav-icon">📚</span>
+      <span class="nav-icon"><svg class="ic" aria-hidden="true"><use href="#i-book"></use></svg></span>
       <span>fontes</span>
     </button>
     <button class="nav-item" onclick="toggleToolsPanel()">
-      <span class="nav-icon">⚙</span>
+      <span class="nav-icon"><svg class="ic" aria-hidden="true"><use href="#i-gear"></use></svg></span>
       <span>tools</span>
       <span class="nav-badge" id="tools-count">0</span>
     </button>
@@ -100,7 +124,7 @@
       </div>
       <!-- badge de modo: clicável para abrir modal de auth -->
       <button class="safe-badge" id="safe-badge" onclick="openAuthModal()" title="status de autenticação">
-        <span id="safe-badge-icon">🔒</span>
+        <span id="safe-badge-icon"><svg class="ic" aria-hidden="true"><use href="#i-lock"></use></svg></span>
         <span id="safe-badge-label">safe</span>
       </button>
       <button class="icon-btn" onclick="clearChat()" title="nova sessão">↺</button>
@@ -126,10 +150,10 @@
       <!-- Barra de input -->
       <div class="input-bar">
         <div class="input-actions-left">
-          <button class="input-action-btn" onclick="triggerUpload()" title="anexar arquivo">📎</button>
+          <button class="input-action-btn" onclick="triggerUpload()" title="anexar arquivo"><svg class="ic" aria-hidden="true"><use href="#i-clip"></use></svg></button>
           <input type="file" id="file-input" style="display:none"
             accept="image/*,.txt,.md,.py,.csv,.json,.yaml,.yml,.toml,.log,.pdf">
-          <button class="input-action-btn" onclick="openTaskModal()" title="executar task">⚡</button>
+          <button class="input-action-btn" onclick="openTaskModal()" title="executar task"><svg class="ic" aria-hidden="true"><use href="#i-zap"></use></svg></button>
           <button class="input-action-btn" onclick="toggleCommandMenu()" title="comandos">/</button>
         </div>
 
@@ -147,15 +171,15 @@
       <!-- Menu de comandos rápidos -->
       <div id="command-menu" class="command-menu hidden">
         <div class="command-menu-header">comandos</div>
-        <button class="command-item" onclick="quickCommand('/history salvar')">💾 salvar sessão</button>
-        <button class="command-item" onclick="quickCommand('/history exportar')">📄 exportar .md</button>
-        <button class="command-item" onclick="quickCommand('/tools')">⚙ listar tools</button>
-        <button class="command-item" onclick="quickCommand('/tokens')">📊 ver tokens</button>
-        <button class="command-item" onclick="quickCommand('/limpar-temp')">🗑 limpar tools temp</button>
+        <button class="command-item" onclick="quickCommand('/history salvar')"><svg class="ic" aria-hidden="true"><use href="#i-save"></use></svg> salvar sessão</button>
+        <button class="command-item" onclick="quickCommand('/history exportar')"><svg class="ic" aria-hidden="true"><use href="#i-file"></use></svg> exportar .md</button>
+        <button class="command-item" onclick="quickCommand('/tools')"><svg class="ic" aria-hidden="true"><use href="#i-gear"></use></svg> listar tools</button>
+        <button class="command-item" onclick="quickCommand('/tokens')"><svg class="ic" aria-hidden="true"><use href="#i-chart"></use></svg> ver tokens</button>
+        <button class="command-item" onclick="quickCommand('/limpar-temp')"><svg class="ic" aria-hidden="true"><use href="#i-trash"></use></svg> limpar tools temp</button>
         <button class="command-item" onclick="quickCommand('/novo')">✦ nova sessão</button>
         <div class="command-menu-header">sources</div>
-        <button class="command-item" onclick="openSourceModal()">📚 gerenciar fontes</button>
-        <button class="command-item" onclick="quickCommand('/source --listar')">📋 listar fontes</button>
+        <button class="command-item" onclick="openSourceModal()"><svg class="ic" aria-hidden="true"><use href="#i-book"></use></svg> gerenciar fontes</button>
+        <button class="command-item" onclick="quickCommand('/source --listar')"><svg class="ic" aria-hidden="true"><use href="#i-clipboard"></use></svg> listar fontes</button>
       </div>
     </div>
 
@@ -193,8 +217,8 @@
         </div>
         <div class="panel-divider"></div>
         <div class="session-actions">
-          <button class="btn-outline btn-sm w-full" onclick="quickCommand('/history salvar')">💾 salvar sessão</button>
-          <button class="btn-outline btn-sm w-full" onclick="quickCommand('/history exportar')">📄 exportar .md</button>
+          <button class="btn-outline btn-sm w-full" onclick="quickCommand('/history salvar')"><svg class="ic" aria-hidden="true"><use href="#i-save"></use></svg> salvar sessão</button>
+          <button class="btn-outline btn-sm w-full" onclick="quickCommand('/history exportar')"><svg class="ic" aria-hidden="true"><use href="#i-file"></use></svg> exportar .md</button>
           <button class="btn-outline btn-sm w-full err-btn" onclick="clearChat()">↺ nova sessão</button>
         </div>
         <div class="panel-divider"></div>
@@ -259,7 +283,7 @@
 
     <!-- Nota explicativa -->
     <div class="source-note">
-      <span class="source-note-icon">ℹ</span>
+      <span class="source-note-icon"><svg class="ic" aria-hidden="true"><use href="#i-info"></use></svg></span>
       <span>Fontes são indexadas na memória do servidor e ficam disponíveis para o agente consultar.
       <strong>Sessão:</strong> só para esta conversa.
       <strong>Global:</strong> persistente para o agente em qualquer sessão.
@@ -268,9 +292,9 @@
 
     <!-- Tabs: upload / caminho / URL -->
     <div class="source-tabs">
-      <button class="source-tab active" onclick="switchSourceTab('file')">📁 arquivo</button>
-      <button class="source-tab" onclick="switchSourceTab('path')">💻 caminho</button>
-      <button class="source-tab" onclick="switchSourceTab('url')">🌐 URL</button>
+      <button class="source-tab active" onclick="switchSourceTab('file')"><svg class="ic" aria-hidden="true"><use href="#i-folder"></use></svg> arquivo</button>
+      <button class="source-tab" onclick="switchSourceTab('path')"><svg class="ic" aria-hidden="true"><use href="#i-terminal"></use></svg> caminho</button>
+      <button class="source-tab" onclick="switchSourceTab('url')"><svg class="ic" aria-hidden="true"><use href="#i-globe"></use></svg> URL</button>
     </div>
 
     <!-- Painel: upload de arquivo -->
@@ -279,7 +303,7 @@
         <input type="file" id="source-file-input" style="display:none"
           accept=".txt,.md,.py,.csv,.json,.yaml,.yml,.toml,.log,.pdf"
           onchange="onSourceFileSelected(this)">
-        <span class="source-upload-icon">📄</span>
+        <span class="source-upload-icon"><svg class="ic" aria-hidden="true"><use href="#i-file"></use></svg></span>
         <span class="source-upload-label" id="source-upload-label">clique para selecionar ou arraste um arquivo</span>
         <span class="source-upload-hint">.txt · .md · .pdf · .csv · .py · .json e outros</span>
       </div>
@@ -336,7 +360,7 @@
     <!-- estado: não autenticado → formulário de login -->
     <div id="auth-panel-login">
       <div class="modal-header">
-        <span>🔒 modo seguro ativo</span>
+        <span><svg class="ic" aria-hidden="true"><use href="#i-lock"></use></svg> modo seguro ativo</span>
         <button class="icon-btn" onclick="closeModal('auth-modal')">✕</button>
       </div>
       <div class="auth-body">
@@ -345,7 +369,7 @@
           estão desabilitadas. Autentique-se para liberar o acesso completo.
         </p>
         <div id="auth-default-hint" class="auth-hint hidden">
-          <span class="auth-hint-icon">ℹ</span>
+          <span class="auth-hint-icon"><svg class="ic" aria-hidden="true"><use href="#i-info"></use></svg></span>
           <span id="auth-default-pw-text"></span>
         </div>
         <div class="auth-field-row">
@@ -363,7 +387,7 @@
     <!-- estado: autenticado → opções -->
     <div id="auth-panel-authed" class="hidden">
       <div class="modal-header">
-        <span>🔓 autenticado</span>
+        <span><svg class="ic" aria-hidden="true"><use href="#i-unlock"></use></svg> autenticado</span>
         <button class="icon-btn" onclick="closeModal('auth-modal')">✕</button>
       </div>
       <div class="auth-body">
