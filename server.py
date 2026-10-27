@@ -377,6 +377,7 @@ def api_info():
         "tools":         state.tools_as_list(),
         "perfil":        state.perfil,
         "perfil_label":  state.model_label,
+        "nuvem_disponivel": _nuvem_disponivel(state.model),
         "authenticated": authenticated,
         "safe":          _safe_for_request(),
         "force_safe":    state.force_safe,
@@ -417,14 +418,27 @@ def _modelo_salvo() -> str:
     return str(web.get("model") or "").strip() if isinstance(web, dict) else ""
 
 
-def _modelos_ollama() -> list[str]:
-    """Modelos instalados no Ollama. Lista vazia se ele não responder."""
+_ollama_cache: dict = {"t": 0.0, "lista": []}
+
+
+def _modelos_ollama(ttl: float = 60.0) -> list[str]:
+    """Modelos instalados no Ollama. Lista vazia se ele não responder.
+
+    Cacheado por `ttl` segundos: a interface pergunta isso ao abrir Ajustes e
+    um Ollama lento (ou fora) travava a abertura por até 2s.
+    """
+    agora = time.monotonic()
+    if _ollama_cache["lista"] and agora - _ollama_cache["t"] < ttl:
+        return _ollama_cache["lista"]
+
     base = OLLAMA_URL.rsplit("/api/", 1)[0]
     try:
         import requests
         r = requests.get(f"{base}/api/tags", timeout=2)
         r.raise_for_status()
-        return sorted(m["name"] for m in r.json().get("models", []) if m.get("name"))
+        lista = sorted(m["name"] for m in r.json().get("models", []) if m.get("name"))
+        _ollama_cache.update(t=agora, lista=lista)
+        return lista
     except Exception:
         return []
 

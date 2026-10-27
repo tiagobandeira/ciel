@@ -29,6 +29,7 @@ const sendBtn     = () => document.getElementById('send-btn');
 async function init() {
   try {
     const info = await api('/api/info');
+    _infoCache = info;
     currentAgent = info.agent;
     currentModel = info.model;
     allTools     = {};
@@ -1516,8 +1517,9 @@ function setPerfilUI(d) {
   const label = d.perfil_label || d.model || '';
   const botao = document.getElementById('perfil-btn');
   if (botao) {
-    botao.textContent = d.perfil || 'local';
-    botao.classList.toggle('nuvem', d.perfil === 'nuvem');
+    const nuvem = d.perfil === 'nuvem';
+    botao.innerHTML = icone(nuvem ? 'cloud' : 'pc') + `<span>${esc(d.perfil || 'local')}</span>`;
+    botao.classList.toggle('nuvem', nuvem);
     botao.title = `perfil ${d.perfil || 'local'} · ${label}`;
   }
   const topo = document.getElementById('topbar-model');
@@ -1527,23 +1529,37 @@ function setPerfilUI(d) {
   currentModel = label;
 }
 
+let _infoCache = null;
+
+function _renderPerfilMenu(d) {
+  const menu = document.getElementById('perfil-menu');
+  menu.innerHTML = `
+    <button class="perfil-opcao ${d.perfil === 'local' ? 'ativo' : ''}" data-perfil="local">
+      <span class="perfil-opcao-nome">${icone('pc')} local</span>
+      <span class="perfil-meta">${esc(d.model || '')}</span>
+    </button>
+    <button class="perfil-opcao ${d.perfil === 'nuvem' ? 'ativo' : ''}" data-perfil="nuvem"${d.nuvem_disponivel ? '' : ' disabled'}>
+      <span class="perfil-opcao-nome">${icone('cloud')} nuvem</span>
+      <span class="perfil-meta">${d.nuvem_disponivel ? 'provider configurado' : 'configure um provedor'}</span>
+    </button>`;
+  menu.classList.remove('hidden');
+}
+
 window.togglePerfilMenu = async (ev) => {
   ev.stopPropagation();
   const menu = document.getElementById('perfil-menu');
   if (!menu.classList.contains('hidden')) { menu.classList.add('hidden'); return; }
+
+  // abre na hora com o que já está em memória; a atualização vem em seguida
+  // (antes era um /api/settings, que consulta o Ollama e travava o clique)
+  if (_infoCache) _renderPerfilMenu(_infoCache);
   try {
-    const d = await api('/api/settings');
+    const d = await api('/api/info');
+    _infoCache = d;
     setPerfilUI(d);
-    menu.innerHTML = `
-      <button class="perfil-opcao ${d.perfil === 'local' ? 'ativo' : ''}" data-perfil="local">
-        <span>local</span><span class="perfil-meta">${esc(d.model)}</span>
-      </button>
-      <button class="perfil-opcao ${d.perfil === 'nuvem' ? 'ativo' : ''}" data-perfil="nuvem"${d.nuvem_disponivel ? '' : ' disabled'}>
-        <span>nuvem</span><span class="perfil-meta">${d.nuvem_disponivel ? 'provider configurado' : 'configure um provedor'}</span>
-      </button>`;
-    menu.classList.remove('hidden');
+    if (!menu.classList.contains('hidden')) _renderPerfilMenu(d);
   } catch (e) {
-    addSysMsg(`erro ao ler ajustes: ${e.message}`);
+    if (!_infoCache) addSysMsg(`erro ao ler ajustes: ${e.message}`);
   }
 };
 
@@ -1560,6 +1576,7 @@ window.aplicarPerfil = async (perfil) => {
 
     // nuvem tira secondary_model do schema; mantém o painel de tools coerente
     const info = await api('/api/info');
+    _infoCache = info;
     allTools = {};
     (info.tools || []).forEach(t => { allTools[t.name] = t; });
     renderToolsList(info.tools || []);
