@@ -135,6 +135,15 @@ Cada execução chama `prepare_lab`: o lab anterior é movido para
 `data/labs/_arquivo/` e o novo começa limpo. Isso evita herdar experimento e
 notebook de uma tentativa anterior.
 
+O lab atual fica em `data/labs/estudo`. Para guardar uma cópia nomeada:
+
+```text
+/lab salvar goldbach_12
+/lab                  # lista atual, arquivo e estudos salvos
+```
+
+As cópias vão para `data/labs/estudos/<nome>/`.
+
 O `run_notebook` executa célula a célula e grava `stdout`, expressões, erros e
 figuras dentro do `.ipynb`; a verificação exige outputs reais, não apenas
 `nbformat`.

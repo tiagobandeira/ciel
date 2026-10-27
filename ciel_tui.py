@@ -347,6 +347,8 @@ COMMANDS: list[tuple[str, str]] = [
     ("/subagente",         "lista subagentes da última execução"),
     ("/subagente t1",      "detalha subagente por id/título"),
     ("/subagente stop",    "cancela o subagente em execução"),
+    ("/lab",               "lista estudos e labs salvos"),
+    ("/lab salvar nome",   "copia o estudo atual para o histórico"),
     ("/preview",           "lista previews locais"),
     ("/preview stop",      "para o preview ativo, sem chamar modelo"),
     ("/copiar",            "copia última resposta"),
@@ -3559,6 +3561,8 @@ class CielTUI(App):
                 ("/subagente",            "lista subagentes da última execução"),
                 ("/subagente <id|titulo>", "detalha um subagente"),
                 ("/subagente stop",       "cancela o subagente em execução"),
+                ("/lab",                  "lista estudos e labs salvos"),
+                ("/lab salvar <nome>",     "copia o estudo atual para o histórico"),
                 ("/preview",              "lista previews locais"),
                 ("/preview stop",         "para preview sem chamar modelo"),
                 ("/connect",             "configura provedor do modelo secundário"),
@@ -3804,6 +3808,30 @@ class CielTUI(App):
                     "uso: /preview [listar|start <pasta> [porta]"
                     "|stop [id|porta|todos]]",
                     "warn",
+                ))
+
+        elif verb == "/lab":
+            from pathlib import Path
+            from tools.save_lab import run as salvar_lab
+
+            if len(parts) > 1 and parts[1].lower() in ("salvar", "guardar", "save"):
+                nome = " ".join(parts[2:])
+                self._log_write(msg_system(salvar_lab(nome), "info"))
+            else:
+                linhas = []
+                for base in (
+                    Path("data/labs/estudo"),
+                    Path("data/labs/_arquivo"),
+                    Path("data/labs/estudos"),
+                ):
+                    if not base.is_dir():
+                        continue
+                    for item in sorted(base.iterdir()):
+                        if item.is_dir():
+                            count = sum(1 for p in item.rglob("*") if p.is_file())
+                            linhas.append(f"{item.name} · {count} arquivos · {item}")
+                self._log_write(msg_system(
+                    "\n".join(linhas) or "nenhum estudo encontrado.", "info"
                 ))
 
         elif verb == "/subagente" and len(parts) > 1 and parts[1].lower() in (

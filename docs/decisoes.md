@@ -683,6 +683,23 @@ status é a fonte da verdade; “inconclusivo” é uma conclusão legítima.
 
 ---
 
+---
+
+## D-037 — Lab atual + histórico nomeado
+
+**Decisão:** o processo sempre trabalha em `data/labs/estudo`; ao iniciar, o
+lab anterior é arquivado em `data/labs/_arquivo/`. O comando `/lab salvar
+<nome>` copia o estudo atual para `data/labs/estudos/<nome>/`.
+
+**Por quê:** um caminho fixo simplifica checks e retomada, mas não serve para
+consultar estudos antigos. O arquivo automático evita conflito; a cópia
+nomeada preserva o estudo sem transformar o processo em algo específico.
+
+**Consequência:** `/lab` lista atual, arquivo e salvos; `/lab salvar` usa
+`copytree` e nunca sobrescreve por padrão.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |

@@ -19,6 +19,7 @@ Presentes em todo agente, independente do caso de uso.
 | `copy_template.py` | copia um template de `templates/` para o destino (scaffold) |
 | `prepare_kernel.py` | aplica um kernel de `kernels/` com variante, manifesto e smoke |
 | `prepare_lab.py` | prepara um lab limpo e arquiva o diretório anterior |
+| `save_lab.py` | copia o lab atual para `data/labs/estudos/<nome>` |
 | `write_notebook.py` | cria um `.ipynb` nbformat 4 válido a partir de células |
 | `run_notebook.py` | executa células code célula a célula e grava outputs no `.ipynb` |
 | `start_preview.py` | sobe um servidor estático local em 127.0.0.1 e devolve a URL |
@@ -80,7 +81,8 @@ Estado atual — o que falta são `search_files` e `install_tool`:
 ```
 read_file         write_file        write_files       edit_file
 apply_patch       copy_template     prepare_kernel   prepare_lab
-write_notebook    run_notebook      list_directory   create_directory
+save_lab          write_notebook    run_notebook      list_directory
+create_directory
 start_preview     stop_preview      list_previews
 search_files(*)
 list_sources      search_knowledge  read_source

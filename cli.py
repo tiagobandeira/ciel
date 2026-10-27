@@ -1530,6 +1530,7 @@ def main():
         "/replicar",
         "/skill import", "/skill run", "/multitask --skill",
         "/subagente",
+        "/lab", "/lab salvar",
         "/preview", "/preview start", "/preview stop", "/preview listar",
         "/source", "/source --listar","/source --remover","/source --global","/source --limpar-orfas","/skill", "/limpar-temp",
         "/promover ", "/copiar", "/tokens", "/ajuda",
@@ -2576,6 +2577,7 @@ def main():
                 "  [tool]/processo --analisar [id][/tool]  analisa uma execução (sem modelo no local)\n"
                 "  [tool]/replicar <skill>[/tool]       executa uma skill absorvida como board\n"
                 "  [tool]/subagente [run] [task][/tool] lista/detalha resultados de subagentes\n"
+                "  [tool]/lab[/tool]                    lista estudos; /lab salvar <nome> preserva\n"
                 "  [tool]/preview[/tool]                 lista/para previews locais sem chamar o modelo\n"
                 "  [tool]/tools-extras[/tool]            tools opcionais e exemplos disponíveis\n"
                 "  [tool]/ajuda[/tool]                   este menu",
@@ -2977,6 +2979,43 @@ def main():
                     f"  [tool]processo:[/tool] [white]{_processo.titulo}[/white]\n"
                 )
                 user_input = f"/multitask {_processo.flow} {_objetivo}"
+
+        # ── /lab — lista e preserva estudos ─────────────────────────────────
+        if user_input.startswith("/lab"):
+            from tools.save_lab import run as salvar_lab
+
+            partes = user_input.split(None, 2)
+            sub = partes[1].lower() if len(partes) > 1 else ""
+            if sub in ("salvar", "guardar", "save"):
+                nome = user_input.split(None, 2)[2].strip() if len(partes) > 2 else ""
+                console.print()
+                console.print(escape(salvar_lab(nome)))
+                console.print()
+                continue
+
+            bases = [
+                Path("data/labs/estudo"),
+                Path("data/labs/_arquivo"),
+                Path("data/labs/estudos"),
+            ]
+            tbl = Table(box=None, show_header=True, padding=(0, 1))
+            tbl.add_column("estudo", style="tool")
+            tbl.add_column("local")
+            tbl.add_column("arquivos", justify="right")
+            for base in bases:
+                if not base.is_dir():
+                    continue
+                for item in sorted(base.iterdir()):
+                    if not item.is_dir():
+                        continue
+                    count = sum(1 for p in item.rglob("*") if p.is_file())
+                    tbl.add_row(item.name, str(item), str(count))
+            console.print()
+            console.print(tbl)
+            console.print(
+                "  [muted]salvar: /lab salvar meu_estudo[/muted]\n"
+            )
+            continue
 
         # ── /subagente — inspeciona resultados de subagentes ──────────────────
         if user_input.startswith("/subagente"):

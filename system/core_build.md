@@ -47,6 +47,8 @@ Se houver fontes indexadas na sessão, consulte antes de responder:
   markdown/code; `run_notebook` executa as células code localmente.
 - `prepare_lab` prepara um diretório de laboratório limpo e arquiva o anterior;
   use antes de reescrever um lab.
+- `save_lab` copia o lab atual para `data/labs/estudos/<nome>`; use para
+  preservar um estudo concluído.
 - `start_preview` sobe a pasta em `127.0.0.1` e devolve a URL; `stop_preview`
   encerra; `list_previews` lista. Use para validar app/landing no navegador.
 - Salve arquivos para o usuário em `data/user/`.
