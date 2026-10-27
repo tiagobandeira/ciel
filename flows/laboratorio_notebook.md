@@ -21,7 +21,7 @@ checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/PLANO.md", "tamanho_min
 fase: Formalização
 depende_de: preparar
 tools: read_file, write_file
-max_steps: 4
+max_steps: 6
 objetivo: transformar a ideia em hipótese testável e desenho experimental
 ações:
 - ler fonte/artigo.md e PLANO.md
@@ -35,13 +35,13 @@ checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/FORMALIZACAO.md", "tama
 fase: Implementação
 depende_de: formalizar
 tools: read_file, write_file, run_script
-max_steps: 6
+max_steps: 9
 objetivo: escrever e rodar exatamente src/experimento.py, sem explorar o workspace
 ações:
-- ler SOMENTE data/labs/estudo/FORMALIZACAO.md; não use list_directory e não leia o artigo inteiro
-- escrever exatamente data/labs/estudo/src/experimento.py com write_file; não crie explora_definicao.py, não use edit_file
+- ler SOMENTE data/labs/estudo/FORMALIZACAO.md UMA vez; não leia PLANO.md, não use list_directory e não leia o artigo inteiro
+- escrever exatamente data/labs/estudo/src/experimento.py com write_file; não crie explora_definicao.py, não use edit_file e não verifique se o arquivo existe
 - o script deve ser pequeno e focado: uma hipótese, parâmetros explícitos, semente e saída em resultados/ e figuras/
-- rodar data/labs/estudo/src/experimento.py logo após escrever [tool: run_script]
+- rodar data/labs/estudo/src/experimento.py logo após escrever [tool: run_script]; não releia o script
 - salvar a saída em resultados/saida_experimento.txt e resultados numéricos em resultados/resultados.json
 resultado esperado: src/experimento.py executou e gerou saída/resultados
 checagem: [{"tipo": "arquivo", "path": "data/labs/estudo/src/experimento.py", "tamanho_min": 150}, {"tipo": "arquivo", "path": "data/labs/estudo/resultados/saida_experimento.txt", "tamanho_min": 40}]
