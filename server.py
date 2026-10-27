@@ -258,6 +258,25 @@ state: AppState = None
 # inconsistente. Um turno por vez; o segundo recebe 409 e pode tentar de novo.
 _turno_lock = threading.Lock()
 
+# ── cancelamento ─────────────────────────────────────────────────────────────
+# O botão "parar" do front seta o Event; o run_agent checa no começo de cada
+# step. Não interrompe a chamada ao modelo em andamento (o HTTP não é
+# cancelável), então o turno para no próximo passo — tempo de uma chamada.
+_cancel_lock  = threading.Lock()
+_cancelamentos: dict[str, threading.Event] = {}
+
+
+def _registrar_cancelamento(turn_id: str) -> threading.Event:
+    evento = threading.Event()
+    with _cancel_lock:
+        _cancelamentos[turn_id] = evento
+    return evento
+
+
+def _esquecer_cancelamento(turn_id: str) -> None:
+    with _cancel_lock:
+        _cancelamentos.pop(turn_id, None)
+
 
 # ── rotas estáticas ───────────────────────────────────────────────────────────
 @app.route("/")
@@ -586,6 +605,22 @@ def api_feed_tema():
 
 
 # ── /api/events ──────────────────────────────────────────────────────────────
+@app.route("/api/chat/cancel", methods=["POST"])
+def api_chat_cancel():
+    """
+    Para o turno em andamento. Idempotente por turno: 404 se ele já terminou
+    (o front ignora — pode ser só a corrida com a resposta final).
+    """
+    data    = request.get_json(force=True) or {}
+    turn_id = data.get("turn_id", "")
+    with _cancel_lock:
+        evento = _cancelamentos.get(turn_id)
+    if evento is None:
+        return jsonify({"ok": False, "error": "turno não está em execução"}), 404
+    evento.set()
+    return jsonify({"ok": True, "turn_id": turn_id})
+
+
 @app.route("/api/events")
 def api_events():
     """
@@ -750,22 +785,27 @@ def _chat_turn():
 
     trace = []
 
-    result = run_agent(
-        user_input,
-        tools,
-        schema,
-        state.model,
-        state.agent_info,
-        history=state.history[:-1],
-        image_b64=image_b64,
-        web_base_url=state.base_url,
-        context_injection=context_injection,
-        session_id=str(state.session_id) if state.session_id else None,
-        on_confirm_tool=None,       # create_tool bloqueado por filter_unsafe quando safe=True
-        on_confirm_path=_server_confirm_path,
-        on_ask_user=None,           # tools INTERACTIVE não têm UI no server
-        **ui_bus.callbacks(turn_id, coletor=trace),
-    )
+    cancelar = _registrar_cancelamento(turn_id)
+    try:
+        result = run_agent(
+            user_input,
+            tools,
+            schema,
+            state.model,
+            state.agent_info,
+            history=state.history[:-1],
+            image_b64=image_b64,
+            web_base_url=state.base_url,
+            context_injection=context_injection,
+            session_id=str(state.session_id) if state.session_id else None,
+            on_confirm_tool=None,       # create_tool bloqueado por filter_unsafe quando safe=True
+            on_confirm_path=_server_confirm_path,
+            on_ask_user=None,           # tools INTERACTIVE não têm UI no server
+            cancel_event=cancelar,      # botão "parar" do front
+            **ui_bus.callbacks(turn_id, coletor=trace),
+        )
+    finally:
+        _esquecer_cancelamento(turn_id)
 
     t_in  = result.tokens_in
     t_out = result.tokens_out
@@ -799,6 +839,8 @@ def _chat_turn():
 
     if result.status == "error":
         final_reply = "⚠ Ollama não está respondendo. Reinicie o serviço e tente novamente."
+    elif result.status == "cancelled":
+        final_reply = "⏹ turno interrompido por você."
     else:
         final_reply = result.message
 
@@ -875,21 +917,27 @@ def handle_command(cmd: str, turn_id: str | None = None) -> tuple[str, bool]:
 
         trace = []
         t0_task = time.monotonic()
-        result = run_agent(
-            task_prompt,
-            state.tools,
-            state.schema,
-            state.model,
-            state.agent_info,
-            history=state.history[:-1],
-            web_base_url=state.base_url,
-            session_id=str(state.session_id) if state.session_id else None,
-            max_steps=MAX_STEPS_TASK,
-            on_confirm_tool=None,
-            on_confirm_path=_server_confirm_path,
-            on_ask_user=None,
-            **ui_bus.callbacks(turn_id, coletor=trace),
-        )
+        cancelar = _registrar_cancelamento(turn_id) if turn_id else None
+        try:
+            result = run_agent(
+                task_prompt,
+                state.tools,
+                state.schema,
+                state.model,
+                state.agent_info,
+                history=state.history[:-1],
+                web_base_url=state.base_url,
+                session_id=str(state.session_id) if state.session_id else None,
+                max_steps=MAX_STEPS_TASK,
+                on_confirm_tool=None,
+                on_confirm_path=_server_confirm_path,
+                on_ask_user=None,
+                cancel_event=cancelar,
+                **ui_bus.callbacks(turn_id, coletor=trace),
+            )
+        finally:
+            if turn_id:
+                _esquecer_cancelamento(turn_id)
         state.tokens_in  += result.tokens_in
         state.tokens_out += result.tokens_out
 

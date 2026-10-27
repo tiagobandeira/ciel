@@ -164,6 +164,23 @@ function novoTurno() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
+/* Para o turno em andamento. O server cancela no começo do próximo passo:
+   a chamada ao modelo em curso não é interrompível. */
+async function cancelarTurno(turno) {
+  try {
+    await api('/api/chat/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ turn_id: turno }),
+    });
+  } catch (e) {
+    // 404 = o turno já tinha terminado; não vale incomodar o usuário
+    if (!/não está em execução/.test(e.message)) {
+      addSysMsg(`não deu para cancelar: ${e.message}`);
+    }
+  }
+}
+
 let _sse = null;
 function initEventos() {
   if (_sse || !window.EventSource || !window.CielTrace) return;
@@ -261,7 +278,9 @@ window.sendMessage = async () => {
   const temTrace = !text.startsWith('/') || /^\/task\b/.test(text);
   const turno = novoTurno();
   currentTurn = turno;
-  if (temTrace && window.CielTrace) CielTrace.criar(turno);
+  if (temTrace && window.CielTrace) {
+    CielTrace.criar(turno, { onParar: () => cancelarTurno(turno) });
+  }
 
   const file = pendingFile;
   clearUpload();

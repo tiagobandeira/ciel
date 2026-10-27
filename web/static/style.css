@@ -1601,3 +1601,20 @@ body {
   .thought-line { grid-template-columns: 20px 14px 1fr auto; }
   .tl-texto { display: none; }
 }
+
+/* botão "parar" dentro do cabeçalho do trace (só enquanto o turno roda) */
+.thought-stop {
+  flex-shrink: 0;
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--err);
+  background: transparent;
+  border: 1px solid var(--err-dim);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.thought-stop:hover:not(:disabled) { background: var(--err-dim); }
+.thought-stop:disabled { opacity: 0.55; cursor: default; }

@@ -109,6 +109,35 @@ class TestColetor:
         assert len(eventos.por_tipo("passo")) == 1
 
 
+class TestCancelamento:
+    def test_cancelar_seta_o_evento_do_turno(self):
+        from server import app, _registrar_cancelamento, _esquecer_cancelamento
+
+        evento = _registrar_cancelamento("t-cancel")
+        try:
+            r = app.test_client().post("/api/chat/cancel", json={"turn_id": "t-cancel"})
+
+            assert r.status_code == 200
+            assert r.get_json()["ok"] is True
+            assert evento.is_set()
+        finally:
+            _esquecer_cancelamento("t-cancel")
+
+    def test_turno_desconhecido_da_404(self):
+        from server import app
+
+        r = app.test_client().post("/api/chat/cancel", json={"turn_id": "nao-existe"})
+
+        assert r.status_code == 404
+
+    def test_sem_turn_id_da_404(self):
+        from server import app
+
+        r = app.test_client().post("/api/chat/cancel", json={})
+
+        assert r.status_code == 404
+
+
 class TestContratoDoServer:
     def test_turn_id_do_cliente_e_validado(self):
         from server import _turn_id_valido
