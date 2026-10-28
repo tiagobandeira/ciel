@@ -26,6 +26,7 @@
     { rot: 'fontes',            desc: 'gerenciar fontes da sessão',    ic: 'book',      grupo: 'fontes',  acao: function () { window.openSourceModal(); } },
     { rot: 'trocar agente',     desc: 'mudar a persona ativa',         ic: 'chat',      grupo: 'sistema', acao: function () { window.openAgentModal(); } },
     { rot: 'ajustes',           desc: 'modelos, provedores e sobre',   ic: 'gear',      grupo: 'sistema', acao: function () { window.openSettings(); } },
+    { rot: 'modo interativo',   desc: 'abrir a interface visual (/ui)', ic: 'spark',    grupo: 'sistema', acao: function () { window.open('/ui', '_blank', 'noopener'); } },
     { rot: '/limpar-temp',      desc: 'remover tools temporárias',     ic: 'trash',     grupo: 'sistema', cmd: true },
   ];
 

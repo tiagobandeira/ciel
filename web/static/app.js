@@ -11,7 +11,6 @@ let currentSessionId = null;   // int | null — sessão onde o chat está acont
 let viewingSessionId = null;   // int | null — sessão destacada na sidebar (inclui modo leitura)
 let tokenIn          = 0;
 let tokenOut         = 0;
-let allTools         = {};     // cache de tools
 let rightPanelOpen   = true;
 let currentTurn      = null;   // turn_id do turno em andamento (trace do SSE)
 let turnoAtivo       = false;  // há um POST /api/chat em andamento
@@ -32,9 +31,6 @@ async function init() {
     _infoCache = info;
     currentAgent = info.agent;
     currentModel = info.model;
-    allTools     = {};
-    (info.tools || []).forEach(t => { allTools[t.name] = t; });
-
     // Topbar
     setStatus('online');
     document.getElementById('topbar-agent').textContent = info.agent;
@@ -51,10 +47,8 @@ async function init() {
     document.getElementById('info-model').textContent = info.model;
     setPerfilUI(info);
 
-    // Tools count badge
-    document.getElementById('tools-count').textContent = (info.tools || []).length;
-
-    renderToolsList(info.tools || []);
+    // Tools: só a contagem — a lista vive em /tools e na paleta
+    atualizarTools(info.tools);
 
     // Auth badge
     await updateAuthBadge(info);
@@ -369,10 +363,7 @@ window.sendMessage = async () => {
     // recarrega tools e sessões em background
     if (data.tools_changed) {
       const info = await api('/api/info');
-      allTools = {};
-      (info.tools || []).forEach(t => { allTools[t.name] = t; });
-      renderToolsList(info.tools || []);
-      document.getElementById('tools-count').textContent = (info.tools || []).length;
+      atualizarTools(info.tools);
     }
 
     await loadSessions();
@@ -413,34 +404,11 @@ window.quickCommand = (cmd) => {
   sendMessage();
 };
 
-// ── Tools panel ───────────────────────────────────────────────
-function renderToolsList(tools) {
-  const list = document.getElementById('tools-list');
-  if (!tools.length) {
-    list.innerHTML = '<div class="panel-empty">nenhuma tool carregada</div>';
-    return;
-  }
-  list.innerHTML = tools.map(t => {
-    const isTemp = t.cat === 'temp';
-    return `<div class="tool-item">
-      <div class="tool-item-name">
-        ${icone('gear')} ${esc(t.name)}
-        <span class="tool-cat-badge${isTemp?' temp':''}">
-          ${isTemp?'temp':'perm'}
-        </span>
-      </div>
-      <div class="tool-item-desc">${esc(t.desc || '')}</div>
-    </div>`;
-  }).join('');
+// ── Tools: contagem no menu (a lista vive em /tools e na paleta) ──
+function atualizarTools(tools) {
+  const el = document.getElementById('tools-count');
+  if (el) el.textContent = (tools || []).length;
 }
-
-window.filterTools = (q) => {
-  const items = document.querySelectorAll('.tool-item');
-  items.forEach(el => {
-    const name = el.querySelector('.tool-item-name')?.textContent.toLowerCase() || '';
-    el.style.display = name.includes(q.toLowerCase()) ? '' : 'none';
-  });
-};
 
 // ── Sidebar ───────────────────────────────────────────────────
 window.toggleSidebar  = () => {
@@ -458,23 +426,6 @@ window.toggleRightPanel = () => {
   rightPanelOpen = !rightPanelOpen;
   panel.classList.toggle('collapsed', !rightPanelOpen);
   document.getElementById('right-panel-btn').textContent = rightPanelOpen ? '⊟' : '⊞';
-};
-
-window.toggleToolsPanel = () => {
-  // from sidebar nav: abre painel direito e muda tab
-  if (!rightPanelOpen) toggleRightPanel();
-  switchPanelTab('tools');
-  closeSidebar();
-};
-
-// ── Panel tabs ─────────────────────────────────────────────────
-window.switchPanelTab = (tab) => {
-  // marca o botão cujo onclick contém o nome da tab
-  document.querySelectorAll('.panel-tab').forEach(el => {
-    el.classList.toggle('active', el.getAttribute('onclick')?.includes(`'${tab}'`));
-  });
-  document.getElementById('panel-tools').classList.toggle('active', tab === 'tools');
-  document.getElementById('panel-session').classList.toggle('active', tab === 'session');
 };
 
 // ── Modais ─────────────────────────────────────────────────────
@@ -522,13 +473,8 @@ function resetRightPanel({ agentName = null, agentFull = null, agentDesc = null,
     currentAgent = agentName;
   }
 
-  // tools
-  if (tools !== null) {
-    allTools = {};
-    tools.forEach(t => { allTools[t.name] = t; });
-    renderToolsList(tools);
-    document.getElementById('tools-count').textContent = tools.length;
-  }
+  // tools: só a contagem (lista fica no /tools e na paleta)
+  if (tools !== null) atualizarTools(tools);
 
   // fontes: limpa mini-lista do painel
   document.getElementById('sources-panel-list').innerHTML =
@@ -840,10 +786,7 @@ window.loadSession = async (sessionId) => {
       document.getElementById('sidebar-agent-desc').textContent = data.agent_desc || '';
       document.getElementById('agent-avatar').textContent       = (data.agent_full || data.agent)[0].toUpperCase();
       document.getElementById('info-agent').textContent         = data.agent;
-      allTools = {};
-      (data.tools || []).forEach(t => { allTools[t.name] = t; });
-      renderToolsList(data.tools || []);
-      document.getElementById('tools-count').textContent = (data.tools || []).length;
+      atualizarTools(data.tools);
     }
 
     // info de sessão no painel
@@ -1255,10 +1198,7 @@ async function doLogin() {
     closeModal('auth-modal');
     // recarrega info para atualizar tools disponíveis
     const info = await api('/api/info');
-    allTools = {};
-    (info.tools || []).forEach(t => { allTools[t.name] = t; });
-    renderToolsList(info.tools || []);
-    document.getElementById('tools-count').textContent = (info.tools || []).length;
+    atualizarTools(info.tools);
     addSysMsg('🔓 autenticado — todas as tools disponíveis');
   } catch(_) {
     err.classList.remove('hidden');
@@ -1281,10 +1221,7 @@ async function doLogout() {
   _renderAuthBadge();
   closeModal('auth-modal');
   const info = await api('/api/info');
-  allTools = {};
-  (info.tools || []).forEach(t => { allTools[t.name] = t; });
-  renderToolsList(info.tools || []);
-  document.getElementById('tools-count').textContent = (info.tools || []).length;
+  atualizarTools(info.tools);
   addSysMsg('🔒 sessão encerrada — modo seguro ativo');
 }
 
@@ -1605,10 +1542,7 @@ window.aplicarPerfil = async (perfil) => {
     // nuvem tira secondary_model do schema; mantém o painel de tools coerente
     const info = await api('/api/info');
     _infoCache = info;
-    allTools = {};
-    (info.tools || []).forEach(t => { allTools[t.name] = t; });
-    renderToolsList(info.tools || []);
-    document.getElementById('tools-count').textContent = (info.tools || []).length;
+    atualizarTools(info.tools);
   } catch (e) {
     addSysMsg(`não deu para trocar o perfil: ${e.message}`);
   }

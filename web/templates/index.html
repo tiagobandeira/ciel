@@ -35,6 +35,7 @@
   <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M4 12h16"/><path d="M12 4c2.4 2.6 3.5 5.2 3.5 8s-1.1 5.4-3.5 8M12 4c-2.4 2.6-3.5 5.2-3.5 8s1.1 5.4 3.5 8"/></symbol>
   <symbol id="i-pc" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
   <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9z"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/></symbol>
   <symbol id="i-clipboard" viewBox="0 0 24 24"><path d="M8 4h8v3H8z"/><path d="M6 5H5v16h14V5h-1"/><path d="M9 11h6M9 15h6"/></symbol>
   <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 11v6M12 7.5v.01"/></symbol>
   <symbol id="i-lock" viewBox="0 0 24 24"><path d="M5.5 10h13v10h-13z"/><path d="M8.5 10V7a3.5 3.5 0 0 1 7 0v3"/></symbol>
@@ -82,12 +83,20 @@
       <span class="nav-icon"><svg class="ic" aria-hidden="true"><use href="#i-book"></use></svg></span>
       <span>fontes</span>
     </button>
-    <button class="nav-item" onclick="toggleToolsPanel()">
+    <button class="nav-item" onclick="quickCommand('/tools')" title="listar as tools no chat">
       <span class="nav-icon"><svg class="ic" aria-hidden="true"><use href="#i-gear"></use></svg></span>
       <span>tools</span>
       <span class="nav-badge" id="tools-count">0</span>
     </button>
   </nav>
+
+  <!-- Modo interativo: outra superfície do mesmo server (/ui) -->
+  <a class="nav-item nav-externo" href="/ui" target="_blank" rel="noopener"
+     title="modo interativo (beta): partículas, voz, feed, imagens e TTS">
+    <span class="nav-icon"><svg class="ic" aria-hidden="true"><use href="#i-spark"></use></svg></span>
+    <span>interativo</span>
+    <span class="nav-tag">beta</span>
+  </a>
 
   <!-- Sessões -->
   <div class="sessions-section">
@@ -183,13 +192,7 @@
 
     <!-- Painel direito -->
     <aside id="right-panel" class="right-panel">
-      <!-- Tabs -->
-      <div class="panel-tabs">
-        <button class="panel-tab active" onclick="switchPanelTab('session')">sessão</button>
-        <button class="panel-tab" onclick="switchPanelTab('tools')">tools</button>
-      </div>
-
-      <!-- Tab: Sessão -->
+      <!-- Painel: sessão -->
       <div id="panel-session" class="panel-content active">
         <div class="session-info-block">
           <div class="info-row">
@@ -226,16 +229,6 @@
         </div>
         <div style="padding-left: 12px; padding-right: 12px;">
           <button class="btn-outline btn-sm w-full mt8" onclick="openSourceModal()">+ adicionar fonte</button>
-        </div>
-      </div>
-
-      <!-- Tab: Tools -->
-      <div id="panel-tools" class="panel-content">
-        <div class="panel-search-row">
-          <input type="text" class="panel-search" placeholder="buscar tool…" oninput="filterTools(this.value)">
-        </div>
-        <div id="tools-list" class="tools-list">
-          <div class="panel-empty">nenhuma tool carregada</div>
         </div>
       </div>
     </aside>

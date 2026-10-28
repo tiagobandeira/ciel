@@ -1766,3 +1766,12 @@ body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .paleta-vazia { padding: 10px; font-size: 11px; color: var(--muted); text-align: center; }
+
+/* link externo do modo interativo na sidebar */
+.nav-externo { text-decoration: none; color: inherit; }
+.nav-tag {
+  margin-left: auto;
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: .06em;
+  color: var(--accent); background: var(--accent-dim);
+  border-radius: 8px; padding: 1px 6px;
+}
