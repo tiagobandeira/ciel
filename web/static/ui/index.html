@@ -291,12 +291,13 @@ const MAXL=16;
 const u={
   uT:{value:1},uTime:{value:0},uT0:{value:0},uAmp:{value:0},uSize:{value:2.4},
   uPix:{value:rd.getPixelRatio()},uZ:{value:8},
+  uCor1:{value:new THREE.Vector3(.12,.42,1.)},uCor2:{value:new THREE.Vector3(.6,.95,1.)},
   uMatCamada:{value:Array.from({length:MAXL},()=>new THREE.Matrix4())},
   uMatFrom:{value:Array.from({length:MAXL},()=>new THREE.Matrix4())}
 };
 const mat=new THREE.ShaderMaterial({uniforms:u,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
 vertexShader:`attribute vec4 aFrom,aTo;attribute float aR;attribute float aCamada;attribute float aCamadaFrom;
-uniform float uT,uTime,uT0,uAmp,uSize,uPix,uZ;uniform mat4 uMatCamada[${MAXL}];uniform mat4 uMatFrom[${MAXL}];
+uniform float uT,uTime,uT0,uAmp,uSize,uPix,uZ;uniform vec3 uCor1,uCor2;uniform mat4 uMatCamada[${MAXL}];uniform mat4 uMatFrom[${MAXL}];
 varying vec3 vC;varying float vA;
 vec2 rot(vec2 p,float a){float c=cos(a),s=sin(a);return vec2(c*p.x-s*p.y,s*p.x+c*p.y);}
 void main(){
@@ -313,7 +314,7 @@ p=mix((LF*vec4(p,1.0)).xyz,(LM*vec4(p,1.0)).xyz,t);
 vec4 mv=modelViewMatrix*vec4(p,1.);
 gl_PointSize=min(uSize*uPix*(.6+aR)*(uZ/-mv.z),48.);
 gl_Position=projectionMatrix*mv;
-vC=mix(vec3(.12,.42,1.),vec3(.6,.95,1.),aR*aR)+uAmp*.6;vA=.55+.45*aR;}`,
+vC=mix(uCor1,uCor2,aR*aR)+uAmp*.6;vA=.55+.45*aR;}`,
 fragmentShader:`varying vec3 vC;varying float vA;
 void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;float f=smoothstep(.5,0.,d);gl_FragColor=vec4(vC*1.3,f*vA);}`});
 
@@ -461,8 +462,20 @@ function poseDe(n){
 const ST={repouso:['esfera',t=>.04*Math.sin(t*1.2)],
 ouvindo:['esfera',t=>.05+.08*Math.abs(Math.sin(t*3.1)*Math.sin(t*1.7+1))],
 pensando:['circulo',t=>.02*Math.sin(t*2)],
-falando:['esfera',t=>.02+.18*Math.abs(Math.sin(t*7)*Math.sin(t*2.3))]};
+falando:['esfera',t=>.02+.18*Math.abs(Math.sin(t*7)*Math.sin(t*2.3))],
+erro:['circulo',t=>.07+.05*Math.sin(t*9)]};
 const TOPIC=['carro','casa','solar','sorriso','coração','check'];
+
+// cor do núcleo por estado — [escuro,claro] do mesmo gradiente que o shader já usava (azul fixo).
+// pensando = círculo mágico dourado (Raphael); erro = vermelho de alerta. Sem entrada = cai no azul padrão.
+const COR={
+  repouso:[[.12,.42,1.],[.6,.95,1.]],
+  ouvindo:[[.12,.42,1.],[.6,.95,1.]],
+  falando:[[.12,.42,1.],[.6,.95,1.]],
+  pensando:[[.55,.32,.03],[1.,.86,.42]],
+  erro:[[.85,.08,.08],[1.,.42,.2]]
+};
+const _corA=new THREE.Vector3(),_corB=new THREE.Vector3();
 
 // composição de matrizes de animação por camada
 const _M1=new THREE.Matrix4(), _M2=new THREE.Matrix4(), _M3=new THREE.Matrix4();
@@ -551,6 +564,9 @@ function loop(now){const dt=Math.min((now-last)/1000,.05);last=now;T+=dt;u.uTime
 if(u.uT.value<1)u.uT.value=Math.min(1,u.uT.value+dt/1.8);
 const topic=cur.sh!=='esfera'&&cur.sh!=='circulo',tg=ST[cur.st][1](T)*(topic?.4:1)+(gravando?nivel*.25:0);
 amp+=(tg-amp)*.15;u.uAmp.value=amp;
+const cp=COR[cur.st]||COR.repouso;
+_corA.set(cp[0][0],cp[0][1],cp[0][2]);_corB.set(cp[1][0],cp[1][1],cp[1][2]);
+u.uCor1.value.lerp(_corA,.06);u.uCor2.value.lerp(_corB,.06);
 
 // matrizes das camadas (anim por camada + anim global por cima)
 const lib=LIB[cur.sh]||{};
@@ -765,7 +781,7 @@ else if(m.tipo==='painel'){
   }
 }
 else if(m.tipo==='painel_foco'){focarPainel(m.id)}
-else if(m.tipo==='erro'){turnoAtivo=false;cap('⚠ '+m.texto);tema=null;go('repouso','esfera')}}
+else if(m.tipo==='erro'){turnoAtivo=false;cap('⚠ '+m.texto);tema=null;go('erro','circulo');clearTimeout(fim);fim=setTimeout(()=>go('repouso','esfera'),2200)}}
 const es=new EventSource('/ui/events');es.onmessage=e=>{try{ev(JSON.parse(e.data))}catch(x){}};
 async function send(deVoz){const t=$('msg').value.trim();if(!t)return;
 const semTema=t.length<4||/^(?:ok|obrigad[oa]|valeu|sim|não|nao|beleza|legal|entendi|show|perfeito|hum+|hmm+|interessante)\b/i.test(t);
