@@ -85,7 +85,9 @@ Processos iniciais:
 | `corrigir_bug` | corrige uma falha reproduzível com correção mínima e check |
 
 Os fluxos de exemplo (artigo, landing, jogo, notebook) continuam em `flows/`;
-`app_web` é o primeiro processo com fase de spec explícita.
+`app_web` é o primeiro processo com fase de spec explícita. O formato do `.md`
+de um fluxo (cabeçalho, tasks, dependências e `checagem`) e os tipos de check
+disponíveis estão em [multitask.md](multitask.md).
 
 ## Laboratório de notebook
 
@@ -258,6 +260,11 @@ testar, verificação e pendências. O relatório completo fica no run.
 
 - `app_web` é um processo inicial; os checks de comportamento ainda são
   majoritariamente estáticos (arquivo/JS), não um navegador real.
-- Processos de backend, análise de dados e LaTeX ainda não existem.
-- A TUI ainda não executa o modo build; use `--cli`.
+- Processos de backend ainda não existem; análise de dados, testes, auditoria,
+  correção de bug e notebook já estão cobertos.
+- A TUI executa o modo build por linguagem natural; o comando `/processo`
+  (forçar um processo específico) é exclusivo da CLI.
+- Imagens (`/img`) e server/bots ainda têm suporte parcial no perfil `nuvem`.
 - `/quadro` continua adiado; o foco é processo + verificação.
+
+→ [Motor interno](multitask.md) · [Subagentes](subagentes.md) · [Kernels](kernels.md) · [Casos de teste](testes-multitask.md)

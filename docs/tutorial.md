@@ -209,7 +209,8 @@ pip install -r requirements.txt
 
 > O ambiente virtual isola as dependências do Ciel do seu Python global.  
 > É especialmente importante aqui porque o agente pode instalar pacotes. 
-> Dependências instaladas: `requests` `rich` `pymupdf` `pyperclip` `prompt_toolkit`
+> O `requirements.txt` cobre HTTP, renderização no terminal, leitura de PDF,
+> clipboard, busca web e parsing de HTML.
 >
 > **TUI (opcional):** se quiser usar a interface gráfica no terminal, instale também o `textual`:
 > ```bash
@@ -244,6 +245,21 @@ python ciel.py --agent dev_helper
 # Ver todos os agentes disponíveis
 python ciel.py --list-agents
 ```
+
+---
+
+## O que o Ciel verifica ao iniciar
+
+Antes do primeiro prompt, a CLI faz algumas checagens:
+
+- **Ollama inacessível** ou **modelo não encontrado** → erro bloqueante, com
+  instruções para resolver.
+- **Modelo secundário não configurado** → aviso informativo abaixo do banner;
+  não bloqueia o uso.
+- **Tool opcional sem a dependência instalada** → aviso com contagem e o
+  caminho `/tools-extras` (veja também `requirements-extras.txt`).
+- **Tool em `tools/temp/` com nome de uma tool permanente** → aviso; a versão
+  de `tools/` tem prioridade e a de `temp/` fica inerte.
 
 ---
 

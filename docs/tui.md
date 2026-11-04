@@ -14,6 +14,8 @@ A tela é organizada em três regiões principais:
 - **Painel central** — log de chat com suporte a Markdown, indicador de "pensando" e input destacado.
 - **Painel direito** — informações da sessão atual: modelo, número de sessão e contagem de tokens de entrada/saída.
 
+![Ciel TUI](assets/screenshot_tui.png)
+
 ## Comandos
 
 | Comando | Descrição |
@@ -29,6 +31,9 @@ A tela é organizada em três regiões principais:
 | `/history` | Lista, salva ou exporta sessões |
 | `/novo` | Inicia nova sessão |
 | `/tokens` | Exibe uso de tokens da sessão |
+| `/subagente` | Lista/detalha os subagentes da última execução |
+| `/lab` | Lista estudos e labs salvos |
+| `/preview` | Lista ou encerra previews locais |
 | `/sair` | Encerra a aplicação |
 
 ## Modo build
@@ -70,6 +75,9 @@ Nesse caso a TUI já sobe no perfil `nuvem`.
 | `Ctrl+N` | Nova sessão |
 | `Ctrl+B` | Alterna sidebar |
 | `Ctrl+Y` | Modo seleção — abre o chat em tela cheia para copiar trechos |
+| `Ctrl+K` | Abre o editor do conteúdo colado (pill) |
+| `Ctrl+G` | Confirma a edição no pill |
+| `Ctrl+D` | Deleta o pill |
 | `Ctrl+Q` | Sair |
 
 ## Pill de texto e link

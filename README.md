@@ -2,38 +2,43 @@
 
 # Ciel CLI
 
-CLI agêntica para automação de tarefas via linguagem natural, com suporte a modelos locais (Ollama) e cloud. Janela de contexto otimizada, base de conhecimento por sessão e tools extensíveis.
+CLI agêntica para automação de tarefas via linguagem natural. Roda com modelos
+locais (Ollama) ou com qualquer API OpenAI-compatible, com janela de contexto
+otimizada, base de conhecimento por sessão e tools extensíveis.
 
-Cada **persona** é um arquivo `.md` em `/agents/` — troque o comportamento do agente sem mudar código.
+Cada **persona** é um arquivo `.md` em `/agents/` — troque o comportamento do
+agente sem mudar código. O mesmo harness atende CLI, TUI, server web e bot de
+WhatsApp.
 
-> **Aviso de segurança:** este projeto permite que o agente execute scripts Python e instale pacotes via pip. Use sempre dentro de um `venv` e considere a flag `--safe` se não confiar no modelo ou no input. Veja [Segurança](#segurança) antes de começar.
+> **Aviso de segurança:** o agente pode executar scripts Python e instalar
+> pacotes via pip. Use um `venv` e considere `--safe` se não confiar no modelo
+> ou no input. Leia [Segurança](#segurança) antes de começar.
 
 ## Índice
 
 - [Instalação](#instalação)
-- [Configuração](#configuração)
-- [Uso](#uso)
-- [Comandos da CLI](#comandos-da-cli)
-- [Interfaces](#interfaces) — CLI · TUI · Server Local
-- [Sistema de histórico e branches](#sistema-de-histórico-e-branches)
+- [Uso rápido](#uso-rápido)
+- [Interfaces](#interfaces)
+- [Comandos essenciais](#comandos-essenciais)
+- [Agentes e skills](#agentes-e-skills)
 - [Tasks](#tasks)
-- [Base de conhecimento](#base-de-conhecimento-fontes)
-- [Criando sua própria persona](#criando-sua-própria-persona)
-- [MCP — integrações externas](#mcp--integrações-externas)
-- [Modelo secundário](#modelo-secundário-opcional)
-- [Skills](#skills-opcional)
+- [Modo build (processos)](#modo-build-processos)
+- [Base de conhecimento](#base-de-conhecimento)
+- [Modelos e perfis](#modelos-e-perfis)
+- [Integrações](#integrações)
 - [Segurança](#segurança)
 - [Arquitetura](#arquitetura)
-- [Estrutura do projeto](#estrutura-do-projeto)
+- [Documentação](#documentação)
 
 ---
 
 ## Instalação
 
-> Primeira vez? Siga o **[tutorial passo a passo](docs/tutorial.md)** — do zero ao primeiro chat.
+**Requisitos:** Python 3.10+, [Ollama](https://ollama.com) rodando (perfil
+local) ou um provider configurado, e Git (opcional).
 
 ```bash
-# 1. Crie e ative um ambiente virtual (recomendado)
+# 1. Ambiente virtual (recomendado — o agente pode instalar pacotes)
 python -m venv venv
 
 # Windows
@@ -43,366 +48,147 @@ venv\Scripts\Activate.ps1        # PowerShell
 # Linux/macOS
 source venv/bin/activate
 
-# 2. Instale as dependências
+# 2. Dependências
 pip install -r requirements.txt
 
-# 3. Confirme que o Ollama está rodando
+# 3. Confirme que o Ollama está rodando e baixe um modelo
 ollama list
+ollama pull gemma4:e2b-it-qat
 ```
 
-> O ambiente virtual isola as dependências do Ciel do seu Python global. É especialmente importante aqui porque o agente pode instalar pacotes.  
-> Dependências instaladas: `requests` `rich` `pymupdf` `pyperclip` `prompt_toolkit`
->
-> **TUI (opcional):** se quiser usar a interface gráfica no terminal, instale também o `textual`:
-> ```bash
-> pip install textual
-> ```
-> Ou descomente a última linha do `requirements.txt` e rode `pip install -r requirements.txt` novamente.
+O modelo padrão é o `gemma4:cloud` (via Ollama, exige login uma vez no site do
+Ollama). Qualquer modelo local do `ollama list` serve com `--model`.
 
-**O Ciel verifica o ambiente na inicialização:**
-
-- **Ollama não acessível** ou **modelo não encontrado** → erro bloqueante com instruções para resolver
-- **Modelo secundário não configurado** → aviso informativo abaixo do banner (não bloqueia o uso)
-- **Tools opcionais sem dependência instalada** → aviso com contagem e link para `/tools-extras`
-- **Tool em `tools/temp/` com mesmo nome de uma permanente** → aviso informativo; a versão de `tools/temp/` é ignorada (`tools/` sempre tem prioridade)
-
----
-
-## Configuração
-
-O Ciel funciona sem nenhuma configuração extra — o [modelo secundário](#modelo-secundário-opcional) é opcional e se configura de dentro do próprio Ciel, sem editar JSON na mão:
-
-```bash
-python ciel.py
-> /connect        # escolhe um provider, informa URL/modelo/chave (chave nunca é exibida)
-> /model          # ativa o provider recém-conectado
-```
-
-Funciona com qualquer API OpenAI-compatible: NVIDIA Build (gratuito), OpenRouter, OpenAI, Anthropic (via proxy), entre outros — ou um endpoint customizado. A chave fica em `~/.ciel/secrets.json`, fora do repositório; `ciel_config.json` guarda só qual provider está ativo.
-
-→ **[Documentação completa: docs/secondary-model.md](docs/secondary-model.md)**
-
----
-
-## Uso
-
-![Ciel em uso](docs/assets/screenshot.png)
-
-O ponto de entrada unificado é `ciel.py` — ele detecta automaticamente se o Textual está instalado e abre a TUI ou a CLI.
-
-```bash
-python ciel.py                             # TUI se Textual instalado, senão CLI
-python ciel.py --cli                       # força modo CLI
-python ciel.py --tui                       # força TUI (requer Textual)
-python ciel.py --agent dev_helper          # agente específico
-python ciel.py --model gemma4:e2b-it-qat   # modelo local
-python ciel.py --safe                      # sem tools de execução arbitrária
-python ciel.py --perfil nuvem              # orquestrador no provider de API
-python ciel.py --cli --modo build          # construção com processos nativos
-python ciel.py --auto                      # pula confirmação de create_tool (confia na sessão inteira)
-python ciel.py --list-agents               # lista personas disponíveis
-python server.py                           # versão server local
-```
-
-> Todas as flags (`--agent`, `--model`, `--perfil`, `--modo`, `--safe`, `--auto`, `--list-agents`) funcionam tanto no modo CLI quanto TUI — exceto `--modo build`, que por enquanto é só CLI.  
-> `--task` (modo headless) é exclusivo do modo CLI — use `python ciel.py --cli --task tasks/minha_task.md`.
-
----
-
-## Comandos da CLI
-
-| Comando | Ação |
-|---|---|
-| `/tools` | lista tools ativas nessa sessão |
-| `/agente` | mostra agente e histórico atual |
-| `/agente <nome>` | troca de persona sem reiniciar |
-| `/novo` | inicia nova sessão |
-| `/limpar` | limpa o histórico de exibição |
-| `/history` | gerencia sessões salvas (ver, retomar, branch) |
-| `/history <agente>` | filtra sessões por agente |
-| `/history salvar` | salva e nomeia a sessão atual |
-| `/history exportar` | exporta sessão como `.md` |
-| `/source <arquivo>` | indexa arquivo na base de conhecimento |
-| `/source --global <arquivo>` | indexa como fonte compartilhada do agente |
-| `/source --listar` | lista fontes disponíveis com IDs |
-| `/source --remover <id>` | remove uma fonte pelo ID |
-| `/source --limpar-orfas` | remove fontes de sessões deletadas |
-| `/criar agente` | cria novo agente via entrevista guiada |
-| `/criar task` | cria nova task via entrevista guiada |
-| `/task` | lista todas as tasks disponíveis |
-| `/task <nome>` | executa task pelo nome (parcial ou exato) |
-| `/task <arquivo.md>` | executa task pelo caminho direto |
-| `/modo` | mostra o modo atual (chat/build) |
-| `/modo chat\|build` | alterna chat e construção |
-| `/processo` | lista os processos nativos do Ciel |
-| `/processo <nome> <objetivo>` | executa um processo com spec, quadro e checks |
-| `/processo --retomar <id>` | retoma um processo pausado |
-| `/processo app_web` | app local com interface, persistência e critérios de aceite |
-| `/skill` | lista skills disponíveis |
-| `/skill <nome>` | exibe conteúdo da skill |
-| `/skill <nome> <prompt>` | executa prompt usando a skill |
-| `/img <arquivo> [texto]` | envia imagem ao modelo (alias: `/imagem`) |
-| `/tokens` | mostra tokens gastos na sessão atual |
-| `/copiar` | copia última resposta do agente |
-| `/model` | exibe modelo local/secundário e lista providers configurados; escolher um número ativa |
-| `/perfil` | mostra o perfil da sessão (local/nuvem) e o modo |
-| `/perfil <local\|nuvem>` | troca o orquestrador da sessão |
-| `/model <nome>` | troca o modelo local (Ollama) direto |
-| `/connect` | conecta ou atualiza um provider do modelo secundário |
-| `/tools-extras` | tools opcionais disponíveis e status de instalação |
-| `/mcp` | lista servidores MCP conectados e status |
-| `/mcp -v` | lista com todas as tools de cada servidor |
-| `/workspace` | mostra workspace ativo e paths liberados |
-| `/workspace <caminho>` | libera pasta/arquivo fora do workspace (leitura ou leitura+escrita) |
-| `/promover <tool>` | promove tool temporária para permanente |
-| `/limpar-temp` | remove tools temporárias da sessão |
-| `/analisar <caminho>` | absorve skill externa como primitivas Ciel |
-| `/ajuda` | exibe todos os comandos disponíveis |
-| `/sair` | encerra |
-
----
-
-## Interfaces
-
-### CLI
-
-A interface padrão — rich rendering, autocomplete por Tab e spinner de progresso. Ativa automaticamente quando Textual não está instalado.
-
-```bash
-python ciel.py --cli
-```
-
-### 🖥️ TUI (opcional)
-
-O **Ciel TUI** é uma interface de terminal interativa construída com [Textual](https://github.com/Textualize/textual), com três painéis em tempo real:
-
-- **Sidebar** — agente ativo, ações rápidas (F1–F4) e histórico de sessões navegável
-- **Chat** — log com Markdown, autocomplete e input com suporte a pill de texto e chips de link
-- **Painel direito** — modelo ativo, contagem de tokens separada por orquestrador e modelo secundário, uso de CPU/RAM/VRAM
-
-![Ciel TUI](docs/assets/screenshot_tui.png)
-
-**Dependência extra:**
+A TUI é opcional e tem uma dependência extra:
 
 ```bash
 pip install textual
 ```
 
-**Executar:**
+Para ler/escrever `.docx`, PDFs e monitorar hardware, instale também as
+dependências de `requirements-extras.txt`.
+
+> Primeira vez? Siga o **[tutorial passo a passo](docs/tutorial.md)** — do zero
+> ao primeiro chat, com resolução de problemas.
+
+Ao iniciar, o Ciel valida o Ollama e o modelo (erro bloqueante) e avisa sobre
+modelo secundário e tools opcionais sem dependência. Os detalhes estão no
+[tutorial](docs/tutorial.md#o-que-o-ciel-verifica-ao-iniciar).
+
+---
+
+## Uso rápido
+
+O ponto de entrada é `ciel.py`. Sem flags ele abre a TUI se o Textual estiver
+instalado; senão, a CLI.
 
 ```bash
-python ciel.py                         # abre TUI automaticamente se Textual instalado
-python ciel.py --tui                   # força TUI
-python ciel.py --tui --agent dev_helper
-python ciel.py --tui --safe
+python ciel.py                             # TUI (se instalada) ou CLI
+python ciel.py --cli                       # força CLI
+python ciel.py --tui                       # força TUI
+python ciel.py --agent dev_helper          # persona específica
+python ciel.py --model gemma4:e2b-it-qat   # modelo local
+python ciel.py --perfil nuvem              # orquestrador no provider de API
+python ciel.py --modo build                # construção com processos nativos
+python ciel.py --safe                      # sem tools de execução arbitrária
+python ciel.py --cli --task tasks/minha_task.md   # task headless
 ```
 
-**Atalhos principais:**
-
-| Tecla | Ação |
+| Flag | Ação |
 |---|---|
-| `F1`–`F4` | Tool / Task / Skill / Agente |
-| `F5` | Modelo — local e secundário (`/model`) |
-| `Tab` | Circula pelos painéis visíveis |
-| `/` | Foca o input |
-| `Ctrl+K` | Abre editor do conteúdo colado (pill) |
-| `Ctrl+G` | Confirma edição no pill |
-| `Ctrl+D` | Deleta o pill |
-| `Ctrl+S` | Salva sessão |
-| `Ctrl+N` | Nova sessão |
-| `Ctrl+B` | Alterna sidebar |
-| `Ctrl+L` | Limpa o chat |
-| `Ctrl+Y` | Abre modal de cópia — tela cheia para selecionar trechos do chat |
-| `Ctrl+Q` | Sair |
+| `--cli` / `--tui` | força a interface (mutuamente exclusivas) |
+| `--agent <nome>` | persona inicial |
+| `--model <nome>` | modelo local do Ollama |
+| `--perfil <local\|nuvem>` | orquestrador da sessão |
+| `--modo <chat\|build>` | modo da sessão (`build` exige `nuvem`) |
+| `--safe` | remove `run_script`, `create_tool` e `create_temp_tool` |
+| `--auto` | não pede confirmação para criação de tools (só CLI) |
+| `--task <arquivo.md>` | executa a task e sai (só CLI) |
+| `--list-agents` | lista personas e sai (só CLI) |
+| `--reset-password` | nova senha do server web (`--sim` dispensa confirmação) |
 
-→ **[Documentação completa: docs/tui.md](docs/tui.md)**
+> Com a TUI instalada, flags só-CLI precisam de `--cli` explícito. `--modo
+> build` sem `--tui` também cai na CLI; use `--tui --modo build` para o build
+> na TUI. A referência completa de flags está em
+> [docs/comandos.md](docs/comandos.md#flags-da-linha-de-comando).
 
-### 🌐 Server Local
-
-O **Ciel Server** oferece uma interface web para executar o Ciel localmente através do navegador — mesmos agentes, tools, sessões e base de conhecimento da CLI, em uma interface mais acessível.
-
-```bash
-python server.py
-```
-
-Por padrão escuta só nesta máquina:
+Dentro do Ciel, comece por `/ajuda` e `/agente`:
 
 ```text
-http://127.0.0.1:5000
+/ajuda
+/agente dev_helper
+/task noticias
 ```
 
-Para abrir na rede local (outro dispositivo), use `--lan`. Não há HTTPS: use só em rede confiável.
-
-```bash
-python server.py --lan
-```
-
-```text
-http://192.168.x.x:5000
-```
-
-O servidor roda **um turno por vez** (o estado é de uma sessão por processo): um segundo envio simultâneo recebe `409` em vez de intercalar o histórico. Downloads servem apenas arquivos de `data/`, e indexar fonte local exige login.
-
-No site simples do servidor, tools interativas (como `entrevista_interativa`) funcionam no navegador: a pergunta aparece no chat com botões (ou campo livre) e o turno fica pausado esperando a resposta. Depois de responder, o card mostra **“o agente está pensando…”** enquanto o modelo processa — o turno continua até a próxima pergunta ou a resposta final. O botão **parar** continua cancelando o turno mesmo com uma pergunta pendente. O modo live (`/ui`) ainda não renderiza essas perguntas — nele a tool segue o comportamento antigo.
-
-![Ciel Local Server](docs/assets/screenshot_server.png)
+![Ciel em uso](docs/assets/screenshot.png)
 
 ---
 
-## Sistema de histórico e branches
+## Interfaces
 
-As sessões são salvas automaticamente e podem ser retomadas a qualquer momento.
+| Interface | Como abrir | Documentação |
+|---|---|---|
+| **CLI** | `python ciel.py --cli` | esta página |
+| **TUI** | `python ciel.py --tui` (requer `textual`) | [docs/tui.md](docs/tui.md) |
+| **Server web** | `python server.py` → `http://127.0.0.1:5000` | [docs/server.md](docs/server.md) |
+| **Bot WhatsApp** | `python ciel.py bot` | [docs/whatsapp_tutorial.md](docs/whatsapp_tutorial.md) |
+
+**CLI** — rich rendering, autocomplete por Tab e spinner de progresso. É a
+interface padrão quando o Textual não está instalado.
+
+**TUI** — três painéis em tempo real (sidebar com sessões, chat com Markdown e
+painel de modelo/tokens/CPU). Roda os mesmos agentes, tools e histórico da CLI.
+
+**Server web** — o site simples (`/`) tem chat, sessões, tasks e fontes com
+login próprio; a interface visual (`/ui`) apresenta a conversa em um núcleo de
+partículas, com modos Núcleo, Pesquisa e Artigo. Por padrão escuta só a máquina
+local:
 
 ```bash
-/history salvar          # salva e nomeia a sessão atual
-/history                 # lista sessões salvas
-                         # → r: retomar  b: criar branch  d: deletar
+python server.py            # http://127.0.0.1:5000
+python server.py --lan      # rede local, sem HTTPS — use só em rede confiável
 ```
 
-Branches criam uma sessão filha que herda o histórico e as fontes da sessão pai — útil para explorar um caminho diferente sem perder o contexto original.
+**Bot WhatsApp** — pareia um número via QR e responde mensagens em tempo real;
+o MCP de WhatsApp permite enviar mensagens pontuais dentro de qualquer task.
 
 ---
 
-## Tasks
+## Comandos essenciais
 
-Tasks são fluxos de execução definidos pelo usuário em arquivos `.md`. O agente executa as ações em ordem como um inspetor — sem planejar, sem improvisar.
+| Comando | Ação |
+|---|---|
+| `/novo` | inicia nova sessão (pergunta se salva) |
+| `/history` | lista, retoma, cria branch ou deleta sessões |
+| `/agente` / `/agente <nome>` | mostra ou troca a persona |
+| `/tools` | lista as tools ativas na sessão |
+| `/tokens` | tokens gastos na sessão |
+| `/task` / `/task <nome>` | lista ou executa tasks |
+| `/modo <chat\|build>` | alterna conversa e construção |
+| `/processo` | lista/executa processos nativos (CLI) |
+| `/skill` | lista, mostra e executa skills |
+| `/source <arquivo ou URL>` | indexa fonte na base de conhecimento |
+| `/img <arquivo>` | envia imagem ao modelo (alias `/imagem`) |
+| `/model` | modelos local/secundário e providers |
+| `/perfil <local\|nuvem>` | troca o orquestrador da sessão |
+| `/connect` | conecta ou atualiza um provider de API |
+| `/workspace <caminho>` | libera pasta/arquivo fora do workspace |
+| `/mcp` | servidores MCP conectados e suas tools |
+| `/tools-extras` | tools opcionais e status de instalação |
+| `/ajuda` | todos os comandos |
 
-```bash
-/task                        # lista todas as tasks disponíveis
-/task noticias               # executa pelo nome (parcial ou exato)
-/task tasks/minha_task.md    # executa pelo caminho direto
-```
+As sessões são salvas automaticamente. `/history` permite retomar, criar um
+branch (a sessão filha herda o histórico e as fontes da pai) ou deletar.
 
-Se mais de uma task corresponder ao nome buscado, o agente lista as candidatas e pede para escolher.
-
-<p align="center">
-  <img src="docs/assets/screenshot_task.png" width="600">
-</p>
-
-### Criando tasks com entrevista guiada
-
-Use `/criar task` para criar uma task interativamente — o agente sugere as ações com base no objetivo descrito e você complementa se quiser:
-
-```bash
-/criar task     # abre entrevista: nome → objetivo → ações sugeridas → resultado esperado
-```
-
-A task é salva em `tasks/` e pode ser executada imediatamente com `/task <nome>`.
-
-→ **[Template de referência: docs/template_task.md](docs/template_task.md)**
-
-### Modo headless
-
-Tasks podem ser executadas sem abrir o terminal interativo — útil para automações, cron jobs e pipelines.
-
-```bash
-python ciel.py --cli --task tasks/noticias_do_dia.md
-```
-
-O agente executa a task e encerra. Sem prompt, sem sessão interativa.
+→ **[Referência completa de comandos](docs/comandos.md)** — inclui `/history`,
+`/processo --analisar`, `/subagente`, `/lab`, `/preview` e as flags da CLI.
 
 ---
 
-## Processos nativos (modo build)
+## Agentes e skills
 
-O modo `build` executa **processos** — receitas nativas do Ciel para tarefas
-com critério de aceite. Por baixo, ele usa o motor de quadro/checks/retomada
-(o antigo multitask), mas o usuário não precisa conhecer esse motor.
-
-```text
-/modo build
-quero um app de notas em markdown com preview e salvamento local
-```
-
-O Ciel detecta `app_web`, mostra a spec/plano e executa. Também dá para ser
-explícito:
-
-```text
-/processo                         # lista os processos
-/processo app_web "app de notas"
-/processo landing_page
-```
-
-O detalhe fica no log (`data/runs/<id>/`); a resposta final é curta: arquivos,
-como testar e verificação. O motor multitask continua interno — não é mais um
-comando de usuário.
-
-Para testar o lado de **verificação**, há o processo `corrigir_bug`, com um
-demo de teste falhando em `data/user/bugfix_demo/`:
-
-```text
-/processo corrigir_bug
-```
-
-Um fluxo é um `.md` em `flows/` com cabeçalho e tasks no formato nativo:
-
-```markdown
-## flow: meu_fluxo
-objetivo: criar um site estático
-formato: markdown          # markdown | resumo | whatsapp | bullets
-como_testar: abra index.html
-
-## task: estrutura
-fase: estrutura
-agente: dev_helper
-objetivo: criar os arquivos base
-ações:
-- criar index.html
-- criar style.css
-resultado esperado: os arquivos existem
-checagem: {"tipo": "arquivo", "path": "index.html"}
-
-## task: conferir
-fase: verificação
-depende_de: estrutura
-ações:
-- listar a pasta [tool: list_directory]
-resultado esperado: a listagem contém os arquivos
-```
-
-O estado fica em `data/runs/<id>/board.json` (e os eventos em `eventos.jsonl`),
-com escrita atômica e trava por execução. Cada task pode declarar uma
-`checagem` por código (`arquivo`, `comando`, `http`, `json`); se falhar, o
-runner tenta uma correção com o erro e os arquivos envolvidos, até o limite
-configurado. O relatório final é montado a partir do quadro — não depende de o
-modelo lembrar do que fez.
-
-Processos são implementados como fluxos em `flows/` (formato acima) e
-registrados em `processes.py`. O modo build escolhe o processo pela intenção;
-`/processo` força um processo específico. A TUI ainda não executa o modo build;
-use `python ciel.py --cli`.
-
-→ **[Processos: docs/processos.md](docs/processos.md)**  
-→ **[Motor interno: docs/multitask.md](docs/multitask.md)**  
-→ **[Casos de teste: docs/testes-multitask.md](docs/testes-multitask.md)**
-
----
-
-## Base de conhecimento (fontes)
-
-Indexa arquivos locais para o agente consultar por relevância, sem carregar tudo no contexto. Suporta `.pdf`, `.txt` e `.md`.
-
-```bash
-/source relatorio.pdf              # disponível só nesta sessão
-/source --global manual.txt        # disponível em todas as sessões do agente
-/source --listar                   # vê IDs e resumos das fontes
-/source --remover 3                # remove a fonte de id=3
-```
-
-O agente consulta as fontes automaticamente via `search_knowledge`, `list_sources` e `read_source`. Fontes de sessão são removidas quando a sessão é deletada. Fontes `--global` persistem até remoção explícita.
-
-**Escopos de visibilidade:**
-
-```
-_shared       → todas as sessões do agente
-session_id    → sessão atual e seus branches
-```
-
----
-
-## Criando sua própria persona
-
-Crie `agents/meu_agente.md`:
+Uma persona é um `.md` em `agents/` com título, persona e, opcionalmente,
+tools, MCP, skills e regras de comportamento:
 
 ```markdown
 # Meu Agente
@@ -413,173 +199,196 @@ Você é um agente especializado em X...
 ## Tools permitidas
 calculator
 read_file
-search_knowledge
-list_sources
 
 ## Comportamento
 - Regra 1
-- Regra 2
 ```
 
-Rode com `python ciel.py --agent meu_agente`. Ou use `/criar agente` para criar via entrevista guiada — o agente faz as perguntas e gera o arquivo automaticamente.
+```bash
+python ciel.py --agent meu_agente
+python ciel.py --cli --list-agents
+```
 
-→ **[Documentação completa: docs/agents.md](docs/agents.md)** · **[Template de referência: docs/template_agente.md](docs/template_agente.md)**
+`/criar agente` cria uma persona por entrevista guiada. As seções e os defaults
+do arquivo estão em [docs/agents.md](docs/agents.md) · template em
+[docs/template_agente.md](docs/template_agente.md).
 
-### Campos do .md
+**Skills** são arquivos `.md` em `skills/` com instruções detalhadas injetadas
+no system prompt do modelo secundário — úteis para domínios que um modelo local
+pequeno não carrega no contexto. Podem ser executadas sob demanda ou vinculadas
+a uma persona com nível `obrigatoria`, `sugerida` ou `opcional`.
 
-| Seção | Obrigatório | Descrição |
-|---|---|---|
-| `# Título` | sim | Nome do agente exibido na CLI |
-| `## Persona` | sim | Personalidade e contexto do agente |
-| `## Tools permitidas` | não | `todas` ou lista de nomes. Padrão: todas |
-| `## Servidores MCP` | não | `todos`, `nenhum` ou lista de servidores |
-| `## Skills` | não | Skills vinculadas com nível: `obrigatoria`, `sugerida`, `opcional` |
-| `## Comportamento` | não | Regras adicionais de decisão |
-| `## Formato de resposta` | não | Override do JSON padrão (avançado) |
+```text
+/skill                          # lista
+/skill frontend-visual          # mostra
+/skill frontend-visual crie um portfólio animado
+```
+
+Incluídas: `frontend-visual`, `code-review`, `refactor`, `docs-generator` e
+`data-analysis`. → [docs/skills.md](docs/skills.md)
 
 ---
 
-## MCP — integrações externas
+## Tasks
 
-O Ciel suporta o [Model Context Protocol](https://modelcontextprotocol.io), permitindo conectar servidores externos e usar suas ferramentas diretamente no agente — sem modificar código.
+Tasks são fluxos de execução definidos em `.md`. O agente executa as ações em
+ordem, como um inspetor — sem planejar nem improvisar.
+
+```text
+/task                        # lista todas
+/task noticias               # executa pelo nome (parcial ou exato)
+/task tasks/minha_task.md    # executa pelo caminho
+/criar task                  # cria por entrevista guiada
+```
+
+Para automação sem terminal interativo:
 
 ```bash
-# conectar um servidor (via tool do agente ou direto)
+python ciel.py --cli --task tasks/noticias_do_dia.md
+```
+
+Formato, `grupo`, `max_steps` e cron: [docs/tasks.md](docs/tasks.md) ·
+template: [docs/template_task.md](docs/template_task.md).
+
+---
+
+## Modo build (processos)
+
+O modo `build` executa **processos nativos** — receitas com spec, fases e
+critérios de aceite — em vez de conversa livre. Exige o perfil `nuvem`.
+
+```text
+/perfil nuvem
+/modo build
+quero um app de notas em markdown com preview e salvamento local
+```
+
+Se você já inicia com `python ciel.py --modo build`, o perfil `nuvem` é
+selecionado automaticamente.
+
+O Ciel detecta o processo (`app_web`, no exemplo), mostra a spec/plano e
+executa. Para ser explícito:
+
+```text
+/processo                                   # lista os processos (CLI)
+/processo app_web "app de notas"
+/processo corrigir_bug                      # demo de verificação
+```
+
+Cada task pode ter uma **checagem por código** — `arquivo`, `diretorio`,
+`comando`, `http` ou `json`. Se falhar, o runner tenta uma correção com o erro
+e os arquivos envolvidos. O detalhe fica em `data/runs/<id>/`; a resposta final
+é curta: arquivos, como testar e verificação.
+
+Processos disponíveis incluem `app_web`, `web_projeto` (com entrevista),
+`landing_page`, `jogo_web`, `analise_dados`, `auditar_repo`, `gerar_testes`,
+`corrigir_bug`, `artigo_matematica`, `notebook_matematica` e
+`laboratorio_notebook`.
+
+→ [Perfis, modos e processos](docs/processos.md) · [Formato do fluxo e
+checks](docs/multitask.md) · [Subagentes](docs/subagentes.md) ·
+[Kernels](docs/kernels.md)
+
+---
+
+## Base de conhecimento
+
+Indexa arquivos e páginas web para o agente consultar por relevância, sem
+carregar tudo no contexto. Suporta `.pdf`, `.txt`, `.md` e URLs.
+
+```text
+/source relatorio.pdf              # só nesta sessão
+/source https://exemplo.com/doc    # página web como fonte
+/source --global manual.txt        # todas as sessões do agente
+/source --listar                   # IDs e resumos
+/source --remover 3                # remove a fonte de id=3
+```
+
+O agente consulta via `search_knowledge`, `list_sources` e `read_source`.
+Fontes de sessão somem com a sessão; `--global` persiste até remoção. Cada
+agente tem sua própria base. → [docs/sources.md](docs/sources.md)
+
+---
+
+## Modelos e perfis
+
+| Perfil | Orquestrador | Quando usar |
+|---|---|---|
+| `local` (padrão) | Ollama (`--model`) | offline, hardware próprio |
+| `nuvem` | provider configurado com `/connect` | contexto maior, build, sem GPU |
+
+- `--perfil` / `/perfil` trocam o orquestrador da sessão; o padrão vem de
+  `"perfil"` em `ciel_config.json`.
+- No perfil `nuvem`, o modelo da API é o principal: a tool `secondary_model`
+  não é usada.
+- O **modelo secundário** é opcional no perfil local: o orquestrador delega
+  tarefas complexas via tool `secondary_model`. Configure de dentro do Ciel:
+
+```text
+/connect        # provider, URL, modelo e chave (a chave nunca é exibida)
+/model          # ativa o provider conectado
+```
+
+A chave fica em `~/.ciel/secrets.json`, fora do repositório; `ciel_config.json`
+guarda só o provider ativo. Funciona com NVIDIA Build, OpenRouter, OpenAI e
+qualquer endpoint OpenAI-compatible.
+
+Perfil não é modo: `nuvem` é *quem executa*; `build` é *como executa*. →
+[docs/processos.md](docs/processos.md) ·
+[docs/secondary-model.md](docs/secondary-model.md)
+
+---
+
+## Integrações
+
+**MCP** — conecte servidores externos e use as tools deles sem alterar código:
+
+```text
 mcp_add_server(name="telegram", type="stdio",
                command="python", args="mcp/telegram/server.py",
                env="TELEGRAM_BOT_TOKEN=seu_token")
-
-# verificar servidores conectados
-/mcp -v
 ```
 
-As tools do servidor aparecem automaticamente no registry com namespace `mcp_{servidor}__{tool}` e o agente passa a usá-las como qualquer outra tool. A configuração persiste em `mcp_servers.json` e é recarregada a cada sessão.
+```text
+/mcp -v       # servidores conectados e tools
+```
 
-O projeto inclui um servidor MCP para **Telegram** (`mcp/telegram/`) pronto para usar. Outros servidores MCP públicos (NPM, PyPI) também funcionam sem adaptação.
+As tools entram no registry como `mcp_{servidor}__{tool}`; a configuração
+persiste em `mcp_servers.json`. O projeto inclui servidores MCP para Telegram,
+WhatsApp e Google. → [docs/mcp.md](docs/mcp.md) · tutoriais:
+[Telegram](docs/mcp_telegram_tutorial.md) ·
+[Notion](docs/mcp_notion_tutorial.md) ·
+[Google Sheets/Docs](docs/google_mcp_tutorial.md)
 
-→ **[Documentação completa: docs/mcp.md](docs/mcp.md)** · **[Tutorial Telegram: docs/mcp_telegram_tutorial.md](docs/mcp_telegram_tutorial.md)** · **[Tutorial Notion: docs/mcp_notion_tutorial.md](docs/mcp_notion_tutorial.md)**
-
----
-
-## Perfis de modelo (local / nuvem)
-
-| Perfil | Orquestrador | `secondary_model` | Ollama |
-|---|---|---|---|
-| `local` (padrão) | Ollama (`--model`) | disponível | obrigatório |
-| `nuvem` | provider configurado com `/connect` | oculto | não necessário |
-
-- `--perfil nuvem` inicia a sessão no provider de API; `/perfil nuvem` troca
-  na hora.
-- Banner mostra `perfil: nuvem · modo: build`; o prompt mostra `build ❯` no
-  modo de construção.
-- O padrão vem de `"perfil"` em `ciel_config.json`; `--perfil` e `/perfil`
-  sobrescrevem só a sessão.
-- No perfil nuvem, o core prompt vira `system/core_build.md`: o modelo da API
-  é o principal, não delega para o `secondary_model`.
-- O perfil não é o modo: `nuvem` é *quem executa*; `build` é *como executa*
-  (com processos nativos), e exige o perfil nuvem.
-- Ainda têm suporte parcial: imagens (`/img`) e server/bots no perfil nuvem.
-  O foco atual é CLI/TUI.
-
-→ Decisões de arquitetura e nomenclatura: [docs/decisoes.md](docs/decisoes.md)  
-→ Perfis, modos e processos: [docs/processos.md](docs/processos.md)
-
----
-
-## Modelo secundário (opcional)
-
-O Ciel suporta um modelo secundário externo para tarefas que exigem raciocínio mais complexo ou contexto extenso — sem substituir o orquestrador local.
-
-Quando o orquestrador (Gemma4/Ollama) identifica que o problema está além das suas capacidades, ele delega via tool `secondary_model` para um modelo externo configurado pelo usuário. O resultado volta pro orquestrador, que entrega ao usuário.
-
-Sem configuração, o Ciel funciona normalmente — o modelo secundário é uma adição, não uma dependência.
-
-Veja [Configuração](#configuração) para o setup. Para detalhes sobre providers, controle de cota e respostas longas:
-
-→ **[Documentação completa: docs/secondary-model.md](docs/secondary-model.md)**
-
----
-
-## Skills (opcional)
-
-Skills são arquivos `.md` em `skills/` com instruções detalhadas injetadas diretamente no system prompt do modelo secundário — sem passar pelo orquestrador local. Permitem configurar o secundário para domínios específicos com contexto que um modelo pequeno não conseguiria carregar.
+**WhatsApp** — modo bot (responde mensagens) e modo MCP (envio pontual).
+Requer Node.js para o bridge local:
 
 ```bash
-/skill                          # lista skills disponíveis
-/skill frontend-visual          # exibe o conteúdo da skill
-/skill frontend-visual cria um site de portfólio animado
+cd mcp/whatsapp && npm install   # uma vez
+python ciel.py bot               # sobe o bot e o bridge; escaneie o QR
 ```
 
-Skills incluídas: `frontend-visual`, `code-review`, `refactor`, `docs-generator`, `data-analysis`.
-
-### Skills integradas ao agente
-
-Skills também podem ser vinculadas diretamente a um agente em seu arquivo `.md`. Quando o agente é carregado, as skills listadas são injetadas automaticamente no system prompt do modelo secundário.
-
-> **Atenção ao contexto:** cada skill adicionada aumenta o número de tokens enviados na chamada ao modelo secundário. Considere aumentar `max_tokens` em `ciel_config.json` para evitar respostas truncadas — respeitando o limite máximo do provider.
-
-→ **[Documentação completa: docs/skills.md](docs/skills.md)**
+→ [docs/whatsapp_tutorial.md](docs/whatsapp_tutorial.md)
 
 ---
 
 ## Segurança
 
-Este projeto tem duas superfícies de risco que você deve conhecer:
+- Use **`venv`**: o agente pode instalar pacotes e criar tools dinamicamente.
+- **`--safe`** remove `run_script`, `create_tool` e `create_temp_tool` do
+  schema — o modelo nunca vê essas tools.
+- Toda criação de tool mostra o código e pede confirmação
+  (`[s] sim [n] não [a] auto`). `--auto` dispensa as confirmações da sessão;
+  em `--task` headless a criação é recusada, a menos que `--auto` seja passado.
+- **Workspace guard**: paths fora da pasta onde o Ciel foi iniciado pedem
+  permissão explícita. `[a]` persiste o grant em `.ciel_workspace.json`;
+  `/workspace <caminho>` libera um caminho manualmente. Em headless, acesso
+  externo é recusado sem prompt.
+- **Server web**: senha própria, cookie assinado e modo seguro para visitantes.
+  Esqueceu a senha? `python ciel.py --reset-password` (preserva as chaves de
+  provider). O `--lan` não tem HTTPS: use só em rede confiável.
 
-**`run_script`** — executa qualquer arquivo `.py` que o modelo solicitar na sua máquina. Use `--safe` para desabilitar:
-
-```bash
-python ciel.py --safe
-```
-
-Recomendado ao usar modelos menos confiáveis, modelos pequenos propensos a alucinações, ou ao expor a CLI a inputs externos.
-
-**`create_tool` / `create_temp_tool`** — o agente pode criar novas tools dinamicamente e, dependendo do modelo, pode tentar instalar pacotes via pip. Por isso o uso de `venv` é essencial: qualquer instalação fica isolada do seu Python global e pode ser descartada junto com o ambiente. Tools criadas dinamicamente ficam em `tools/temp/` e não são versionadas pelo git.
-
-Antes de executar qualquer criação de tool, a CLI exibe o código gerado com syntax highlight e pede confirmação explícita:
-
-```
-[s] sim   [n] nao   [a] auto (confia pro resto da sessão)
-```
-
-Escolher `a` (auto) dispensa confirmações para o resto da sessão. A flag `--auto` faz o mesmo ao iniciar:
-
-```bash
-python ciel.py --auto   # pula confirmação de create_tool na sessão inteira
-```
-
-Em modo headless (`--task`), criação de tools é recusada automaticamente a menos que `--auto` seja passado explicitamente.
-
-**Workspace guard** — todas as tools que recebem caminhos de arquivo são validadas contra o diretório de onde o Ciel foi iniciado (cwd). Se o modelo tentar ler ou escrever fora desse workspace, a CLI pede confirmação explícita antes de prosseguir:
-
-```
-[s] sim, só essa vez   [a] sim, e lembrar   [n] não
-```
-
-Escolher `a` persiste o grant em `.ciel_workspace.json` (gitignored) e o path aparece no `/workspace` nas próximas sessões. Para liberar um caminho manualmente antes de iniciar uma tarefa:
-
-```bash
-/workspace ~/projetos/outro-repo   # [l] leitura  [e] leitura+escrita  [n] cancelar
-```
-
-Em sessões headless (`--task`), qualquer acesso fora do workspace é recusado automaticamente sem prompt.
-
-**Senha do server web** — a interface web tem senha própria, guardada como hash em `~/.ciel/secrets.json` (o mesmo arquivo das chaves de provider). Se esquecer, gere outra sem perder as chaves:
-
-```bash
-python ciel.py --reset-password         # pede confirmação ("resetar")
-python ciel.py --reset-password --sim   # sem confirmação (automação)
-```
-
-Também funciona como `python server.py --reset-password`. Sem terminal interativo o comando recusa, a menos que você passe `--sim` de propósito. A senha nova aparece uma vez no terminal e fica ativa até você trocar em **cadeado → trocar senha**; as sessões já abertas no navegador caem junto. Não apague `~/.ciel/secrets.json` para recuperar a senha: leva as chaves de provider no mesmo arquivo.
-
-O reset é operação de **nível de sistema**: roda no terminal, sem token e sem passar pelo workspace guard — é o usuário do SO, dono do arquivo, quem executa. O agente continua sem acesso a esse caminho (é fora do workspace, de propósito). Para guardar os segredos em outro lugar, defina `CIEL_SECRETS_PATH`.
-
-**Limitações:**
-
-- Modelos locais pequenos (< 8B) podem falhar em raciocínio complexo — considere configurar um modelo secundário.
-- `--safe` remove `run_script`, `create_tool` e `create_temp_tool` do schema — o modelo nunca vê essas tools. As definições de tools bloqueadas estão centralizadas em `tool_dispatch.py`.
-- A janela de contexto é otimizada por design: sessões típicas ficam em torno de 20k–30k tokens totais.
+→ **[Detalhes, limitações e o que cada proteção cobre](docs/seguranca.md)**
 
 ---
 
@@ -589,111 +398,46 @@ O reset é operação de **nível de sistema**: roda no terminal, sem token e se
   <img src="docs/assets/agent_cli_architecture.svg" width="700">
 </p>
 
-O modelo é intercambiável — o valor está no harness: tool registry dinâmico, sessões com branch/fork, base de conhecimento por sessão e injeção de contexto otimizada para janelas pequenas.
+O modelo é intercambiável — o valor está no harness: tool registry dinâmico,
+sessões com branch/fork, base de conhecimento por sessão e injeção de contexto
+otimizada para janelas pequenas.
 
-Tasks permitem execução predefinida de fluxos complexos — uma forma deliberada de compensar as limitações de contexto de modelos locais menores sem depender de um orquestrador grande.
+Tasks e processos existem para compensar a janela curta de modelos locais: em
+vez de pedir um plano grande ao modelo pequeno, o fluxo já define as etapas e o
+harness verifica cada uma por código.
+
+→ [Decisões de arquitetura](docs/decisoes.md) ·
+[Estrutura do projeto](docs/estrutura.md)
 
 ---
 
-## Estrutura do projeto
+## Documentação
 
-```
-Ciel/
-├── README.md
-├── ciel.py                               ← entry point unificado (TUI/CLI)
-├── cli.py                                ← CLI interativa
-├── ciel_tui.py                           ← TUI (requer Textual)
-├── tool_dispatch.py                      ← fonte única de UNSAFE_TOOLS e lógica de confirmação
-├── workspace.py                          ← workspace guard: valida paths antes de invocar tools
-├── agent_loop.py
-├── server.py
-├── agent_loader.py
-├── tools_registry.py
-├── history_store.py
-├── history_ui.py
-├── ciel_config.example.json              ← template de configuração
-├── mcp_servers.json                      ← gerado automaticamente
-├── telegram_channels.json                ← gerado automaticamente
-├── agents/
-│   ├── general.md
-│   ├── dev_helper.md
-│   ├── frontend.md
-│   └── rpg_master.md
-├── mcp/
-│   ├── __init__.py
-│   ├── client.py                         ← protocolo JSON-RPC 2.0, stdio/SSE
-│   ├── adapter.py                        ← converte schemas MCP → ToolRegistry
-│   ├── manager.py                        ← ciclo de vida dos servidores
-│   └── telegram/
-│       ├── __init__.py
-│       ├── server.py                     ← servidor MCP para Telegram (Bot API)
-│       └── channels.py                   ← cache local de canais
-├── tools/
-│   ├── calculator.py
-│   ├── create_directory.py
-│   ├── create_tool.py
-│   ├── create_temp_tool.py
-│   ├── entrevista_interativa.py
-│   ├── get_hardware_info.py
-│   ├── get_local_datetime.py
-│   ├── get_network_info.py
-│   ├── http_request.py
-│   ├── list_directory.py
-│   ├── list_sources.py
-│   ├── mcp_add_server.py                 ← registra e conecta servidor MCP
-│   ├── mcp_list_servers.py               ← lista servidores e status
-│   ├── mcp_remove_server.py              ← remove e desconecta servidor
-│   ├── read_file.py
-│   ├── read_source.py
-│   ├── read_url.py
-│   ├── run_script.py
-│   ├── search_knowledge.py
-│   ├── secondary_model.py
-│   ├── web_search_extended.py
-│   └── write_file.py
-├── knowledge/
-│   ├── __init__.py
-│   ├── db.py
-│   ├── ingest.py
-│   ├── ingest_url.py
-│   └── retriever.py
-├── skills/
-│   ├── code-review.md
-│   ├── data-analysis.md
-│   ├── docs-generator.md
-│   ├── frontend-visual.md
-│   └── refactor.md
-├── tasks/
-│   ├── iniciar_rpg.md
-│   ├── noticias_do_dia.md
-│   └── .ciel/                                ← tasks internas do sistema (não listadas em /task)
-│       ├── criar_agente.md
-│       └── criar_task.md
-├── system/
-│   ├── core_prompt.md
-│   └── tool_template.md
-├── prompts/
-│   └── web_search.md
-├── web/
-│   ├── static/
-│   │   ├── app.js
-│   │   └── style.css
-│   └── templates/
-│       └── index.html
-└── docs/
-    ├── KNOWLEDGE_ROADMAP.md
-    ├── TESTING.md
-    ├── agents.md                            ← documentação completa do sistema de agentes
-    ├── template_agente.md                   ← template comentado para criar agentes
-    ├── template_task.md                     ← template comentado para criar tasks
-    ├── mcp.md
-    ├── mcp_telegram_tutorial.md
-    ├── mcp_notion_tutorial.md
-    ├── secondary-model.md
-    ├── skills.md
-    ├── sources.md
-    ├── tasks.md
-    ├── tools.md
-    ├── tui.md
-    └── tutorial.md
-```
+| Assunto | Documento |
+|---|---|
+| Do zero ao primeiro chat | [tutorial.md](docs/tutorial.md) |
+| Referência de comandos e flags | [comandos.md](docs/comandos.md) |
+| TUI e atalhos | [tui.md](docs/tui.md) |
+| Server web, login e `/ui` | [server.md](docs/server.md) |
+| Agentes (personas) | [agents.md](docs/agents.md) · [template](docs/template_agente.md) |
+| Skills | [skills.md](docs/skills.md) |
+| Tasks | [tasks.md](docs/tasks.md) · [template](docs/template_task.md) |
+| Perfis, modos e processos | [processos.md](docs/processos.md) |
+| Motor de quadro, fluxos e checks | [multitask.md](docs/multitask.md) |
+| Subagentes e paralelismo | [subagentes.md](docs/subagentes.md) |
+| Kernels e scaffolds | [kernels.md](docs/kernels.md) |
+| Base de conhecimento | [sources.md](docs/sources.md) |
+| Modelo secundário e providers | [secondary-model.md](docs/secondary-model.md) |
+| MCP | [mcp.md](docs/mcp.md) |
+| Integrações | [Telegram](docs/mcp_telegram_tutorial.md) · [Notion](docs/mcp_notion_tutorial.md) · [Google](docs/google_mcp_tutorial.md) · [WhatsApp](docs/whatsapp_tutorial.md) |
+| Segurança | [seguranca.md](docs/seguranca.md) |
+| Estrutura e arquivos | [estrutura.md](docs/estrutura.md) |
+| Decisões de arquitetura | [decisoes.md](docs/decisoes.md) |
+| Testes e cobertura | [TESTING.md](docs/TESTING.md) · [ROADMAP_TESTES.md](docs/ROADMAP_TESTES.md) |
+| Benchmark de casos de uso | [BENCHMARK.md](docs/BENCHMARK.md) |
+
+---
+
+## Licença
+
+MIT — veja [LICENSE](LICENSE).

@@ -285,7 +285,7 @@ Com `--safe`, mesmo que o agente tentasse usar `run_script` ou `create_tool`, es
 | Comando | Comportamento |
 |---|---|
 | `/agente` | exibe o agente e histórico ativos |
-| `/agente <nome>` | troca de persona sem reiniciar a sessão |
+| `/agente <nome>` | troca de persona sem reiniciar o processo (começa nova sessão) |
 | `--agent <nome>` | inicia o Ciel já com o agente especificado |
 | `--list-agents` | lista todas as personas disponíveis |
 
@@ -294,7 +294,10 @@ python ciel.py --agent dev_helper
 python ciel.py --list-agents
 ```
 
-A troca via `/agente` recarrega o system prompt e o filtro de tools imediatamente — o histórico de mensagens da sessão é mantido.
+A troca via `/agente` recarrega o system prompt e o filtro de tools
+imediatamente, mas **começa uma nova sessão** — na CLI, com confirmação e
+descartando o histórico atual. Para não perder o contexto, salve/retome pelo
+`/history` ou crie um branch antes de trocar.
 
 ---
 
@@ -361,4 +364,4 @@ Não há registro manual, instalação ou reinicialização necessária. O loade
 
 **Agentes são versionáveis** — os arquivos em `agents/` são texto puro e podem (e devem) ir pro git. É a única forma de persistir comportamento entre máquinas.
 
-**Teste com `/agente`** — você pode criar um agente novo e trocar pra ele sem reiniciar a sessão. Útil para iterar rápido no comportamento sem perder o histórico.
+**Teste com `/agente`** — você pode criar um agente novo e trocar pra ele sem reiniciar o processo — mas a troca começa uma nova sessão (salve a atual antes). Útil para iterar rápido no comportamento.

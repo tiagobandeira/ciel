@@ -88,6 +88,8 @@ o campo `grupo` com base nas ações definidas.
 
 Se mais de uma task corresponder ao nome buscado, o agente lista as candidatas e pede para escolher.
 
+![Task em execução](assets/screenshot_task.png)
+
 ---
 
 ## Steps
@@ -158,7 +160,7 @@ e oferece criar via auto tool. Útil para tasks que dependem de integrações es
 Tasks podem ser executadas sem abrir o terminal interativo, via flag `--task`:
 
 ```bash
-python cli.py --task tasks/noticias_do_dia.md
+python ciel.py --cli --task tasks/noticias_do_dia.md
 ```
 
 O agente executa a task e encerra. Sem prompt, sem sessão interativa — ideal para automações, scripts externos e pipelines.
@@ -167,5 +169,5 @@ O agente executa a task e encerra. Sem prompt, sem sessão interativa — ideal 
 
 ```bash
 # todo dia às 8h — busca e envia notícias
-0 8 * * * cd /caminho/do/projeto && python cli.py --task tasks/noticias-auto.md
+0 8 * * * cd /caminho/do/projeto && python ciel.py --cli --task tasks/noticias-auto.md
 ```
