@@ -5,7 +5,7 @@
 <style>
 :root{--bg:#02050d;--fg:#cfe6ff;--ac:#4aa8ff;--gl:rgba(74,168,255,.45);color-scheme:dark;box-sizing:border-box}
 html,body{height:100%;margin:0;background:radial-gradient(ellipse at 50% 42%,#0b2b5c 0%,#051433 38%,#02050d 78%) fixed,#02050d;color:var(--fg);font:14px "Trebuchet MS",system-ui,sans-serif;overflow:hidden}
-canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;transform-origin:calc(100% - 86px) calc(100% - 86px);transition:transform .65s cubic-bezier(.22,1,.36,1)}
 #hud{position:fixed;left:14px;top:calc(env(safe-area-inset-top,0px) + 10px);opacity:.55;font-size:12px}
 #bar{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);transform:translateX(-50%);width:min(94vw,520px);box-sizing:border-box;display:flex;flex-direction:column;align-items:center;gap:10px;transition:opacity .7s;z-index:50}
 #bar.idle:not(.aberto){opacity:.15}
@@ -41,6 +41,7 @@ button,input,select{font:inherit;color:var(--fg);background:rgba(74,168,255,.1);
 button.on{background:rgba(74,168,255,.38);box-shadow:0 0 10px var(--gl)}
 input{flex:1 1 110px;min-width:0}
 .dbg,#tx,#pw{display:none}body.debug .dbg{display:flex}body.debug #tx,body.debug #pw{display:inline-block}
+.row.dbg{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none}.row.dbg::-webkit-scrollbar{display:none}.row.dbg button{flex:0 0 auto}
 #cap{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 34px);width:min(92vw,640px);text-align:center;font-size:16px;line-height:1.4;text-shadow:0 0 12px var(--gl);pointer-events:none}
 #chat{position:fixed;right:14px;top:calc(env(safe-area-inset-top,0px) + 110px);bottom:calc(env(safe-area-inset-bottom,0px) + 14px);width:min(340px,28vw);box-sizing:border-box;display:flex;flex-direction:column;padding:10px;border-radius:16px;background:rgba(8,20,40,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(74,168,255,.35);box-shadow:0 0 24px var(--gl),inset 0 0 12px rgba(74,168,255,.12);transition:opacity .7s;z-index:50}
 #chat.idle{opacity:.15}#chat.vazio{display:none}
@@ -52,7 +53,7 @@ input{flex:1 1 110px;min-width:0}
 .m{padding:8px 11px;border-radius:12px;max-width:92%;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}
 .m.u{align-self:flex-end;background:rgba(74,168,255,.25)}.m.c{align-self:flex-start;background:rgba(255,255,255,.06)}
 @media(max-width:1300px){#chat{bottom:calc(env(safe-area-inset-bottom,0px) + 150px)}}
-@media(max-width:1200px){#palco{padding:24px 24px calc(24px + 150px)}#palco.modo-opcoes{padding:24px 24px calc(24px + 150px)}}
+@media(max-width:1200px){#palco.modo-opcoes{padding:24px 24px calc(24px + 150px)}}
 @media(max-width:900px){#chat{left:10px;right:10px;width:auto;top:auto;max-height:34vh}}
 .m code{background:rgba(74,168,255,.18);padding:0 4px;border-radius:4px}
 .s{transition:background .3s}.s.lendo{background:rgba(74,168,255,.3);border-radius:4px;box-shadow:0 0 0 3px rgba(74,168,255,.3)}
@@ -222,6 +223,35 @@ input{flex:1 1 110px;min-width:0}
 .palco-card .img-painel .img-rodape .img-dots{margin-top:7px}
 #palco.imagem-palco .palco-card{height:72vh;max-height:72vh}
 #palco.imagem-palco #palco-corpo{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.artigo-corpo{display:flex;flex-direction:column;gap:14px;padding:4px 2px 10px}
+#palco.artigo-palco{padding-left:460px;padding-right:460px}
+.artigo-bloco{opacity:0;transform:translateY(10px);transition:opacity .5s ease,transform .5s cubic-bezier(.22,1,.36,1);padding:12px 14px;border-radius:14px;background:rgba(20,40,70,.35);border:1px solid rgba(74,168,255,.18)}
+.artigo-bloco.in{opacity:1;transform:translateY(0)}
+.artigo-bloco h4{margin:0 0 6px;font-size:13px;font-weight:600;color:#cfe8ff}
+.artigo-bloco p{margin:0;font-size:13px;line-height:1.55;color:var(--fg);opacity:.92}
+.artigo-grafico svg{display:block;height:auto;color:#9fd4ff;margin-top:2px}
+.artigo-anim svg{display:block;max-width:100%;height:auto;margin:2px auto 0}
+.artigo-formula{text-align:center}
+.artigo-formula .katex{font-size:1.25em;color:#cfe8ff}
+.artigo-tabela-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.artigo-tabela table{border-collapse:collapse;width:100%;font-size:12.5px;white-space:nowrap}
+.artigo-tabela th,.artigo-tabela td{padding:6px 12px;text-align:right;border-bottom:1px solid rgba(159,224,255,.15)}
+.artigo-tabela th:first-child,.artigo-tabela td:first-child{text-align:left}
+.artigo-tabela th{color:#9fd4ff;font-weight:600;border-bottom:1px solid rgba(159,224,255,.35)}
+.artigo-tabela tr:last-child td{border-bottom:none}
+.artigo-skel{display:flex;flex-direction:column;gap:6px}
+.skel-row{display:flex;align-items:center;gap:12px}
+.skel{display:block;border-radius:6px;background:linear-gradient(90deg,rgba(74,168,255,.10) 25%,rgba(159,224,255,.26) 37%,rgba(74,168,255,.10) 63%);background-size:400% 100%;animation:skelShine 1.3s ease-in-out infinite}
+.skel-line{height:11px}
+.skel-block{height:120px;border-radius:10px}
+.skel-avatar{width:56px;height:56px;border-radius:50%;flex:0 0 56px}
+@keyframes skelShine{0%{background-position:100% 0}100%{background-position:0 0}}
+.artigo-imagem{display:flex;gap:12px;align-items:flex-start}
+.artigo-imagem .artigo-avatar{flex:0 0 56px;width:56px;height:56px}
+.artigo-imagem h4{margin:0 0 4px}
+.artigo-imagem p{margin:0;font-size:12.5px;line-height:1.5;color:var(--fg);opacity:.88}
+.artigo-teaser{font-size:12px;opacity:.75;padding:4px 2px}
+body.artigo-aberto #c{transform:scale(.3)}
 #palco.imagem-palco .img-painel{display:flex;flex-direction:column;height:100%;min-height:0}
 #palco.imagem-palco .img-tela{flex:1 1 auto;min-height:0;height:auto;max-height:none;flex-basis:auto}
 #palco.imagem-palco .img-tela.zoom{height:auto;min-height:0;max-height:none;flex-basis:auto}
@@ -260,6 +290,7 @@ input{flex:1 1 110px;min-width:0}
 .video-frame{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden}
 .video-frame iframe,.video-frame video{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;object-fit:contain}
 @keyframes painelIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@media(max-width:1200px){#palco{padding:24px 24px calc(24px + 150px)}#palco.artigo-palco{padding-left:24px;padding-right:24px}}
 @media(max-width:900px){
   #bar{width:96vw}
   .bar-sep{display:none}
@@ -267,6 +298,8 @@ input{flex:1 1 110px;min-width:0}
   #paineis{gap:8px;padding:4px 8px 10px}
   .painel,.painel.foco{width:100%;max-height:30vh}
   .painel.foco{max-height:46vh}
+  #palco{padding:14px 14px calc(14px + 150px)}
+  #palco.artigo-palco{padding-left:14px;padding-right:14px}
 }
 </style></head><body>
 <canvas id="c"></canvas><div id="tela"><div id="paineis"></div></div><div id="palco" aria-hidden="true"><div class="palco-fundo"></div><div id="palco-opcoes" class="palco-opcoes" aria-hidden="true"></div><div class="palco-card"><div class="palco-h"><b id="palco-titulo"></b><button class="painel-x ib" id="palco-min" type="button" title="Minimizar para a lateral" aria-label="Minimizar para a lateral" data-tip="Minimizar"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="11" height="11" rx="2"/><path d="M9 21h9a2 2 0 0 0 2-2v-9"/></svg></button><button class="painel-x ib" id="palco-x" type="button" title="Fechar" aria-label="Fechar" data-tip="Fechar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div id="palco-corpo"></div></div></div><div id="hud"></div><div id="cap"></div><div id="chat" class="vazio"><div id="msgs"></div></div>
@@ -276,6 +309,8 @@ input{flex:1 1 110px;min-width:0}
 <div class="row dbg" id="st"></div><div class="row dbg" id="sh"></div><div class="row dbg" id="vz"></div>
 <div class="row dbg"><input id="js" placeholder="colar JSON de forma"><button id="pj" type="button">Forma JSON</button></div>
 <div class="row"><input id="tx" placeholder="palavra" maxlength="14"><button id="pw" type="button">Palavra</button></div></div>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.18/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.18/katex.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const R=Math.random,$=id=>document.getElementById(id);
@@ -536,6 +571,7 @@ function ui(){document.querySelectorAll('[data-k]').forEach(b=>b.classList.toggl
 function btn(box,k,fn){const b=document.createElement('button');b.textContent=k[0].toUpperCase()+k.slice(1);b.dataset.k=k;b.onclick=fn;$(box).appendChild(b)}
 Object.keys(ST).forEach(k=>btn('st',k,()=>go(k,ST[k][0])));
 TOPIC.forEach(k=>btn('sh',k,()=>go('falando',k)));
+btn('sh','artigo',()=>abrirPalco({id:'demo-artigo',tipo:'artigo',titulo:'Explicação: Teorema de Pitágoras'}));
 $('pw').onclick=()=>go('falando','palavra',($('tx').value.trim()||'CIEL').toUpperCase());
 $('q').onchange=build;
 
@@ -781,7 +817,7 @@ else if(m.tipo==='painel'){
   }
 }
 else if(m.tipo==='painel_foco'){focarPainel(m.id)}
-else if(m.tipo==='erro'){turnoAtivo=false;cap('⚠ '+m.texto);tema=null;go('erro','circulo');clearTimeout(fim);fim=setTimeout(()=>go('repouso','esfera'),2200)}}
+else if(m.tipo==='erro'){turnoAtivo=false;cap('⚠ '+m.texto);tema=null;go('erro','circulo');clearTimeout(fim);fim=setTimeout(()=>{if(cur.st==='erro')go('repouso','esfera')},2200)}}
 const es=new EventSource('/ui/events');es.onmessage=e=>{try{ev(JSON.parse(e.data))}catch(x){}};
 async function send(deVoz){const t=$('msg').value.trim();if(!t)return;
 const semTema=t.length<4||/^(?:ok|obrigad[oa]|valeu|sim|não|nao|beleza|legal|entendi|show|perfeito|hum+|hmm+|interessante)\b/i.test(t);
@@ -1086,6 +1122,156 @@ const PAINEIS_RENDER={
     return ()=>{vivo=false;if(abort)abort.abort()};
   }
 };
+
+// --- protótipo: painel "artigo" — blocos (texto/gráfico) montados aos poucos no palco,
+// simulando o modelo secundário gerando/enviando um bloco por vez em vez da página inteira.
+const ARTIGO_DEMO=[
+  {tipo:'texto',titulo:'Por que a² + b² = c²?',corpo:'Num triângulo retângulo, a soma dos quadrados dos catetos é sempre igual ao quadrado da hipotenusa. Vale pra qualquer triângulo desse tipo — veja primeiro de forma visual:'},
+  {tipo:'formula',titulo:'Em forma de equação',tex:'c = \\sqrt{a^2 + b^2}'},
+  {tipo:'animacao',titulo:'A prova, se desenhando',svg:`<svg viewBox="0 0 300 340" width="100%" height="auto">
+    <line x1="130" y1="170" x2="130" y2="50" stroke="#9fd4ff" stroke-width="3" stroke-dasharray="120" stroke-dashoffset="120"><animate attributeName="stroke-dashoffset" from="120" to="0" dur=".7s" begin="0s" fill="freeze"/></line>
+    <line x1="130" y1="170" x2="280" y2="170" stroke="#9fd4ff" stroke-width="3" stroke-dasharray="150" stroke-dashoffset="150"><animate attributeName="stroke-dashoffset" from="150" to="0" dur=".7s" begin=".25s" fill="freeze"/></line>
+    <line x1="130" y1="50" x2="280" y2="170" stroke="#ffcf6e" stroke-width="3" stroke-dasharray="192" stroke-dashoffset="192"><animate attributeName="stroke-dashoffset" from="192" to="0" dur=".9s" begin=".5s" fill="freeze"/></line>
+    <rect x="10" y="50" width="120" height="120" fill="none" stroke="#4aa8ff" stroke-width="2" opacity="0"><animate attributeName="opacity" from="0" to=".85" dur=".5s" begin="1.6s" fill="freeze"/></rect>
+    <rect x="130" y="170" width="150" height="150" fill="none" stroke="#4aa8ff" stroke-width="2" opacity="0"><animate attributeName="opacity" from="0" to=".85" dur=".5s" begin="2.1s" fill="freeze"/></rect>
+    <text x="70" y="115" fill="#9fd4ff" font-size="13" text-anchor="middle" opacity="0">b²<animate attributeName="opacity" from="0" to="1" dur=".4s" begin="2.1s" fill="freeze"/></text>
+    <text x="205" y="300" fill="#9fd4ff" font-size="13" text-anchor="middle" opacity="0">a²<animate attributeName="opacity" from="0" to="1" dur=".4s" begin="2.6s" fill="freeze"/></text>
+    <text x="150" y="20" fill="#ffcf6e" font-size="14" text-anchor="middle" opacity="0">a² + b² = c²<animate attributeName="opacity" from="0" to="1" dur=".5s" begin="3s" fill="freeze"/></text>
+  </svg>`},
+  {tipo:'grafico',titulo:'Catetos² (azul) vs. hipotenusa² (dourado)',dados:[
+    {rotulo:'3-4-5',a2b2:25,c2:25},
+    {rotulo:'6-8-10',a2b2:100,c2:100},
+    {rotulo:'5-12-13',a2b2:169,c2:169}
+  ]},
+  {tipo:'tabela',titulo:'Outros trios pitagóricos',colunas:['a','b','c','a²+b²','c²'],linhas:[
+    [3,4,5,25,25],[6,8,10,100,100],[5,12,13,169,169],[8,15,17,289,289],[7,24,25,625,625]
+  ]},
+  {tipo:'texto',corpo:'Repare que as duas barras de cada par ficam sempre do mesmo tamanho — essa igualdade é o próprio teorema.'},
+  {tipo:'imagem',nome:'Pitágoras de Samos (c. 570–495 a.C.)',bio:'Filósofo e matemático grego. A tradição atribui a ele a demonstração formal do teorema, embora a relação entre os lados de um triângulo retângulo já fosse conhecida por babilônios e indianos bem antes dele.'}
+];
+const AVATAR_SVG=`<svg viewBox="0 0 100 100" width="100%" height="100%"><circle cx="50" cy="50" r="48" fill="rgba(74,168,255,.12)" stroke="rgba(159,224,255,.35)"/><path d="M50 28c9 0 16 7 16 16 0 7-4 13-10 15v6c12 3 21 12 23 23H21c2-11 11-20 23-23v-6c-6-2-10-8-10-15 0-9 7-16 16-16z" fill="#9fd4ff" opacity=".85"/></svg>`;
+function escHtml(v){
+  return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// SVG do artigo: allowlist + SMIL. O modelo pode animar fill/stroke/opacity/transform,
+// mas não pode injetar script, style, href, ids, filtros, imagens ou recursos externos.
+const SVG_TAGS=new Set(['svg','g','path','rect','circle','ellipse','line','polyline','polygon','text','tspan','title','desc','animate','animatetransform','animatemotion','set']);
+const SVG_ATTRS=new Set(['viewbox','width','height','x','y','x1','y1','x2','y2','cx','cy','r','rx','ry','d','points','fill','stroke','stroke-width','stroke-linecap','stroke-linejoin','stroke-miterlimit','stroke-dasharray','stroke-dashoffset','opacity','fill-opacity','stroke-opacity','fill-rule','clip-rule','transform','font-size','font-family','font-weight','font-style','text-anchor','dominant-baseline','dx','dy','letter-spacing','word-spacing','pathlength','vector-effect','attributename','begin','dur','end','repeatcount','repeatdur','restart','min','max','calcmode','keytimes','keysplines','from','to','by','values','additive','accumulate','type','path','rotate','keypoints','xmlns','xmlns:xlink','version','preserveaspectratio','role','aria-label','aria-hidden']);
+const SVG_ANIM_ALVOS=new Set(['fill','stroke','stroke-width','stroke-dasharray','stroke-dashoffset','opacity','fill-opacity','stroke-opacity','transform','d','x','y','x1','y1','x2','y2','cx','cy','r','rx','ry','width','height','font-size','letter-spacing','word-spacing']);
+function svgSeguro(markup){
+  if(typeof markup!=='string'||!markup.trim()||markup.length>20000)return null;
+  const tpl=document.createElement('template');
+  tpl.innerHTML=markup;
+  const root=tpl.content.querySelector('svg');
+  if(!root)return null;
+  const nodes=[root,...root.querySelectorAll('*')];
+  if(nodes.length>300)return null;
+  for(const el of nodes){
+    if(!el.parentNode)continue;
+    const tag=(el.localName||'').toLowerCase();
+    if(!SVG_TAGS.has(tag)){el.remove();continue}
+    for(const attr of [...el.attributes]){
+      const nome=attr.name.toLowerCase(),valor=attr.value;
+      if(nome.startsWith('on')||nome==='style'||nome==='class'||nome==='id'||nome==='href'||nome==='xlink:href'){
+        el.removeAttribute(attr.name);continue;
+      }
+      if(!SVG_ATTRS.has(nome)||valor.length>2000||/[<>]/.test(valor)||/javascript\s*:/i.test(valor)||/url\s*\(/i.test(valor)){
+        el.removeAttribute(attr.name);continue;
+      }
+      if(nome==='attributename'&&!SVG_ANIM_ALVOS.has(valor.toLowerCase())){el.remove();break}
+      if(nome==='type'&&tag==='animatetransform'&&!['rotate','translate','scale','skewx','skewy'].includes(valor.toLowerCase())){el.remove();break}
+      if(nome==='path'&&tag==='animatemotion'&&!/^[MmLlHhVvCcSsQqTtAaZz0-9.,+\-\s]*$/.test(valor)){el.remove();break}
+    }
+  }
+  return document.importNode(root,true);
+}
+let graficoSeq=0;
+function graficoSVG(dados){
+  dados=Array.isArray(dados)?dados:[];
+  const uid='g'+(++graficoSeq);
+  const W=420,H=170,pad=26;
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.setAttribute('width','100%');
+  if(!dados.length){
+    svg.innerHTML='<text x="210" y="90" text-anchor="middle" font-size="12" fill="currentColor" opacity=".55">Sem dados para o gráfico</text>';
+    return svg;
+  }
+  const max=Math.max(1,...dados.flatMap(d=>[d.a2b2,d.c2]));
+  const passo=(W-pad*2)/dados.length,bw=passo/3.2;
+  let barras='';
+  dados.forEach((d,i)=>{
+    const gx=pad+i*passo+passo*.12;
+    const h1=(d.a2b2/max)*(H-pad*2),h2=(d.c2/max)*(H-pad*2);
+    barras+=`<rect x="${gx}" y="${H-pad-h1}" width="${bw}" height="${h1}" rx="3" fill="url(#${uid}A)"/>`;
+    barras+=`<rect x="${gx+bw+5}" y="${H-pad-h2}" width="${bw}" height="${h2}" rx="3" fill="url(#${uid}B)"/>`;
+    barras+=`<text x="${gx+bw}" y="${H-8}" font-size="9" fill="currentColor" text-anchor="middle" opacity=".6">${escHtml(d.rotulo)}</text>`;
+  });
+  svg.innerHTML=`<defs><linearGradient id="${uid}A" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#2f7fe0"/><stop offset="1" stop-color="#9fe0ff"/></linearGradient><linearGradient id="${uid}B" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#c98a1a"/><stop offset="1" stop-color="#ffe29f"/></linearGradient></defs>${barras}`;
+  return svg;
+}
+function renderBlocoArtigo(b){
+  const div=document.createElement('div');div.className='artigo-bloco'+(b.tipo==='grafico'?' artigo-grafico':b.tipo==='animacao'?' artigo-anim':b.tipo==='imagem'?' artigo-imagem':b.tipo==='formula'?' artigo-formula':b.tipo==='tabela'?' artigo-tabela':'');
+  if(b.tipo==='imagem'){
+    const av=document.createElement('div');av.className='artigo-avatar';av.innerHTML=AVATAR_SVG;
+    const col=document.createElement('div');
+    if(b.nome){const h=document.createElement('h4');h.textContent=b.nome;col.appendChild(h)}
+    const p=document.createElement('p');p.textContent=b.bio||'';col.appendChild(p);
+    div.append(av,col);
+    return div;
+  }
+  if(b.titulo){const h=document.createElement('h4');h.textContent=b.titulo;div.appendChild(h)}
+  if(b.tipo==='grafico')div.appendChild(graficoSVG(b.dados));
+  else if(b.tipo==='animacao'){const w=document.createElement('div');const svg=svgSeguro(b.svg);if(svg)w.appendChild(svg);else w.textContent='Animação indisponível.';div.appendChild(w)}
+  else if(b.tipo==='formula'){const w=document.createElement('div');try{katex.render(b.tex,w,{displayMode:true,throwOnError:false})}catch(e){w.textContent=b.tex}div.appendChild(w)}
+  else if(b.tipo==='tabela'){
+    const wrap=document.createElement('div');wrap.className='artigo-tabela-scroll';
+    const tb=document.createElement('table');
+    const thead=document.createElement('thead');const trh=document.createElement('tr');
+    (b.colunas||[]).forEach(c=>{const th=document.createElement('th');th.textContent=c;trh.appendChild(th)});
+    thead.appendChild(trh);tb.appendChild(thead);
+    const tbody=document.createElement('tbody');
+    (b.linhas||[]).forEach(linha=>{const tr=document.createElement('tr');linha.forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});tbody.appendChild(tr)});
+    tb.appendChild(tbody);wrap.appendChild(tb);div.appendChild(wrap);
+  }
+  else{const p=document.createElement('p');p.textContent=b.corpo||'';div.appendChild(p)}
+  return div;
+}
+function skeletonBloco(tipo){
+  const div=document.createElement('div');div.className='artigo-bloco artigo-skel';
+  if(tipo==='imagem')div.innerHTML='<div class="skel-row"><span class="skel skel-avatar"></span><span class="skel skel-line" style="width:65%"></span></div>';
+  else if(tipo==='formula')div.innerHTML='<span class="skel skel-line" style="width:38%;height:22px;margin:4px auto"></span>';
+  else if(tipo==='grafico'||tipo==='tabela'||tipo==='animacao')div.innerHTML='<span class="skel skel-block"></span>';
+  else div.innerHTML='<span class="skel skel-line" style="width:92%"></span><span class="skel skel-line" style="width:78%"></span><span class="skel skel-line" style="width:55%"></span>';
+  return div;
+}
+function artigoPalco(corpo,p){
+  corpo.classList.add('artigo-corpo');
+  document.body.classList.add('artigo-aberto');
+  let cancelado=false;
+  (async()=>{
+    const blocos=Array.isArray(p.blocos)&&p.blocos.length?p.blocos:ARTIGO_DEMO;
+    for(const b of blocos){
+      if(cancelado)return;
+      if(!b||typeof b!=='object')continue;
+      const sk=skeletonBloco(b.tipo);
+      corpo.appendChild(sk);
+      requestAnimationFrame(()=>sk.classList.add('in'));
+      corpo.scrollTop=corpo.scrollHeight;
+      await new Promise(r=>setTimeout(r,500+R()*300));
+      if(cancelado)return;
+      let el;
+      try{el=renderBlocoArtigo(b)}
+      catch(e){el=document.createElement('div');el.className='artigo-bloco';el.textContent='Bloco indisponível.'}
+      sk.replaceWith(el);
+      requestAnimationFrame(()=>el.classList.add('in'));
+      corpo.scrollTop=corpo.scrollHeight;
+    }
+  })();
+  return ()=>{cancelado=true;corpo.classList.remove('artigo-corpo');document.body.classList.remove('artigo-aberto')};
+}
+PAINEIS_RENDER.artigo=(corpo)=>{corpo.innerHTML='<div class="artigo-teaser">📄 Artigo disponível — abra pra ver</div>';return null};
+PAINEIS_RENDER.artigo.palco=artigoPalco;
+
 function iniciarMenuPalco(){
   const m=$('palco-opcoes');if(!m)return null;
   m.innerHTML='';m.classList.add('aberto');m.setAttribute('aria-hidden','false');return m;
@@ -1794,6 +1980,7 @@ function abrirPalco(p){
   palcoAtual=p.id;$('palco-titulo').textContent=p.titulo||p.tipo;
   $('palco').classList.toggle('modo-opcoes',p.tipo==='feed'||p.tipo==='imagens'||p.tipo==='video');
   $('palco').classList.toggle('imagem-palco',p.tipo==='imagens');
+  $('palco').classList.toggle('artigo-palco',p.tipo==='artigo');
   $('palco').querySelector('.palco-card').classList.toggle('feed-palco',p.tipo==='feed');
   const corpo=$('palco-corpo');corpo.innerHTML='';
   try{palcoCleanup=render.palco(corpo,p)||null}catch(e){corpo.textContent='Falha ao abrir o painel.'}
@@ -1810,7 +1997,7 @@ function fecharPalco(){
   try{if(palcoCleanup)palcoCleanup()}catch(e){}
   palcoCleanup=null;
   $('palco').classList.remove('aberto');$('palco').setAttribute('aria-hidden','true');
-  $('palco').classList.remove('modo-opcoes','imagem-palco');
+  $('palco').classList.remove('modo-opcoes','imagem-palco','artigo-palco');
   $('palco').querySelector('.palco-card').classList.remove('feed-palco');
   const fo=$('palco-opcoes');if(fo){fo.innerHTML='';fo.classList.remove('aberto');fo.setAttribute('aria-hidden','true')}
   $('palco-corpo').innerHTML='';
@@ -1978,4 +2165,5 @@ $('palco').addEventListener('click',e=>{if(!e.target.closest('.palco-card')&&!e.
 addEventListener('keydown',e=>{if(e.key==='Escape'){if(palcoAtual)fecharPalco();else limparFoco()}});
 $('rd').classList.toggle('on',leitura);$('rd').onclick=()=>{leitura=!leitura;$('rd').classList.toggle('on',leitura);try{localStorage.setItem('ciel_leitura',leitura?'1':'0')}catch(e){}if(!leitura){parar();go('repouso',tema||'esfera')}};$('send').onclick=send;$('msg').onkeydown=e=>{if(e.key==='Enter')send()};
 fit();build();ui();wake();requestAnimationFrame(loop);
+if(new URLSearchParams(location.search).has('artigo'))setTimeout(()=>abrirPalco({id:'demo-artigo',tipo:'artigo',titulo:'Explicação: Teorema de Pitágoras'}),500);
 </script></body></html>
