@@ -73,12 +73,15 @@ from feed_builder import build_painel as construir_feed_painel
 from feed_builder import build_mais as construir_feed_mais
 from panel_actions import executar as executar_acao_painel
 from ui_routes import bp as ui_bp
+from article_store import ArticleStore
+from artigo_schema import validar_artigo
 
 # ── config ──────────────────────────────────────────────────────────────────
 DEFAULT_MODEL  = "gemma4:cloud"
 DEFAULT_AGENT  = "general"
 VERSION        = "2.0.0"
 AUTH_COOKIE    = "ciel_auth"
+ARTIGOS        = ArticleStore(DB_PATH)
 
 # ── auth ─────────────────────────────────────────────────────────────────────
 # Criado no main(), depois do comando de reset. Construir o AuthManager não
@@ -946,6 +949,46 @@ def api_feed_tema():
     return jsonify({"ok": True, "tema": tema}), 200
 
 
+@app.route("/api/artigos", methods=["GET"])
+def api_artigos_listar():
+    """Lista artigos salvos (persistem entre sessões/reinícios)."""
+    try:
+        return jsonify({"ok": True, "artigos": ARTIGOS.listar()}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)[:160], "artigos": []}), 200
+
+
+@app.route("/api/artigos", methods=["POST"])
+def api_artigos_salvar():
+    """Salva um artigo validado, com a origem/modelo que o gerou."""
+    data = request.get_json(force=True) or {}
+    try:
+        spec = validar_artigo(data.get("titulo", ""), data.get("blocos"))
+    except ValueError as e:
+        return jsonify({"ok": False, "erro": str(e)[:160]}), 200
+    meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+    artigo = ARTIGOS.salvar(
+        spec["titulo"],
+        spec["blocos"],
+        {
+            "article_id": data.get("article_id") or spec["id"],
+            "agente": data.get("agente") or meta.get("agente", ""),
+            "modelo": data.get("modelo") or meta.get("modelo", ""),
+            "provider": data.get("provider") or meta.get("provider", ""),
+            "sessao": data.get("sessao") or meta.get("sessao", ""),
+            "origem": data.get("origem") or meta.get("origem", "orquestrador"),
+        },
+    )
+    return jsonify({"ok": True, "artigo": artigo}), 200
+
+
+@app.route("/api/artigos/<saved_id>", methods=["DELETE"])
+def api_artigos_remover(saved_id):
+    """Exclui um artigo salvo. Artigos apenas de sessão não passam por aqui."""
+    removido = ARTIGOS.remover(saved_id)
+    return jsonify({"ok": removido, "erro": None if removido else "artigo não encontrado"}), 200
+
+
 @app.route("/api/artigo/teste", methods=["POST"])
 def api_artigo_teste():
     """Testa o contrato do artigo sem passar pelo modelo."""
@@ -1157,6 +1200,13 @@ def _chat_turn():
     trace = []
 
     cancelar = _registrar_cancelamento(turn_id)
+    ui_bus.set_artigo_meta(
+        modelo=state.model,
+        agente=state.agent_id,
+        provider=state.model_label or "",
+        sessao=str(state.session_id) if state.session_id else "",
+        origem="orquestrador",
+    )
     try:
         result = run_agent(
             user_input,

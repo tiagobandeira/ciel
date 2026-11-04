@@ -16,8 +16,9 @@ def run(titulo: str, blocos: list) -> str:
     except ValueError as e:
         return f"Artigo inválido: {e}"
     import ui_bus
-    ui_bus.publish("artefato", fase="inicio", id=artigo["id"], titulo=artigo["titulo"])
+    meta = ui_bus.artigo_meta()
+    ui_bus.publish("artefato", fase="inicio", id=artigo["id"], titulo=artigo["titulo"], meta=meta)
     for seq, bloco in enumerate(artigo["blocos"], 1):
-        ui_bus.publish("artefato", fase="bloco", id=artigo["id"], seq=seq, bloco=bloco)
-    ui_bus.publish("artefato", fase="fim", id=artigo["id"], total=len(artigo["blocos"]))
+        ui_bus.publish("artefato", fase="bloco", id=artigo["id"], seq=seq, bloco=bloco, meta=meta)
+    ui_bus.publish("artefato", fase="fim", id=artigo["id"], total=len(artigo["blocos"]), meta=meta)
     return f"Artigo '{artigo['titulo']}' aberto no palco ({len(artigo['blocos'])} blocos, id: {artigo['id']})."

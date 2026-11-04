@@ -8,9 +8,20 @@ import json
 import queue
 import threading
 import time
+import contextvars
 
 _subs: set = set()
 _lock = threading.Lock()
+_artigo_meta = contextvars.ContextVar("ciel_artigo_meta", default={})
+
+
+def set_artigo_meta(**meta) -> None:
+    """Metadados do turno para os eventos de artigo (modelo/agente/sessão)."""
+    _artigo_meta.set({k: str(v or "") for k, v in meta.items()})
+
+
+def artigo_meta() -> dict:
+    return dict(_artigo_meta.get() or {})
 
 
 def publish(tipo: str, **dados) -> None:
