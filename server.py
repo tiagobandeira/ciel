@@ -7,6 +7,8 @@ Rotas:
   GET  /static/<path>           → arquivos estáticos
   GET  /api/info                → agente, modelo, tools, versão
   POST /api/chat                → executa turno do agente
+  POST /api/chat/cancel         → cancela o turno em andamento
+  POST /api/chat/responder      → responde pergunta de tool INTERACTIVE
   POST /api/clear               → limpa histórico
   GET  /api/agents              → lista agentes disponíveis
   POST /api/agent               → troca de agente
@@ -318,6 +320,78 @@ def _registrar_cancelamento(turn_id: str) -> threading.Event:
 def _esquecer_cancelamento(turn_id: str) -> None:
     with _cancel_lock:
         _cancelamentos.pop(turn_id, None)
+
+
+# ── perguntas de tools INTERACTIVE ───────────────────────────────────────────
+# Tools como entrevista_interativa pausam o turno até o usuário responder. O
+# POST /api/chat continua pendurado na thread do Flask; a resposta chega por
+# POST /api/chat/responder em outra thread — mesmo padrão do cancelamento.
+# O turn_id é a chave: o front filtra o evento "pergunta" pelo mesmo id que
+# mandou no POST /api/chat.
+_pergunta_lock = threading.Lock()
+_perguntas_pendentes: dict[str, threading.Event] = {}
+_respostas: dict[str, str] = {}
+# Se a aba fechar (ou o usuário sumir), o turno não pode ficar preso para
+# sempre: depois deste prazo a pergunta expira, o turno é cancelado e o front
+# recebe "pergunta_expirada" para destravar o input.
+_PER_PERGUNTA_TIMEOUT_S = 15 * 60
+
+
+def _perguntar_ao_usuario(turn_id: str, pergunta: str,
+                          opcoes: list[str] | None,
+                          cancelar: threading.Event | None) -> str:
+    """
+    Publica a pergunta no SSE e espera a resposta chegar por
+    /api/chat/responder. Devolve "" se o turno for cancelado ou se a pergunta
+    expirar — mesmo contrato da TUI (Esc no modal devolve "").
+    """
+    if cancelar is not None and cancelar.is_set():
+        return ""
+
+    evento = threading.Event()
+    with _pergunta_lock:
+        _perguntas_pendentes[turn_id] = evento
+        _respostas.pop(turn_id, None)
+
+    try:
+        ui_bus.publish(
+            "pergunta",
+            turn_id=turn_id,
+            texto=pergunta,
+            opcoes=[str(o) for o in (opcoes or [])],
+        )
+
+        limite = time.monotonic() + _PER_PERGUNTA_TIMEOUT_S
+        # Event.wait() não observa o cancelamento junto: sem este loop, o
+        # botão "parar" ficaria travado enquanto houvesse pergunta pendente.
+        while not evento.wait(timeout=0.3):
+            if cancelar is not None and cancelar.is_set():
+                return ""
+            if time.monotonic() >= limite:
+                ui_bus.publish("pergunta_expirada", turn_id=turn_id)
+                if cancelar is not None:
+                    # encerra o turno em vez de seguir a entrevista com ""
+                    cancelar.set()
+                return ""
+
+        with _pergunta_lock:
+            return _respostas.get(turn_id, "")
+    finally:
+        with _pergunta_lock:
+            _perguntas_pendentes.pop(turn_id, None)
+            _respostas.pop(turn_id, None)
+
+
+def _ask_user_do_turno(turn_id: str, cancelar: threading.Event | None):
+    """
+    Fábrica do callback on_ask_user do run_agent para este turno.
+
+    Fica fora de _chat_turn() porque o handler de /task também precisa dele e
+    roda a partir de handle_command(), sem aquele escopo.
+    """
+    def _ask_user(pergunta: str, opcoes: list[str] | None = None) -> str:
+        return _perguntar_ao_usuario(turn_id, pergunta, opcoes, cancelar)
+    return _ask_user
 
 
 # ── rotas estáticas ───────────────────────────────────────────────────────────
@@ -1031,6 +1105,27 @@ def api_chat_cancel():
     return jsonify({"ok": True, "turn_id": turn_id})
 
 
+@app.route("/api/chat/responder", methods=["POST"])
+def api_chat_responder():
+    """
+    Responde à pergunta pendente de um turno (tool INTERACTIVE). 404 se não
+    houver pergunta pendente para esse turn_id — ela pode ter expirado, sido
+    cancelada ou o turno já ter terminado.
+    """
+    data     = request.get_json(force=True) or {}
+    turn_id  = data.get("turn_id", "")
+    resposta = data.get("resposta")
+    if not isinstance(resposta, str):
+        return jsonify({"ok": False, "error": "resposta ausente"}), 400
+    with _pergunta_lock:
+        evento = _perguntas_pendentes.get(turn_id)
+        if evento is None:
+            return jsonify({"ok": False, "error": "não há pergunta pendente"}), 404
+        _respostas[turn_id] = resposta
+    evento.set()
+    return jsonify({"ok": True, "turn_id": turn_id})
+
+
 @app.route("/api/events")
 def api_events():
     """
@@ -1117,6 +1212,11 @@ def _chat_turn():
     image_b64   = data.get("image_b64")
     file_text   = data.get("file_text")
     filename    = data.get("filename", "arquivo")
+    # Opt-in: só o site simples tem UI para responder tools INTERACTIVE. O /ui
+    # (partículas) e qualquer cliente antigo continuam com on_ask_user=None —
+    # antes a tool devolvia o erro de harness, em vez de esperar 15 min por uma
+    # pergunta que ninguém vê.
+    perguntas_interativas  = bool(data.get("perguntas_interativas"))
 
     # trace do turno (SSE): o id vem do cliente para ele conseguir filtrar os
     # eventos antes da resposta do POST chegar
@@ -1135,7 +1235,9 @@ def _chat_turn():
 
     # ── comandos especiais (/task, /tools, /tokens, /history ...) ────────────
     if user_input.startswith("/"):
-        reply, changed = handle_command(user_input, turn_id=turn_id)
+        reply, changed = handle_command(
+            user_input, turn_id=turn_id, perguntas_interativas=perguntas_interativas
+        )
         _publica_fim(turn_id, "done", 0, 0, 0, t0)
         return jsonify({
             "status":       "done",
@@ -1221,7 +1323,7 @@ def _chat_turn():
             session_id=str(state.session_id) if state.session_id else None,
             on_confirm_tool=None,       # create_tool bloqueado por filter_unsafe quando safe=True
             on_confirm_path=_server_confirm_path,
-            on_ask_user=None,           # tools INTERACTIVE não têm UI no server
+            on_ask_user=_ask_user_do_turno(turn_id, cancelar) if perguntas_interativas else None,
             cancel_event=cancelar,      # botão "parar" do front
             model_client=state.model_client,
             profile=state.perfil,
@@ -1288,9 +1390,11 @@ def _chat_turn():
 
 
 # ── handler de comandos internos ──────────────────────────────────────────────
-def handle_command(cmd: str, turn_id: str | None = None) -> tuple[str, bool]:
+def handle_command(cmd: str, turn_id: str | None = None,
+                   perguntas_interativas: bool = False) -> tuple[str, bool]:
     """
     Processa /comandos do frontend.
+    `perguntas_interativas` liga on_ask_user no /task (só o site simples).
     Retorna (reply_str, tools_changed_bool).
     """
     changed = False
@@ -1354,7 +1458,10 @@ def handle_command(cmd: str, turn_id: str | None = None) -> tuple[str, bool]:
                 max_steps=MAX_STEPS_TASK,
                 on_confirm_tool=None,
                 on_confirm_path=_server_confirm_path,
-                on_ask_user=None,
+                on_ask_user=(
+                    _ask_user_do_turno(turn_id, cancelar)
+                    if perguntas_interativas and turn_id else None
+                ),
                 cancel_event=cancelar,
                 model_client=state.model_client,
                 profile=state.perfil,

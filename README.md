@@ -243,6 +243,8 @@ http://192.168.x.x:5000
 
 O servidor roda **um turno por vez** (o estado é de uma sessão por processo): um segundo envio simultâneo recebe `409` em vez de intercalar o histórico. Downloads servem apenas arquivos de `data/`, e indexar fonte local exige login.
 
+No site simples do servidor, tools interativas (como `entrevista_interativa`) funcionam no navegador: a pergunta aparece no chat com botões (ou campo livre) e o turno fica pausado esperando a resposta. Depois de responder, o card mostra **“o agente está pensando…”** enquanto o modelo processa — o turno continua até a próxima pergunta ou a resposta final. O botão **parar** continua cancelando o turno mesmo com uma pergunta pendente. O modo live (`/ui`) ainda não renderiza essas perguntas — nele a tool segue o comportamento antigo.
+
 ![Ciel Local Server](docs/assets/screenshot_server.png)
 
 ---

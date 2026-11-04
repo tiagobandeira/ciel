@@ -5,6 +5,7 @@ saindo para o /ui, e os novos (passo/pensando) carregam turn_id para a
 interface web montar o acordeão só do turno atual.
 """
 
+import threading
 import time
 
 import pytest
@@ -159,3 +160,264 @@ class TestContratoDoServer:
         assert dado["tokens_in"] == 10
         assert dado["tokens_out"] == 5
         assert dado["ms"] >= 400
+
+
+# ── tools INTERACTIVE (perguntar) ─────────────────────────────────────────────
+
+def _esperar(condicao, limite=2.0):
+    fim = time.monotonic() + limite
+    while time.monotonic() < fim:
+        if condicao():
+            return True
+        time.sleep(0.01)
+    return False
+
+
+def _tem_pergunta(eventos, turno):
+    return any(d["turn_id"] == turno for d in eventos.por_tipo("pergunta"))
+
+
+class TestPerguntasInterativas:
+    """A pergunta sai pelo SSE e a resposta volta por /api/chat/responder."""
+
+    def test_resposta_libera_o_callback(self, eventos):
+        import server
+        from server import app, _ask_user_do_turno
+
+        turno = "teste-resposta"
+        resultado = {}
+
+        def worker():
+            ask = _ask_user_do_turno(turno, None)
+            resultado["valor"] = ask("Qual seu SO?", ["Windows", "Linux"])
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+        try:
+            assert _esperar(lambda: _tem_pergunta(eventos, turno))
+            pergunta = next(
+                d for d in eventos.por_tipo("pergunta") if d["turn_id"] == turno
+            )
+            assert pergunta["texto"] == "Qual seu SO?"
+            assert pergunta["opcoes"] == ["Windows", "Linux"]
+
+            r = app.test_client().post(
+                "/api/chat/responder",
+                json={"turn_id": turno, "resposta": "Linux"},
+            )
+
+            assert r.status_code == 200
+            t.join(2)
+            assert not t.is_alive()
+            assert resultado["valor"] == "Linux"
+        finally:
+            with server._pergunta_lock:
+                pendente = server._perguntas_pendentes.pop(turno, None)
+            if pendente is not None:
+                pendente.set()
+            t.join(2)
+
+    def test_cancelamento_acorda_a_espera(self, eventos):
+        """O botão "parar" precisa funcionar com uma pergunta pendente."""
+        import server
+        from server import _ask_user_do_turno
+
+        turno = "teste-cancelar"
+        cancelar = threading.Event()
+        resultado = {}
+
+        def worker():
+            ask = _ask_user_do_turno(turno, cancelar)
+            resultado["valor"] = ask("Pergunta sem resposta?", None)
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+        try:
+            assert _esperar(lambda: _tem_pergunta(eventos, turno))
+            cancelar.set()
+            t.join(2)
+            assert not t.is_alive()
+            assert resultado["valor"] == ""
+        finally:
+            with server._pergunta_lock:
+                pendente = server._perguntas_pendentes.pop(turno, None)
+            if pendente is not None:
+                pendente.set()
+            t.join(2)
+
+    def test_timeout_devolve_vazio_e_encerra_o_turno(self, eventos, monkeypatch):
+        import server
+
+        monkeypatch.setattr(server, "_PER_PERGUNTA_TIMEOUT_S", 0.01)
+        turno = "teste-timeout"
+        cancelar = threading.Event()
+        resultado = {}
+
+        def worker():
+            ask = server._ask_user_do_turno(turno, cancelar)
+            resultado["valor"] = ask("Pergunta que ninguém responde?", None)
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+        try:
+            t.join(2)
+            assert not t.is_alive()
+            assert resultado["valor"] == ""
+            assert cancelar.is_set()
+            assert any(
+                d["turn_id"] == turno for d in eventos.por_tipo("pergunta_expirada")
+            )
+        finally:
+            t.join(2)
+
+    def test_sem_pergunta_pendente_da_404(self):
+        from server import app
+
+        r = app.test_client().post(
+            "/api/chat/responder",
+            json={"turn_id": "nao-existe", "resposta": "x"},
+        )
+
+        assert r.status_code == 404
+
+    def test_resposta_ausente_da_400(self):
+        from server import app
+
+        r = app.test_client().post(
+            "/api/chat/responder",
+            json={"turn_id": "nao-existe"},
+        )
+
+        assert r.status_code == 400
+
+
+class TestFiacaoDoChatComPerguntas:
+    """_chat_turn injeta on_ask_user conforme o opt-in "perguntas_interativas"."""
+
+    @pytest.fixture
+    def estado_falso(self, monkeypatch):
+        import server
+
+        class StoreFalso:
+            def append_turn(self, *a, **kw):
+                pass
+
+            def get_session(self, sid):
+                return {"title": "teste"}
+
+            def new_session(self, **kw):
+                return 1
+
+        class EstadoFalso:
+            model = "modelo-teste"
+            model_client = None
+            model_label = "modelo-teste"
+            perfil = "local"
+            agent_id = "general"
+            agent_info = {"name": "General"}
+            tools = {}
+            schema = []
+            session_id = 1
+            context_injection = None
+            base_url = "http://localhost"
+            tokens_in = 0
+            tokens_out = 0
+            branch_pending = None
+            force_safe = False
+
+            def __init__(self):
+                self.history = []
+                self.store = StoreFalso()
+
+            def reload_tools_for_request(self):
+                pass
+
+        monkeypatch.setattr(server, "state", EstadoFalso())
+        return server.state
+
+    def test_duas_perguntas_no_mesmo_turno(self, eventos, estado_falso, monkeypatch):
+        import server
+        from agent_loop import AgentResult
+
+        respostas = []
+
+        def run_agent_falso(prompt, tools, schema, model, agent_info, **kw):
+            ask = kw.get("on_ask_user")
+            assert ask is not None, "server deve injetar on_ask_user"
+            respostas.append(ask("Primeira pergunta?", ["A", "B"]))
+            respostas.append(ask("Segunda pergunta?", None))
+            return AgentResult("done", f"recebi:{respostas}", steps=2)
+
+        monkeypatch.setattr(server, "run_agent", run_agent_falso)
+
+        turno = "teste-chat-1"
+        resposta = {}
+
+        def worker():
+            with server.app.test_client() as c:
+                resposta["r"] = c.post(
+                    "/api/chat",
+                    json={
+                        "message": "conduza a entrevista",
+                        "turn_id": turno,
+                        "perguntas_interativas": True,
+                    },
+                )
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+
+        def quantas_perguntas():
+            return len(
+                [d for d in eventos.por_tipo("pergunta") if d["turn_id"] == turno]
+            )
+
+        try:
+            assert _esperar(lambda: quantas_perguntas() >= 1)
+            r1 = server.app.test_client().post(
+                "/api/chat/responder",
+                json={"turn_id": turno, "resposta": "A"},
+            )
+            assert r1.status_code == 200
+
+            assert _esperar(lambda: quantas_perguntas() >= 2)
+            r2 = server.app.test_client().post(
+                "/api/chat/responder",
+                json={"turn_id": turno, "resposta": "resposta livre"},
+            )
+            assert r2.status_code == 200
+
+            t.join(5)
+            assert not t.is_alive()
+            assert resposta["r"].status_code == 200
+            assert resposta["r"].get_json()["reply"] == (
+                "recebi:['A', 'resposta livre']"
+            )
+            assert respostas == ["A", "resposta livre"]
+        finally:
+            if t.is_alive():
+                server.app.test_client().post(
+                    "/api/chat/cancel", json={"turn_id": turno}
+                )
+            t.join(5)
+
+    def test_sem_opt_in_nao_injeta_ask_user(self, estado_falso, monkeypatch):
+        """/ui e clientes antigos continuam sem UI de pergunta: on_ask_user=None."""
+        import server
+        from agent_loop import AgentResult
+
+        vistos = []
+
+        def run_agent_falso(prompt, tools, schema, model, agent_info, **kw):
+            vistos.append(kw.get("on_ask_user"))
+            return AgentResult("done", "ok", steps=1)
+
+        monkeypatch.setattr(server, "run_agent", run_agent_falso)
+
+        r = server.app.test_client().post(
+            "/api/chat",
+            json={"message": "oi", "turn_id": "teste-chat-2"},
+        )
+
+        assert r.status_code == 200
+        assert vistos == [None]

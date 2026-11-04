@@ -15,6 +15,8 @@ let rightPanelOpen   = true;
 let currentTurn      = null;   // turn_id do turno em andamento (trace do SSE)
 let turnoAtivo       = false;  // há um POST /api/chat em andamento
 let cancelando       = false;  // "parar" já foi pedido, evita duplo clique
+let perguntaPendente = null;   // { turnId, el } — pergunta de tool INTERACTIVE aguardando resposta
+let _perguntaSeq     = 0;
 const turnosFechados = new Set();
 
 const IMAGE_EXTS = new Set(['png','jpg','jpeg','gif','webp','bmp','svg']);
@@ -182,6 +184,9 @@ function sairModoParar() {
   btn.title = 'enviar';
   btn.setAttribute('aria-label', 'Enviar');
   btn.disabled = false;
+  // qualquer pergunta que tenha ficado sem resposta morre com o turno
+  limparPensando();
+  travarInput(false);
 }
 
 /* Para o turno em andamento. O server cancela no começo do próximo passo:
@@ -212,15 +217,214 @@ function initEventos() {
     let m;
     try { m = JSON.parse(e.data); } catch (_) { return; }
     if (!m || !m.turn_id || m.turn_id !== currentTurn) return;
-    if (m.tipo === 'passo') {
+    if (m.tipo === 'pergunta') {
+      mostrarPergunta(m);
+    } else if (m.tipo === 'pergunta_expirada') {
+      limparPergunta(m.turn_id, 'a pergunta expirou — turno encerrado');
+    } else if (m.tipo === 'passo') {
       CielTrace.passo(m.turn_id, m);
     } else if (m.tipo === 'pensando') {
       CielTrace.pensando(m.turn_id, m);
     } else if (m.tipo === 'turno_fim') {
       turnosFechados.add(m.turn_id);
+      limparPergunta(m.turn_id, 'turno encerrado');
       CielTrace.fim(m.turn_id, m);
     }
   };
+}
+
+/* ── Perguntas de tools INTERACTIVE (entrevista_interativa…) ────
+   A tool pausa o turno no servidor e publica "pergunta" no mesmo SSE
+   do trace. Enquanto há pergunta, o textarea principal fica travado;
+   o botão de enviar continua sendo o "parar" do turno, então cancelar
+   segue funcionando mesmo com a pergunta pendente. */
+function travarInput(travado) {
+  const ta = inputEl();
+  if (!ta) return;
+  ta.disabled = travado;
+  ta.placeholder = travado
+    ? 'responda a pergunta acima…'
+    : 'mensagem para o agente…';
+  if (!travado) ta.focus();
+}
+
+function marcarPerguntaRespondida(card, resposta) {
+  const controles = card.querySelector('.pergunta-controles');
+  if (controles) controles.remove();
+  const ok = document.createElement('div');
+  ok.className = 'pergunta-resposta';
+  ok.textContent = `✓ ${resposta}`;
+  card.querySelector('.msg-bubble').appendChild(ok);
+  card.classList.add('respondida');
+  card.classList.remove('pendente');
+}
+
+/* Depois de responder, o turno continua no modelo. Sem um indicador local o
+   card parece finalizado e o usuário não sabe se a resposta foi aceita. */
+function mostrarPensandoNaPergunta(card) {
+  limparPensando();
+  const linha = document.createElement('div');
+  linha.className = 'pergunta-pensando';
+  linha.setAttribute('role', 'status');
+  const glyph = document.createElement('span');
+  glyph.className = 'pp-glyph';
+  glyph.setAttribute('aria-hidden', 'true');
+  glyph.textContent = '✦';
+  const texto = document.createElement('span');
+  texto.textContent = 'o agente está pensando…';
+  linha.appendChild(glyph);
+  linha.appendChild(texto);
+  card.querySelector('.msg-bubble').appendChild(linha);
+  const ta = inputEl();
+  if (ta) ta.placeholder = 'o agente está pensando…';
+  scrollBottom();
+}
+
+function limparPensando() {
+  document.querySelectorAll('.pergunta-pensando').forEach(el => el.remove());
+  const ta = inputEl();
+  if (ta && ta.placeholder === 'o agente está pensando…') {
+    ta.placeholder = 'mensagem para o agente…';
+  }
+}
+
+function limparPergunta(turnId, motivo) {
+  limparPensando();
+  if (!perguntaPendente) return;
+  if (turnId && perguntaPendente.turnId !== turnId) return;
+  const el = perguntaPendente.el;
+  // resposta em voo: deixa o sucesso/erro do POST fechar o ciclo deste card
+  if (el.dataset.enviando !== '1' && !el.classList.contains('respondida')) {
+    const controles = el.querySelector('.pergunta-controles');
+    if (controles) controles.remove();
+    el.classList.add('expirada');
+    el.classList.remove('pendente');
+    const aviso = document.createElement('div');
+    aviso.className = 'pergunta-aviso';
+    aviso.textContent = motivo || 'pergunta encerrada';
+    el.querySelector('.msg-bubble').appendChild(aviso);
+  }
+  perguntaPendente = null;
+  travarInput(false);
+}
+
+async function responderPergunta(card, turnId, resposta) {
+  if (!card || card.dataset.enviando === '1' || card.classList.contains('respondida')) return;
+  card.dataset.enviando = '1';
+  card.querySelectorAll('button, input').forEach(el => { el.disabled = true; });
+  try {
+    await api('/api/chat/responder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ turn_id: turnId, resposta }),
+    });
+    marcarPerguntaRespondida(card, resposta);
+    // Só destrava se nenhuma pergunta nova chegou enquanto o POST corria.
+    if (perguntaPendente && perguntaPendente.el === card) {
+      perguntaPendente = null;
+      travarInput(false);
+      mostrarPensandoNaPergunta(card);
+    }
+  } catch (e) {
+    card.dataset.enviando = '';
+    // Só reabilita para nova tentativa se este ainda é o card pendente. Se
+    // uma pergunta nova já chegou, o servidor pode ter recebido esta resposta
+    // e seguido o fluxo; reenviar a antiga responderia a pergunta errada.
+    if (perguntaPendente && perguntaPendente.el === card) {
+      card.querySelectorAll('button, input').forEach(el => { el.disabled = false; });
+    }
+    let erro = card.querySelector('.pergunta-erro');
+    if (!erro) {
+      erro = document.createElement('div');
+      erro.className = 'pergunta-erro';
+      card.querySelector('.msg-bubble').appendChild(erro);
+    }
+    erro.textContent = `não deu para responder: ${e.message}`;
+    // 404 = a pergunta já não existe (expirou ou o turno acabou)
+    if (/não há pergunta pendente/.test(e.message)) {
+      limparPergunta(turnId, 'esta pergunta já foi encerrada');
+    }
+  }
+}
+
+function mostrarPergunta(ev) {
+  // Evento atrasado de um turno que já terminou não deve travar a UI.
+  if (!ev || !ev.turn_id || ev.turn_id !== currentTurn || !turnoAtivo) return;
+  limparPensando();
+  if (perguntaPendente) {
+    const anterior = perguntaPendente.el;
+    if (anterior.dataset.enviando === '1') {
+      // a resposta da pergunta anterior ainda está voltando; o handler dela
+      // marca o card como respondido. Só solta o ponteiro para a nova.
+      perguntaPendente = null;
+    } else {
+      limparPergunta(perguntaPendente.turnId, 'substituída por uma nova pergunta');
+    }
+  }
+
+  const opcoes = Array.isArray(ev.opcoes) ? ev.opcoes.slice() : [];
+  const card = document.createElement('div');
+  card.className = 'msg agent pergunta pendente';
+  card.dataset.turno = ev.turn_id;
+  card.id = `pergunta-${ev.turn_id}-${++_perguntaSeq}`;
+  card.innerHTML = `
+    <div class="msg-label">ciel · pergunta</div>
+    <div class="msg-bubble">
+      <div class="msg-body pergunta-texto">${renderMarkdown(ev.texto || '')}</div>
+    </div>`;
+
+  const bubble = card.querySelector('.msg-bubble');
+  const controles = document.createElement('div');
+  controles.className = 'pergunta-controles';
+
+  if (opcoes.length) {
+    opcoes.forEach((opcao, i) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pergunta-opcao';
+      btn.dataset.opcao = String(i);
+      btn.textContent = `${i + 1}) ${opcao}`;
+      btn.addEventListener('click', () => responderPergunta(card, ev.turn_id, String(opcao)));
+      controles.appendChild(btn);
+    });
+    const dica = document.createElement('div');
+    dica.className = 'pergunta-dica';
+    dica.textContent = 'clique numa opção para responder';
+    controles.appendChild(dica);
+  } else {
+    const linha = document.createElement('div');
+    linha.className = 'pergunta-livre';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'pergunta-input';
+    input.placeholder = 'digite sua resposta…';
+    input.autocomplete = 'off';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pergunta-enviar';
+    btn.textContent = 'responder';
+    const enviar = () => {
+      const valor = input.value.trim();
+      if (!valor) { input.focus(); return; }
+      responderPergunta(card, ev.turn_id, valor);
+    };
+    btn.addEventListener('click', enviar);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); enviar(); }
+    });
+    linha.appendChild(input);
+    linha.appendChild(btn);
+    controles.appendChild(linha);
+  }
+
+  bubble.appendChild(controles);
+  messagesEl().appendChild(card);
+  perguntaPendente = { turnId: ev.turn_id, el: card };
+  travarInput(true);
+  scrollBottom();
+
+  const foco = card.querySelector('.pergunta-input, .pergunta-opcao');
+  if (foco) setTimeout(() => foco.focus(), 0);
 }
 
 function addBranchNotice(text) {
@@ -318,6 +522,7 @@ window.sendMessage = async () => {
         filename:  file.file.name,
         session_id: currentSessionId,
         turn_id:   turno,
+        perguntas_interativas: true,
       });
     } else if (file?.type === 'text') {
       body = JSON.stringify({
@@ -326,9 +531,12 @@ window.sendMessage = async () => {
         filename:  file.file.name,
         session_id: currentSessionId,
         turn_id:   turno,
+        perguntas_interativas: true,
       });
     } else {
-      body = JSON.stringify({ message: text, session_id: currentSessionId, turn_id: turno });
+      body = JSON.stringify({
+        message: text, session_id: currentSessionId, turn_id: turno, perguntas_interativas: true,
+      });
     }
 
     const data = await api('/api/chat', { method: 'POST', headers, body });
@@ -378,6 +586,10 @@ window.sendMessage = async () => {
       ? 'já existe um turno em execução — aguarde ele terminar'
       : `erro: ${e.message}`);
   }
+
+  // se a resposta final chegou sem o turno_fim do SSE, encerra a pergunta
+  // pendente (se houver) antes de devolver o input ao usuário
+  limparPergunta(turno, 'turno encerrado');
 
   sairModoParar();
   inputEl().focus();

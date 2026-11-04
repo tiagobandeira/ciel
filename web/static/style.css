@@ -452,6 +452,111 @@ body {
 .msg.agent .msg-label { color: var(--accent); }
 .msg.warn  .msg-label { color: var(--warn); }
 
+/* ── Pergunta de tool INTERACTIVE (entrevista_interativa) ───── */
+.msg.pergunta { max-width: 88%; }
+.msg.pergunta .msg-bubble {
+  background: var(--surface2);
+  border-color: var(--accent);
+  border-left: 3px solid var(--accent);
+  border-bottom-left-radius: 4px;
+}
+.msg.pergunta .msg-label { color: var(--accent); }
+.msg.pergunta.pendente .msg-bubble { box-shadow: 0 0 0 1px var(--accent-dim); }
+.pergunta-texto { margin-bottom: 2px; }
+.pergunta-controles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+.pergunta-opcao {
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+.pergunta-opcao:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface2);
+}
+.pergunta-opcao:disabled { opacity: 0.55; cursor: default; }
+.pergunta-dica {
+  padding: 2px;
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+.pergunta-livre { display: flex; gap: 8px; }
+.pergunta-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  outline: none;
+}
+.pergunta-input:focus { border-color: var(--accent); }
+.pergunta-enviar {
+  padding: 0 14px;
+  background: var(--accent2);
+  border: none;
+  border-radius: var(--radius);
+  color: #fff;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+}
+.pergunta-enviar:hover:not(:disabled) { background: var(--accent); }
+.pergunta-enviar:disabled { opacity: 0.5; cursor: default; }
+.pergunta-resposta {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--ok);
+  font-family: var(--font-mono);
+  word-break: break-word;
+}
+.pergunta-pensando {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+.pergunta-pensando .pp-glyph {
+  display: inline-block;
+  animation: thought-pulse 1.4s ease-in-out infinite;
+}
+.pergunta-aviso {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+.pergunta-erro {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--err);
+  font-family: var(--font-mono);
+}
+.msg.pergunta.respondida .msg-bubble { border-left-color: var(--ok); }
+.msg.pergunta.expirada .msg-bubble { border-left-color: var(--muted); opacity: 0.85; }
+#msg-input:disabled { opacity: 0.6; cursor: not-allowed; }
+
 /* Steps do agente */
 .agent-steps {
   display: flex;
@@ -1599,6 +1704,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .thought-chevron { transition: none; }
   .thought.ativo .thought-glyph { animation: none; opacity: 1; }
+  .pergunta-pensando .pp-glyph { animation: none; opacity: 1; }
 }
 
 @media (max-width: 640px) {
