@@ -749,8 +749,30 @@ def _ui_tools() -> dict:
     return _UI_TOOLS_CACHE
 
 
-def _contexto_tela(tela, ativo: bool, palco: str = "", foco: str = ""):
-    """Resumo dos painéis abertos para o agente, no modo pesquisa (dados, não instruções)."""
+def _ui_tools_do_modo(modo_visual: str) -> dict:
+    """Filtra as tools de UI pelo modo de apresentação ativo."""
+    if modo_visual not in ("pesquisa", "artigo"):
+        return {}
+    ferramentas = _ui_tools()
+    if modo_visual == "artigo":
+        return {k: v for k, v in ferramentas.items()
+                if k in ("ui_artigo", "ui_palco_fechar")}
+    return {k: v for k, v in ferramentas.items() if k != "ui_artigo"}
+
+
+def _contexto_tela(tela, ativo: bool, palco: str = "", foco: str = "", modo_visual: str = "pesquisa"):
+    """Resumo/instruções do modo de apresentação atual."""
+    if modo_visual == "artigo":
+        return "\n".join([
+            "MODO ARTIGO ATIVO.",
+            "A resposta principal deve ser um artigo estruturado no palco, usando ui_artigo(titulo, blocos).",
+            "Não abra ui_painel_* nem ui_painel_feed: neste modo não há cards laterais.",
+            "Use 3 a 8 blocos; tipos: texto, formula, animacao, grafico, tabela, imagem.",
+            "Cada bloco pode ter titulo e fala (para leitura em voz alta).",
+            "Para animacao, use SVG inline com SMIL (<animate>, <animateTransform> ou <animateMotion>); "
+            "sem script, style, href ou URLs externas.",
+            "O artigo abre sozinho no palco; use ui_palco_fechar() se o usuário pedir para fechar.",
+        ])
     if not ativo:
         return None
     palco = "".join(c for c in str(palco or "")[:40] if c.isalnum() or c in "-_")
@@ -924,6 +946,31 @@ def api_feed_tema():
     return jsonify({"ok": True, "tema": tema}), 200
 
 
+@app.route("/api/artigo/teste", methods=["POST"])
+def api_artigo_teste():
+    """Testa o contrato do artigo sem passar pelo modelo."""
+    ferramenta = _ui_tools().get("ui_artigo")
+    if not ferramenta:
+        return jsonify({"ok": False, "erro": "tool ui_artigo indisponível"}), 200
+    blocos = [
+        {"tipo": "texto", "titulo": "Um artefato do backend",
+         "corpo": "Este artigo foi validado no servidor e publicado pelo barramento da interface, sem modelo no meio.",
+         "fala": "Este artigo foi validado no servidor e publicado pelo barramento da interface, sem modelo no meio."},
+        {"tipo": "formula", "titulo": "A identidade", "tex": "c = \\sqrt{a^2 + b^2}",
+         "fala": "A identidade de Pitágoras: c é a raiz quadrada de a ao quadrado mais b ao quadrado."},
+        {"tipo": "animacao", "titulo": "Pulso",
+         "svg": '<svg viewBox="0 0 200 100"><circle cx="100" cy="50" r="22" fill="#9fd4ff"><animate attributeName="opacity" from="0" to="1" dur="1s" fill="freeze"/></circle></svg>',
+         "fala": "Um ponto pulsa para indicar a entrada do bloco."},
+        {"tipo": "tabela", "titulo": "Trio", "colunas": ["a", "b", "c"], "linhas": [["3", "4", "5"]],
+         "fala": "A tabela mostra o trio três, quatro, cinco."},
+    ]
+    try:
+        mensagem = ferramenta["fn"]("Teste de artefato", blocos)
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)[:160]}), 200
+    return jsonify({"ok": str(mensagem).startswith("Artigo "), "mensagem": mensagem}), 200
+
+
 # ── /api/events ──────────────────────────────────────────────────────────────
 @app.route("/api/chat/cancel", methods=["POST"])
 def api_chat_cancel():
@@ -1080,15 +1127,17 @@ def _chat_turn():
         auto_title = " ".join(user_input.split()[:8])
         state.store.update_title(state.session_id, auto_title)
 
-    modo_pesquisa = bool(data.get("modo_pesquisa", False))
+    modo_visual = str(data.get("modo_visual") or "").strip().lower()
+    if modo_visual not in ("nucleo", "pesquisa", "artigo"):
+        modo_visual = "pesquisa" if data.get("modo_pesquisa") else "nucleo"
+    modo_pesquisa = modo_visual == "pesquisa"
     tela = data.get("tela") if isinstance(data.get("tela"), list) else []
     palco = data.get("palco", "")
     foco = data.get("foco", "")
     tools, schema = state.tools, state.schema
-    if modo_pesquisa:
-        # Tools de UI separadas: só entram no modo pesquisa, e não poluem
-        # o CLI/TUI nem o chat normal.
-        ui_tools = _ui_tools()
+    if modo_visual in ("pesquisa", "artigo"):
+        # Tools de UI separadas por modo de apresentação.
+        ui_tools = _ui_tools_do_modo(modo_visual)
         tools = {**tools, **ui_tools}
         # Aliases ocultos: sessões antigas podem ter chamadas com os nomes
         # anteriores; o schema só anuncia os nomes ui_*.
@@ -1096,7 +1145,9 @@ def _chat_turn():
             if novo in tools:
                 tools.setdefault(antigo, tools[novo])
         schema = state.schema + tools_schema(ui_tools)
-    contexto_tela = _contexto_tela(tela, modo_pesquisa, palco, foco)
+    contexto_tela = _contexto_tela(
+        tela, modo_visual in ("pesquisa", "artigo"), palco, foco, modo_visual
+    )
     if contexto_tela:
         context_injection = (f"{state.context_injection}\n\n{contexto_tela}"
                              if state.context_injection else contexto_tela)

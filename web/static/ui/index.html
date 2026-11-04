@@ -32,6 +32,16 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block;transform-ori
 .menu-aj .it:hover{background:rgba(74,168,255,.12)}
 .menu-aj .it.on{background:rgba(74,168,255,.2);box-shadow:inset 0 0 0 1px rgba(74,168,255,.3)}
 .menu-aj .it .v{margin-left:auto;padding-left:16px;opacity:.6;font-size:12px}
+.modo-sub{position:absolute;left:calc(100% + 6px);top:0;z-index:2;display:flex;flex-direction:column;gap:2px;width:180px;padding:6px;border-radius:14px;background:rgba(8,20,40,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(74,168,255,.3);box-shadow:0 0 28px var(--gl)}
+.modo-sub[hidden]{display:none}
+.modo-sub .it{padding:7px 10px;border-radius:10px;font-size:12px}
+.modo-sub .it.on{background:rgba(74,168,255,.22);box-shadow:inset 0 0 0 1px rgba(74,168,255,.3)}
+.modo-sub .it.on::after{content:'✓';margin-left:auto;font-size:12px;color:var(--ac)}
+.modo-seta{margin-left:4px;opacity:.45;transition:transform .2s;font-size:16px;line-height:1}
+#modoAbrir[aria-expanded="true"] .modo-seta{transform:rotate(90deg)}
+@media(max-width:720px){
+  .modo-sub{position:static;left:auto;right:auto;top:auto;width:auto;padding:2px 0 6px 10px;border:0;border-bottom:1px solid rgba(74,168,255,.14);border-radius:0;background:none;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none}
+}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);border:0;padding:0}
 @keyframes barPulse{50%{opacity:.45}}
 @media(hover:hover){.ib[data-tip]:hover::after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);white-space:nowrap;padding:4px 9px;border-radius:8px;font-size:12px;color:var(--fg);background:rgba(2,5,13,.88);border:1px solid rgba(74,168,255,.25);pointer-events:none;z-index:2}}
@@ -229,6 +239,12 @@ input{flex:1 1 110px;min-width:0}
 .artigo-bloco.in{opacity:1;transform:translateY(0)}
 .artigo-bloco h4{margin:0 0 6px;font-size:13px;font-weight:600;color:#cfe8ff}
 .artigo-bloco p{margin:0;font-size:13px;line-height:1.55;color:var(--fg);opacity:.92}
+.artigo-texto{font-size:13px;line-height:1.6;color:var(--fg);opacity:.94;white-space:pre-wrap}
+.artigo-texto b{color:#e6f6ff;font-weight:600}
+.artigo-texto code{background:rgba(74,168,255,.16);padding:1px 4px;border-radius:4px;font-size:.94em}
+.artigo-texto h3,.artigo-texto h4,.artigo-texto h5{margin:8px 0 4px;color:#cfe8ff;line-height:1.3}
+.artigo-texto h3{font-size:16px}.artigo-texto h4{font-size:14px}.artigo-texto h5{font-size:13px}
+.artigo-texto blockquote{margin:6px 0;padding-left:10px;border-left:2px solid rgba(159,224,255,.35);opacity:.8}
 .artigo-grafico svg{display:block;height:auto;color:#9fd4ff;margin-top:2px}
 .artigo-anim svg{display:block;max-width:100%;height:auto;margin:2px auto 0}
 .artigo-formula{text-align:center}
@@ -305,7 +321,7 @@ body.artigo-aberto #c{transform:scale(.3)}
 <canvas id="c"></canvas><div id="tela"><div id="paineis"></div></div><div id="palco" aria-hidden="true"><div class="palco-fundo"></div><div id="palco-opcoes" class="palco-opcoes" aria-hidden="true"></div><div class="palco-card"><div class="palco-h"><b id="palco-titulo"></b><button class="painel-x ib" id="palco-min" type="button" title="Minimizar para a lateral" aria-label="Minimizar para a lateral" data-tip="Minimizar"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="11" height="11" rx="2"/><path d="M9 21h9a2 2 0 0 0 2-2v-9"/></svg></button><button class="painel-x ib" id="palco-x" type="button" title="Fechar" aria-label="Fechar" data-tip="Fechar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div id="palco-corpo"></div></div></div><div id="hud"></div><div id="cap"></div><div id="chat" class="vazio"><div id="msgs"></div></div>
 <div id="bar"><div class="bar-composer"><input id="msg" placeholder="Fale com o Ciel" autocomplete="off" aria-label="Mensagem para o Ciel"><button id="mic" class="ib" type="button" aria-label="Falar" data-tip="Falar"><svg class="i-mic" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true"><rect class="fl" x="7" y="7" width="10" height="10" rx="2"/></svg></button><button id="send" class="ib" type="button" aria-label="Enviar" data-tip="Enviar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
 <div class="bar-toolbar" role="toolbar" aria-label="Modos do Ciel"><button id="lv" class="ib" type="button" aria-label="Live" data-tip="Live"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h2M8 8v8M12 4v16M16 8v8M20 12h-2"/></svg></button><button id="pq" class="ib" type="button" aria-label="Pesquisa" data-tip="Pesquisa"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></button><button id="feed" class="ib" type="button" aria-label="Feed" data-tip="Feed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5a14 14 0 0 1 14 14M5 11a8 8 0 0 1 8 8"/><circle class="fl" cx="6" cy="18" r="1.3"/></svg></button><span class="bar-sep" aria-hidden="true"></span><button id="mais" class="ib" type="button" aria-label="Ajustes" aria-expanded="false" aria-controls="menuAj" data-tip="Ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fl" cx="5" cy="12" r="1.5"/><circle class="fl" cx="12" cy="12" r="1.5"/><circle class="fl" cx="19" cy="12" r="1.5"/></svg></button></div>
-<div id="menuAj" class="menu-aj"><button id="rd" class="it" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/></svg><span>Leitura</span></button><button id="ft" class="it on" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"/></svg><span>Formas de tool</span></button><button id="pin" class="it" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l-1 6 3 3H7l3-3-1-6zM12 13v7"/></svg><span>Fixar</span></button><button id="qb" class="it" type="button" data-n="2"><svg viewBox="0 0 24 24" aria-hidden="true"><rect class="fl b1" x="5" y="14" width="3.5" height="6" rx="1"/><rect class="fl b2" x="10.25" y="9" width="3.5" height="11" rx="1"/><rect class="fl b3" x="15.5" y="4" width="3.5" height="16" rx="1"/></svg><span>Profundidade</span><span class="v" id="qv">Média</span></button><select id="q" class="sr" tabindex="-1" aria-hidden="true"><option value="15000">Leve</option><option value="30000" selected>Média</option><option value="60000">Alta</option></select></div>
+<div id="menuAj" class="menu-aj"><button id="rd" class="it" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/></svg><span>Leitura</span></button><button id="modoAbrir" class="it" type="button" aria-expanded="false" aria-controls="modoSub"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.8 3 2.8 15 0 18M12 3c-2.8 3-2.8 15 0 18"/></svg><span>Apresentação</span><span class="v" id="modoValor">Núcleo</span><span class="modo-seta" aria-hidden="true">›</span></button><div id="modoSub" class="modo-sub" role="group" aria-label="Apresentação" hidden><button id="mn" class="it" type="button" data-modo="nucleo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg><span>Núcleo</span></button><button id="mp" class="it" type="button" data-modo="pesquisa"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg><span>Pesquisa</span></button><button id="ma" class="it" type="button" data-modo="artigo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg><span>Artigo</span></button></div><button id="ft" class="it on" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"/></svg><span>Formas de tool</span></button><button id="pin" class="it" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l-1 6 3 3H7l3-3-1-6zM12 13v7"/></svg><span>Fixar</span></button><button id="qb" class="it" type="button" data-n="2"><svg viewBox="0 0 24 24" aria-hidden="true"><rect class="fl b1" x="5" y="14" width="3.5" height="6" rx="1"/><rect class="fl b2" x="10.25" y="9" width="3.5" height="11" rx="1"/><rect class="fl b3" x="15.5" y="4" width="3.5" height="16" rx="1"/></svg><span>Profundidade</span><span class="v" id="qv">Média</span></button><select id="q" class="sr" tabindex="-1" aria-hidden="true"><option value="15000">Leve</option><option value="30000" selected>Média</option><option value="60000">Alta</option></select></div>
 <div class="row dbg" id="st"></div><div class="row dbg" id="sh"></div><div class="row dbg" id="vz"></div>
 <div class="row dbg"><input id="js" placeholder="colar JSON de forma"><button id="pj" type="button">Forma JSON</button></div>
 <div class="row"><input id="tx" placeholder="palavra" maxlength="14"><button id="pw" type="button">Palavra</button></div></div>
@@ -571,7 +587,8 @@ function ui(){document.querySelectorAll('[data-k]').forEach(b=>b.classList.toggl
 function btn(box,k,fn){const b=document.createElement('button');b.textContent=k[0].toUpperCase()+k.slice(1);b.dataset.k=k;b.onclick=fn;$(box).appendChild(b)}
 Object.keys(ST).forEach(k=>btn('st',k,()=>go(k,ST[k][0])));
 TOPIC.forEach(k=>btn('sh',k,()=>go('falando',k)));
-btn('sh','artigo',()=>abrirPalco({id:'demo-artigo',tipo:'artigo',titulo:'Explicação: Teorema de Pitágoras'}));
+btn('sh','artigo',()=>aplicarModoVisual('artigo').then(()=>abrirPalco({id:'demo-artigo',tipo:'artigo',titulo:'Explicação: Teorema de Pitágoras'})));
+btn('sh','artigo+',()=>aplicarModoVisual('artigo').then(()=>fetch('/api/artigo/teste',{method:'POST'})).then(r=>r.json()).then(d=>{if(!d.ok)cap('⚠ '+(d.erro||'artigo indisponível'))}).catch(()=>cap('⚠ artigo indisponível')));
 $('pw').onclick=()=>go('falando','palavra',($('tx').value.trim()||'CIEL').toUpperCase());
 $('q').onchange=build;
 
@@ -668,6 +685,13 @@ const cap=t=>{$('cap').textContent=String(t||'').slice(0,400)};
 let gy=0,tf=null,ftool=true;
 function lay(){gy=(innerWidth<=900&&!$('chat').classList.contains('vazio'))?.19*cam.position.z:0}
 const md=t=>t.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`([^`\n]+)`/g,'<code>$1</code>').replace(/^[-*] /gm,'• ');
+function mdArtigo(t){
+  return md(String(t||''))
+    .replace(/^###\s+(.+)$/gm,'<h5>$1</h5>')
+    .replace(/^##\s+(.+)$/gm,'<h4>$1</h4>')
+    .replace(/^#\s+(.+)$/gm,'<h3>$1</h3>')
+    .replace(/^>\s+(.+)$/gm,'<blockquote>$1</blockquote>');
+}
 const Ln=(a,b,p)=>({tipo:'linha',de:[...a,0],ate:[...b,0],peso:p||Math.hypot(b[0]-a[0],b[1]-a[1])});
 const rect=(w,h)=>[Ln([-w,h],[w,h]),Ln([w,h],[w,-h]),Ln([w,-h],[-w,-h]),Ln([-w,-h],[-w,h])];
 const N5=[[0,2.2],[-2.09,.68],[-1.29,-1.78],[1.29,-1.78],[2.09,.68]];
@@ -680,10 +704,12 @@ rede:{partes:[{tipo:'esf',r:.5,peso:2},...N5.map(q=>({tipo:'esf',r:.25,pos:[...q
 const TOOLS={web_search:'lupa',web_search_extended:'lupa',read_url:'lupa',http_request:'lupa',
 read_file:'documento',read_pdf:'documento',read_source:'documento',search_knowledge:'documento',list_directory:'documento',list_directory_files:'documento',
 write_file:'lapis',docx_criar:'lapis',docx_substituir_texto:'lapis',docx_comentar:'lapis',run_script:'terminal',secondary_model:'rede'};
-let tema=null,fim,faloui=false,ultC='',lerId=0,leitura=false,modoLive=false,modoPesquisa=false,anotId=null,marcas=[],kAtual=-1,lendo=false,temaPesquisa='',feedReq=0,ultimoTemaChat='';
+let tema=null,fim,faloui=false,ultC='',lerId=0,leitura=false,modoLive=false,modoVisual='nucleo',modoPesquisa=false,anotId=null,marcas=[],kAtual=-1,lendo=false,temaPesquisa='',feedReq=0,ultimoTemaChat='',artigoStream=null;
 let turnoAtivo=false,filaFala=[],falandoPainel=false,painelLerId=0,painelFalandoId=null,ttsWatch=null,painelWatch=null;
 try{leitura=localStorage.getItem('ciel_leitura')==='1'}catch(e){}
 try{modoLive=localStorage.getItem('ciel_live')==='1'}catch(e){}
+try{const m=localStorage.getItem('ciel_modo_visual');if(['nucleo','pesquisa','artigo'].includes(m))modoVisual=m}catch(e){}
+modoPesquisa=modoVisual==='pesquisa';
 try{temaPesquisa=localStorage.getItem('ciel:ultimo-tema')||''}catch(e){}
 try{ultimoTemaChat=localStorage.getItem('ciel:ultimo-tema-chat')||temaPesquisa}catch(e){}
 const limpa=t=>{const r=t.replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/https?:\/\/\S+/g,'').replace(/[*_`#>|~]+/g,' ').replace(/^\s*[-•]\s+/,'').replace(/\s+/g,' ').trim();return /[\p{L}\p{N}]/u.test(r)?r:''};
@@ -695,14 +721,23 @@ const progresso=k=>{kAtual=k;aplica(k)};
 function aplica(k){if(!lendo||!marcas.length)return;let m=null;for(const x of marcas)if(x.i<=k)m=x;if(!m)return;
 const nm=m.nome==='coracao'?'coração':m.nome;if(!(S[nm]||LIB[nm])||tema===nm)return;tema=nm;go('falando',nm)}
 function parar(){encerrarEscuta();lerId++;painelLerId++;lendo=false;turnoAtivo=false;filaFala=[];falandoPainel=false;painelFalandoId=null;clearTimeout(ttsWatch);ttsWatch=null;clearTimeout(painelWatch);painelWatch=null;anotId=null;marcas=[];try{speechSynthesis.cancel()}catch(e){}document.querySelectorAll('.s.lendo').forEach(x=>x.classList.remove('lendo'))}
-function enfileirarFala(p){
+function enfileirarFala(p,opcoes={}){
   if(!p||p.fala==='nunca'||!(modoLive||leitura)||!window.speechSynthesis)return;
   const bruto=String(p.fala_texto||'').trim();
   if(!bruto)return;
-  const item={id:p.id||'',titulo:p.titulo||'painel',texto:bruto.slice(0,1200)};
-  const idx=filaFala.findIndex(x=>x.id===item.id);
-  if(idx>=0)filaFala[idx]=item;else filaFala.push(item);
-  if(filaFala.length>2)filaFala=filaFala.slice(-2);
+  const artigo=!!opcoes.artigo;
+  const item={id:p.id||'',titulo:p.titulo||'painel',texto:bruto.slice(0,1200),focar:opcoes.focar!==false,artigo,artigoId:opcoes.artigoId||''};
+  if(artigo){
+    filaFala.push(item);
+  }else{
+    const idx=filaFala.findIndex(x=>x.id===item.id&&!x.artigo);
+    if(idx>=0)filaFala[idx]=item;else filaFala.push(item);
+    const paineis=filaFala.filter(x=>!x.artigo);
+    if(paineis.length>2){
+      const manter=new Set(paineis.slice(-2));
+      filaFala=filaFala.filter(x=>x.artigo||manter.has(x));
+    }
+  }
   if(!turnoAtivo&&!lendo)setTimeout(falarPainel,180);
 }
 function falarPainel(){
@@ -730,8 +765,8 @@ function falarPainel(){
     const avanca=()=>{if(finalizado)return;finalizado=true;clearTimeout(painelWatch);painelWatch=null;j++;falarParte()};
     u.onstart=()=>{
       if(id!==painelLerId||j!==0)return;
-      go('falando',tema||'esfera');cap('painel: '+item.titulo);
-      if(item.id)focarPainel(item.id);
+      go('falando',tema||'esfera');cap((item.artigo?'artigo: ':'painel: ')+(item.titulo||''));
+      if(item.focar!==false&&item.id)focarPainel(item.id);
       if(modoLive)iniciarEscutaLive();
     };
     u.onend=u.onerror=avanca;
@@ -800,9 +835,9 @@ if(m.tipo==='estado'){go(m.valor,ST[m.valor]?ST[m.valor][0]:'esfera');if(m.valor
 else if(m.tipo==='tool'){go('pensando','circulo');cap('⚙ '+m.nome);const f=TOOLS[m.nome];if(ftool&&f){const n=m.nome;tf=n;setTimeout(()=>{if(tf===n)go('pensando',f)},700)}}
 else if(m.tipo==='forma'){const nm=m.nome==='coracao'?'coração':m.nome;if(m.spec){LIB[nm]=m.spec;delete cache[nm]}
 if(S[nm]||LIB[nm]){if(!TOPIC.includes(nm))TOPIC.push(nm);tema=nm;cur.sh='';go('falando',nm)}}
-else if(m.tipo==='fala'){faloui=true;turnoAtivo=false;cap('');const tx=m.texto||'',lr=(modoLive||leitura)&&tx&&!!window.speechSynthesis;
-if(tx!==ultC){const r=addMsg('c',tx,lr);if(lr)ler(r)}ultC=tx;
-if(!lr){go('falando',tema||'esfera');fim=setTimeout(()=>{go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4)},Math.min(12000,Math.max(2500,tx.length*45)))}
+else if(m.tipo==='fala'){faloui=true;turnoAtivo=false;cap('');const tx=m.texto||'',lr=(modoLive||leitura)&&tx&&!!window.speechSynthesis,lrChat=lr&&modoVisual!=='artigo';
+if(tx!==ultC){const r=addMsg('c',tx,lrChat);if(lrChat)ler(r)}ultC=tx;
+if(!lrChat){go('falando',tema||'esfera');fim=setTimeout(()=>{go('repouso',tema||'esfera');fim=setTimeout(()=>{tema=null;go('repouso','esfera')},12e4)},Math.min(12000,Math.max(2500,tx.length*45)))}
 if(!lendo&&filaFala.length)setTimeout(falarPainel,140)}
 else if(m.tipo==='marcas'&&m.id===anotId){marcas=m.marcas||[];aplica(kAtual)}
 else if(m.tipo==='forma_lib'){if(m.spec){LIB[m.nome]=m.spec;delete cache[m.nome]}aplica(kAtual)}
@@ -814,6 +849,23 @@ else if(m.tipo==='painel'){
     else if(m.acao==='focar'&&id)focarPainel(id);
     else if(m.acao==='palco'&&id)abrirPalcoPorId(id);
     else if(m.acao==='fechar_palco')fecharPalco();
+  }
+}
+else if(m.tipo==='artefato'){
+  if(modoVisual!=='artigo')return;
+  const id=m.id||('artigo-'+Date.now());
+  const titulo=m.titulo||'Artigo';
+  if(m.fase==='inicio'){
+    if(palcoAtual===id)fecharPalco();
+    abrirPalco({id,tipo:'artigo',titulo,blocos:[],stream:true});
+    cap('artigo: '+titulo);
+  }else if(m.fase==='bloco'){
+    if(artigoStream&&artigoStream.id===id)artigoStream.adicionar(m.bloco);
+  }else if(m.fase==='fim'){
+    if(artigoStream&&artigoStream.id===id)artigoStream.finalizar();
+  }else if(Array.isArray(m.blocos)&&m.blocos.length&&palcoAtual!==id){
+    abrirPalco({id,tipo:'artigo',titulo,blocos:m.blocos});
+    cap('artigo: '+titulo);
   }
 }
 else if(m.tipo==='painel_foco'){focarPainel(m.id)}
@@ -834,7 +886,7 @@ if(modoPesquisa&&temaAtual){
 aquecerAudio();$('msg').value='';parar();turnoAtivo=true;tema=null;faloui=false;ultC='';
 if(deVoz===true&&vz)vz.envio=performance.now();else vz=null;
 addMsg('u',t);cap('pensando…');go('pensando','circulo');
-try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:t,tela:resumoTela(),modo_pesquisa:modoPesquisa,palco:palcoAtual||'',foco:painelFoco||''})});
+try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:t,tela:resumoTela(),modo_visual:modoVisual,modo_pesquisa:modoPesquisa,palco:palcoAtual||'',foco:painelFoco||''})});
 if(!r.ok)throw Error('HTTP '+r.status);const d=await r.json();
 if(deVoz===true&&vz){vz.chato=performance.now();vzPublica()}
 if(!faloui&&(t[0]==='/'||d.status!=='done'))ev({tipo:'fala',texto:d.reply||''})}
@@ -1233,7 +1285,7 @@ function renderBlocoArtigo(b){
     (b.linhas||[]).forEach(linha=>{const tr=document.createElement('tr');linha.forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});tbody.appendChild(tr)});
     tb.appendChild(tbody);wrap.appendChild(tb);div.appendChild(wrap);
   }
-  else{const p=document.createElement('p');p.textContent=b.corpo||'';div.appendChild(p)}
+  else{const box=document.createElement('div');box.className='artigo-texto';box.innerHTML=mdArtigo(b.corpo||'');div.appendChild(box)}
   return div;
 }
 function skeletonBloco(tipo){
@@ -1247,17 +1299,21 @@ function skeletonBloco(tipo){
 function artigoPalco(corpo,p){
   corpo.classList.add('artigo-corpo');
   document.body.classList.add('artigo-aberto');
-  let cancelado=false;
-  (async()=>{
-    const blocos=Array.isArray(p.blocos)&&p.blocos.length?p.blocos:ARTIGO_DEMO;
-    for(const b of blocos){
-      if(cancelado)return;
+  let cancelado=false,processando=false,finalizado=false,nBloco=0;
+  const fila=[];
+  const api={id:p.id,adicionar,finalizar};
+  artigoStream=api;
+  async function processar(){
+    if(processando||cancelado)return;
+    processando=true;
+    while(fila.length&&!cancelado){
+      const b=fila.shift();
       if(!b||typeof b!=='object')continue;
       const sk=skeletonBloco(b.tipo);
       corpo.appendChild(sk);
       requestAnimationFrame(()=>sk.classList.add('in'));
       corpo.scrollTop=corpo.scrollHeight;
-      await new Promise(r=>setTimeout(r,500+R()*300));
+      await new Promise(r=>setTimeout(r,180+R()*140));
       if(cancelado)return;
       let el;
       try{el=renderBlocoArtigo(b)}
@@ -1265,9 +1321,38 @@ function artigoPalco(corpo,p){
       sk.replaceWith(el);
       requestAnimationFrame(()=>el.classList.add('in'));
       corpo.scrollTop=corpo.scrollHeight;
+      if(b.fala){
+        nBloco++;
+        enfileirarFala(
+          {id:p.id+'-b'+nBloco,titulo:p.titulo||'Artigo',fala_texto:b.fala},
+          {focar:false,artigo:true,artigoId:p.id}
+        );
+      }
     }
-  })();
-  return ()=>{cancelado=true;corpo.classList.remove('artigo-corpo');document.body.classList.remove('artigo-aberto')};
+    processando=false;
+    if(finalizado&&!cancelado&&!fila.length&&!corpo.querySelector('.artigo-bloco')){
+      const v=document.createElement('div');v.className='artigo-bloco';v.textContent='Nenhum bloco recebido.';corpo.appendChild(v);
+      requestAnimationFrame(()=>v.classList.add('in'));
+    }
+  }
+  function adicionar(b){
+    if(cancelado||finalizado||!b||typeof b!=='object')return;
+    fila.push(b);processar();
+  }
+  function finalizar(){if(cancelado)return;finalizado=true;processar()}
+  const iniciais=Array.isArray(p.blocos)?p.blocos:[];
+  if(iniciais.length)iniciais.forEach(adicionar);
+  else if(!p.stream)ARTIGO_DEMO.forEach(adicionar);
+  return ()=>{
+    cancelado=true;fila.length=0;
+    filaFala=filaFala.filter(x=>x.artigoId!==p.id);
+    if(painelFalandoId&&String(painelFalandoId).startsWith(p.id+'-b')){
+      painelLerId++;falandoPainel=false;painelFalandoId=null;clearTimeout(painelWatch);painelWatch=null;
+      try{speechSynthesis.cancel()}catch(e){}cap('');go('repouso',tema||'esfera');
+    }
+    if(artigoStream===api)artigoStream=null;
+    corpo.classList.remove('artigo-corpo');document.body.classList.remove('artigo-aberto');
+  };
 }
 PAINEIS_RENDER.artigo=(corpo)=>{corpo.innerHTML='<div class="artigo-teaser">📄 Artigo disponível — abra pra ver</div>';return null};
 PAINEIS_RENDER.artigo.palco=artigoPalco;
@@ -2143,20 +2228,61 @@ async function carregarPaineisPesquisa(){
     if(modoPesquisa)abrirPainel(p);
   }
 }
-function sairPesquisa(){modoPesquisa=false;$('pq').classList.remove('on');fecharPalco();fecharTodosPaineis();cap('');go('repouso',tema||'esfera')}
-async function entrarPesquisa(){
-  if(modoPesquisa)return;
-  modoPesquisa=true;$('pq').classList.add('on');cap('modo pesquisa: painéis do Ciel');
-  await carregarPaineisPesquisa();
+function atualizaModoUI(){
+  $('pq').classList.toggle('on',modoPesquisa);
+  const nomes={nucleo:'Núcleo',pesquisa:'Pesquisa',artigo:'Artigo'};
+  const valor=$('modoValor');if(valor)valor.textContent=nomes[modoVisual]||'Núcleo';
+  document.querySelectorAll('[data-modo]').forEach(b=>b.classList.toggle('on',b.dataset.modo===modoVisual));
 }
+function posicionarSubModo(){
+  const m=$('menuAj'),b=$('modoAbrir'),s=$('modoSub');
+  if(!m||!b||!s||s.hidden)return;
+  s.style.left='';s.style.right='';s.style.top='';
+  if(innerWidth<=720)return;
+  const mr=m.getBoundingClientRect(),br=b.getBoundingClientRect(),sr=s.getBoundingClientRect();
+  const dir=mr.right+sr.width+12<=innerWidth;
+  const esq=mr.left-sr.width-12>=0;
+  if(!dir&&esq){s.style.left='auto';s.style.right='calc(100% + 6px)'}
+  else{s.style.left='calc(100% + 6px)';s.style.right='auto'}
+  const top=Math.max(6,Math.min(br.top-mr.top-6,mr.height-sr.height-6));
+  s.style.top=top+'px';
+}
+function alternarSubModo(abrir){
+  const b=$('modoAbrir'),s=$('modoSub');if(!b||!s)return;
+  const mostrar=abrir===undefined?s.hidden:!!abrir;
+  s.hidden=!mostrar;b.setAttribute('aria-expanded',String(mostrar));b.classList.toggle('on',mostrar);
+  if(mostrar)requestAnimationFrame(posicionarSubModo);
+}
+async function aplicarModoVisual(novo){
+  if(!['nucleo','pesquisa','artigo'].includes(novo))novo='nucleo';
+  alternarSubModo(false);
+  if(novo===modoVisual){atualizaModoUI();return}
+  fecharPalco();
+  fecharTodosPaineis();
+  modoVisual=novo;modoPesquisa=novo==='pesquisa';
+  try{localStorage.setItem('ciel_modo_visual',modoVisual)}catch(e){}
+  atualizaModoUI();
+  if(novo==='pesquisa'){
+    cap('modo pesquisa: painéis do Ciel');
+    await carregarPaineisPesquisa();
+  }else if(novo==='artigo')cap('modo artigo: explicações no palco');
+  else cap('');
+}
+async function entrarPesquisa(){if(modoPesquisa)return;await aplicarModoVisual('pesquisa')}
+function sairPesquisa(){aplicarModoVisual('nucleo')}
 $('mic').onclick=mic;
 $('ft').onclick=()=>{ftool=!ftool;$('ft').classList.toggle('on',ftool)};
 $('lv').classList.toggle('on',modoLive);
 $('lv').onclick=()=>{modoLive=!modoLive;try{localStorage.setItem('ciel_live',modoLive?'1':'0')}catch(e){};$('lv').classList.toggle('on',modoLive);
   if(!modoLive){parar();go('repouso',tema||'esfera')}
   else{aquecerAudio();cap('modo live: fale normalmente; fale por cima para interromper')}};
-$('pq').classList.toggle('on',modoPesquisa);
-$('pq').onclick=()=>{if(modoPesquisa)sairPesquisa();else entrarPesquisa()};
+$('pq').onclick=()=>{if(modoPesquisa)aplicarModoVisual('nucleo');else aplicarModoVisual('pesquisa')};
+$('modoAbrir').onclick=()=>alternarSubModo();
+$('mn').onclick=()=>aplicarModoVisual('nucleo');
+$('mp').onclick=()=>aplicarModoVisual('pesquisa');
+$('ma').onclick=()=>aplicarModoVisual('artigo');
+document.addEventListener('pointerdown',e=>{if(!e.target.closest('#modoAbrir')&&!e.target.closest('#modoSub'))alternarSubModo(false)});
+addEventListener('resize',()=>{if($('modoSub')&&!$('modoSub').hidden)posicionarSubModo()});
 $('feed').onclick=()=>{abrirFeedDemo()};
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('.painel')&&!e.target.closest('#palco'))limparFoco()});
 $('palco-x').onclick=fecharPalco;
@@ -2165,5 +2291,7 @@ $('palco').addEventListener('click',e=>{if(!e.target.closest('.palco-card')&&!e.
 addEventListener('keydown',e=>{if(e.key==='Escape'){if(palcoAtual)fecharPalco();else limparFoco()}});
 $('rd').classList.toggle('on',leitura);$('rd').onclick=()=>{leitura=!leitura;$('rd').classList.toggle('on',leitura);try{localStorage.setItem('ciel_leitura',leitura?'1':'0')}catch(e){}if(!leitura){parar();go('repouso',tema||'esfera')}};$('send').onclick=send;$('msg').onkeydown=e=>{if(e.key==='Enter')send()};
 fit();build();ui();wake();requestAnimationFrame(loop);
-if(new URLSearchParams(location.search).has('artigo'))setTimeout(()=>abrirPalco({id:'demo-artigo',tipo:'artigo',titulo:'Explicação: Teorema de Pitágoras'}),500);
+atualizaModoUI();
+if(modoVisual==='pesquisa')setTimeout(()=>carregarPaineisPesquisa(),0);
+if(new URLSearchParams(location.search).has('artigo'))aplicarModoVisual('artigo').then(()=>setTimeout(()=>abrirPalco({id:'demo-artigo',tipo:'artigo',titulo:'Explicação: Teorema de Pitágoras'}),500));
 </script></body></html>
