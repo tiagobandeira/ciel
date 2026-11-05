@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 import tools.run_notebook as run_notebook
 import tools.write_notebook as write_notebook
 
@@ -101,6 +103,9 @@ def test_display_tem_fallback(tmp_path):
 
 
 def test_show_nao_bloqueia_e_salva_figura(tmp_path):
+    pytest.importorskip(
+        "matplotlib", reason="matplotlib é dependência opcional de notebooks"
+    )
     nb = tmp_path / "lab.ipynb"
     write_notebook.run(
         str(nb),
