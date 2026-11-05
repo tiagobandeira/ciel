@@ -171,6 +171,19 @@ No markdown, `![imagem](grafico.png)` e `[link](outro.md)` são resolvidos
 contra a pasta do próprio arquivo (não contra a raiz do Ciel), e link para
 outro arquivo de `data/` abre no painel em vez de sair do app.
 
+### Fontes registradas (inclusive fora de `data/`)
+
+Clicar no nome de uma fonte abre o arquivo no painel, venha ele de onde vier.
+Fonte é conteúdo que você indexou de propósito, então a permissão é o registro
+na tabela de fontes — não o caminho. Arquivo em `data/` usa a rota normal;
+arquivo fora de `data/` (Downloads, outra pasta do workspace) usa
+`/api/source/<id>/preview`, que não copia nada e não exige mover arquivo.
+
+O que não abre continua com motivo à vista: arquivo que sumiu do disco mostra
+“não está mais no disco” (no tooltip e numa mensagem no chat ao clicar),
+credenciais e bancos do Ciel são recusados, e html de fonte chega como texto —
+não roda página na origem do Ciel.
+
 ### Rotas (para quem for mexer)
 
 | Rota | O que faz |
@@ -178,11 +191,11 @@ outro arquivo de `data/` abre no painel em vez de sair do app.
 | `GET /preview/<path>` | serve um arquivo **inline** (markdown, imagem, pdf, texto), com MIME, `no-store` e login |
 | `GET /api/files?path=` | lista uma pasta de `data/` (padrão `data/user`) e marca `site` |
 | `GET /api/preview_site?path=` | sobe/reaproveita o servidor estático da pasta e devolve a URL com token |
+| `GET /api/source/<id>/preview` | serve o arquivo de uma **fonte registrada** (mesmo fora de `data/`); `?dl=1` baixa |
 
-O guard é o mesmo do `/download`: só `data/`, `resolve()` contra `..` e symlink,
-e nenhum caminho com componente começando por `.` (é onde mora
-`data/user/.id_secret`). Arquivo que o painel não sabe mostrar continua
-baixável em `/download`.
+O guard do `/preview` e do `/download` é só `data/` (nada de config, banco ou
+credencial). A rota de fonte é a exceção deliberada: só aceita `id` que existe
+na tabela de fontes, e ainda recusa credenciais, bancos e dotfiles.
 
 ## Interface visual (`/ui`)
 

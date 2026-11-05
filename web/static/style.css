@@ -1151,6 +1151,11 @@ body {
 }
 .rp-src:hover { background: var(--surface2); }
 .rp-src:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+/* fonte sem prévia (arquivo sumiu / protegido): o clique explica no chat */
+.rp-src.sem-previa { cursor: help; }
+.rp-src.sem-previa:hover { background: none; }
+.rp-src.sem-previa .rp-src-name { color: var(--muted); }
+.rp-src.sem-previa .ic { opacity: 0.6; }
 .rp-src .ic { width: 12px; height: 12px; flex: none; }
 .rp-src.sessao .ic { color: var(--accent2); }
 .rp-src.global .ic { color: var(--muted); }
@@ -2588,6 +2593,7 @@ body.pv-arrastando iframe { pointer-events: none; }
 /* fonte clicável (abre a prévia) */
 .source-item-name.clicavel { cursor: pointer; }
 .source-item-name.clicavel:hover { color: var(--accent); }
+.source-item-name.sem-previa { color: var(--muted); cursor: help; }
 
 /* telas estreitas: o visualizador cobre a tela em vez de dividir */
 @media (max-width: 900px) {

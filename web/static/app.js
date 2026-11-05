@@ -977,6 +977,15 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+/** Atributos de clique de uma fonte: arquivo em data/, rota de fonte
+ *  registrada (pode estar fora de data/) ou o motivo de não abrir. */
+function atributosFonte(s) {
+  const nome = ` data-preview-name="${esc(s.filename)}"`;
+  if (s.preview_path) return `${nome} data-preview-path="${esc(s.preview_path)}"`;
+  if (s.preview_url)  return `${nome} data-preview-source="${s.id}"`;
+  return `${nome} data-preview-bloqueado="${esc(s.preview_motivo || 'sem prévia para esta fonte')}"`;
+}
+
 /** Mini-lista de fontes do painel: sessão primeiro, globais marcadas.
  *  A lista do modal continua mostrando todas, com chunks e escopo. */
 function renderFontesPainel(sources = [], { leitura = false } = {}) {
@@ -1002,16 +1011,18 @@ function renderFontesPainel(sources = [], { leitura = false } = {}) {
     const escopo = global ? 'global' : 'sessao';
     const dica = `${s.filename} · ${s.n_chunks} chunk${s.n_chunks === 1 ? '' : 's'} · `
                + (global ? 'global' : 'sessão');
-    const preview = s.preview_path
-      ? ` data-preview-path="${esc(s.preview_path)}" data-preview-name="${esc(s.filename)}"`
-      : '';
+    const preview = atributosFonte(s);
+    const clicavel = !!(s.preview_path || s.preview_url);
+    const dicaFinal = dica + (clicavel
+      ? ' · abrir no visualizador'
+      : ` · ${s.preview_motivo || 'sem prévia'}`);
     const acao = leitura ? '' : `
         <button class="rp-del" title="remover fonte" aria-label="remover ${esc(s.filename)}"
                 data-nome="${esc(s.filename)}"
                 onclick="event.stopPropagation(); removeSource(${s.id}, '${global ? 'global' : ''}', this.dataset.nome)">✕</button>`;
     return `
-      <div class="rp-src ${escopo}"${preview} role="button" tabindex="0"
-           title="${esc(dica)}${s.preview_path ? ' · abrir no visualizador' : ''}">
+      <div class="rp-src ${escopo}${clicavel ? '' : ' sem-previa'}"${preview} role="button" tabindex="0"
+           title="${esc(dicaFinal)}">
         ${icone('file')}
         <span class="rp-src-name">${esc(s.filename)}</span>
         <span class="rp-tag ${escopo}">${global ? 'global' : 'sessão'}</span>
@@ -1033,10 +1044,14 @@ async function refreshSources() {
       list.innerHTML = '<div class="panel-empty">nenhuma fonte indexada</div>';
       return;
     }
-    const attrFonte = (s) => s.preview_path
-      ? `class="source-item-name clicavel" data-preview-path="${esc(s.preview_path)}"` +
-        ` data-preview-name="${esc(s.filename)}" title="visualizar ${esc(s.filename)}"`
-      : 'class="source-item-name"';
+    const attrFonte = (s) => {
+      const clicavel = !!(s.preview_path || s.preview_url);
+      const dica = clicavel
+        ? `abrir ${s.filename} no visualizador`
+        : (s.preview_motivo || 'sem prévia para esta fonte');
+      return `class="source-item-name${clicavel ? ' clicavel' : ' sem-previa'}"`
+           + atributosFonte(s) + ` title="${esc(dica)}"`;
+    };
     list.innerHTML = data.sources.map(s => `
       <div class="source-item">
         <span ${attrFonte(s)}>${icone('file')} ${esc(s.filename)}</span>

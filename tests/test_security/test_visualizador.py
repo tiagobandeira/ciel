@@ -504,3 +504,109 @@ class TestArquivosNoHistorico:
 
         assert [a["path"] for a in arquivos] == ["data/user/jogo"]
         assert arquivos[0]["dir"] is True
+# ── fonte registrada fora de data/ (rota /api/source/<id>/preview) ──────────
+
+class TestFontePreview:
+    def _registrar(self, monkeypatch, caminho):
+        """Faz a rota enxergar `caminho` como a fonte 18 do knowledge.db."""
+        import knowledge.db as kdb
+        registro = {"id": 18, "filename": caminho.name, "filepath": str(caminho)}
+        monkeypatch.setattr(kdb, "get_source", lambda sid: registro if sid == 18 else None)
+        return registro
+
+    def _arquivo(self, raiz, nome="cronica.md", conteudo="# A crônica\n"):
+        alvo = raiz.parent / "RPG" / nome
+        alvo.parent.mkdir(parents=True, exist_ok=True)
+        alvo.write_text(conteudo, encoding="utf-8")
+        return alvo
+
+    def test_fonte_fora_de_data_ganha_url(self, amb):
+        servidor, _, raiz = amb
+        alvo = self._arquivo(raiz)
+
+        info = servidor._preview_da_fonte({"id": 18, "filepath": str(alvo)})
+
+        assert info["preview_path"] is None
+        assert info["preview_url"] == "/api/source/18/preview"
+        assert info["preview_motivo"] is None
+
+    def test_fonte_em_data_mantem_path(self, amb):
+        servidor, _, raiz = amb
+        alvo = raiz / "data" / "user" / "nota.md"
+        alvo.write_text("x", encoding="utf-8")
+
+        info = servidor._preview_da_fonte({"id": 7, "filepath": str(alvo)})
+
+        assert info["preview_path"] == "data/user/nota.md"
+        assert info["preview_url"] is None
+
+    def test_arquivo_sumido_tem_motivo(self, amb):
+        servidor, _, raiz = amb
+
+        info = servidor._preview_da_fonte({"id": 1, "filepath": str(raiz / "sumiu.md")})
+
+        assert info["preview_url"] is None
+        assert "não está mais no disco" in info["preview_motivo"]
+
+    def test_serve_md_da_fonte(self, amb, monkeypatch):
+        _, cliente, raiz = amb
+        self._registrar(monkeypatch, self._arquivo(raiz))
+
+        r = cliente.get("/api/source/18/preview")
+
+        assert r.status_code == 200
+        assert r.mimetype == "text/markdown"
+        assert "charset=utf-8" in r.headers["Content-Type"]
+        assert "crônica" in r.get_data(as_text=True)
+        assert r.headers["Cache-Control"] == "no-store"
+        assert r.headers["X-Content-Type-Options"] == "nosniff"
+
+    def test_download_vira_attachment(self, amb, monkeypatch):
+        _, cliente, raiz = amb
+        self._registrar(monkeypatch, self._arquivo(raiz))
+
+        r = cliente.get("/api/source/18/preview?dl=1")
+
+        assert "attachment" in r.headers.get("Content-Disposition", "")
+
+    def test_html_de_fonte_vira_texto(self, amb, monkeypatch):
+        """Página de fonte não roda na origem do Ciel: chega como código."""
+        _, cliente, raiz = amb
+        self._registrar(monkeypatch, self._arquivo(raiz, "jogo.html", "<h1>oi</h1>"))
+
+        r = cliente.get("/api/source/18/preview")
+
+        assert r.status_code == 200
+        assert r.mimetype == "text/plain"
+        assert "<h1>oi</h1>" in r.get_data(as_text=True)
+
+    def test_arquivo_sumido_404(self, amb, monkeypatch):
+        _, cliente, raiz = amb
+        self._registrar(monkeypatch, raiz / "sumiu.md")
+
+        r = cliente.get("/api/source/18/preview")
+
+        assert r.status_code == 404
+        assert "não está mais no disco" in r.get_data(as_text=True)
+
+    def test_arquivo_protegido_403(self, amb, monkeypatch):
+        _, cliente, raiz = amb
+        alvo = raiz.parent / "RPG" / ".segredo"
+        alvo.parent.mkdir(parents=True, exist_ok=True)
+        alvo.write_text("x", encoding="utf-8")
+        self._registrar(monkeypatch, alvo)
+
+        assert cliente.get("/api/source/18/preview").status_code == 403
+
+    def test_fonte_inexistente_404(self, amb, monkeypatch):
+        import knowledge.db as kdb
+        _, cliente, _ = amb
+        monkeypatch.setattr(kdb, "get_source", lambda sid: None)
+
+        assert cliente.get("/api/source/18/preview").status_code == 404
+
+    def test_401_sem_login(self, amb, monkeypatch):
+        servidor, cliente, _ = amb
+        monkeypatch.setattr(servidor, "_is_authenticated", lambda: False)
+
+        assert cliente.get("/api/source/18/preview").status_code == 401

@@ -156,6 +156,10 @@
         dir: !!opcoes.dir,
         entry: opcoes.entry || '',
         site: null,
+        // fonte registrada fora de data/: conteúdo vem da rota de fonte
+        fonte: !!opcoes.fonte,
+        src: opcoes.src || '',
+        dl: opcoes.dl || '',
       });
       indice = estado.abas.length - 1;
       // teto de abas: descarta a mais antiga
@@ -166,6 +170,18 @@
     }
     estado.ativa = Math.max(0, indice);
     mostrarPainel(true);
+  }
+
+  /** Fonte registrada fora de data/ (rota /api/source/<id>/preview). */
+  function abrirFonte(id, nome) {
+    const identificador = Number(id);
+    if (!Number.isFinite(identificador)) return;
+    abrir('fonte/' + identificador, {
+      name: nome || ('fonte ' + identificador),
+      fonte: true,
+      src: `/api/source/${identificador}/preview`,
+      dl: `/api/source/${identificador}/preview?dl=1`,
+    });
   }
 
   function fecharAba(indice) {
@@ -239,9 +255,13 @@
     }
 
     const html = (aba.dir || EXT_HTML.has(extDe(aba.name))) && aba.site;
-    caminho.textContent = html ? `${aba.site.path}/${aba.site.entry}` : aba.path;
+    if (aba.fonte) {
+      caminho.textContent = `${aba.name} · fonte`;
+    } else {
+      caminho.textContent = html ? `${aba.site.path}/${aba.site.entry}` : aba.path;
+    }
     caminho.title = caminho.textContent;
-    dl.setAttribute('href', aba.dir ? '#' : urlDownload(aba.path));
+    dl.setAttribute('href', aba.dir ? '#' : (aba.dl || urlDownload(aba.path)));
 
     if (servidor) {
       servidor.classList.toggle('hidden', !html);
@@ -266,7 +286,21 @@
     }
 
     const ext = extDe(aba.name);
-    if (aba.dir || EXT_HTML.has(ext)) {
+    if (aba.fonte) {
+      // fonte registrada: o conteúdo vem da rota de fonte (pode estar fora de
+      // data/), inclusive html — que chega como texto, sem rodar
+      if (EXT_MD.has(ext)) {
+        carregarTexto(aba, seq, (txt) => markdownDe(aba, txt));
+      } else if (EXT_IMG.has(ext)) {
+        corpo.appendChild(imagemDe(aba));
+      } else if (EXT_PDF.has(ext)) {
+        corpo.appendChild(pdfDe(aba));
+      } else if (EXT_TXT.has(ext) || EXT_HTML.has(ext) || !ext) {
+        carregarTexto(aba, seq, (txt) => codigoDe(aba, txt));
+      } else {
+        corpo.appendChild(cartaoDe(aba, `Sem visualização no navegador para .${ext}.`));
+      }
+    } else if (aba.dir || EXT_HTML.has(ext)) {
       carregarSite(aba, seq);
     } else if (EXT_IMG.has(ext)) {
       corpo.appendChild(imagemDe(aba));
@@ -279,6 +313,11 @@
     } else {
       corpo.appendChild(cartaoDe(aba, `Sem visualização no navegador para .${ext}.`));
     }
+  }
+
+  /** URL do conteúdo da aba: arquivo em data/ ou fonte registrada. */
+  function urlConteudo(aba) {
+    return aba.src || urlPublica(aba.path);
   }
 
   /**
@@ -328,7 +367,7 @@
     const div = document.createElement('div');
     div.className = 'pv-image';
     const img = document.createElement('img');
-    img.src = urlPublica(aba.path, true);
+    img.src = aba.fonte ? urlConteudo(aba) : urlPublica(aba.path, true);
     img.alt = aba.name;
     div.appendChild(img);
     return div;
@@ -339,17 +378,23 @@
     const f = document.createElement('iframe');
     f.className = 'pv-frame';
     f.title = aba.name;
-    f.src = urlPublica(aba.path) + '#toolbar=1&view=FitH';
+    f.src = urlConteudo(aba) + '#toolbar=1&view=FitH';
     return f;
   }
 
   function carregarTexto(aba, seq, montar) {
     const corpo = el('preview-body');
     corpo.innerHTML = '<div class="pv-loading">carregando…</div>';
-    fetch(urlPublica(aba.path), { credentials: 'include' })
+    fetch(urlConteudo(aba), { credentials: 'include' })
       .then((r) => {
         if (r.status === 401) throw new Error('faça login (cadeado no topo) para visualizar arquivos');
-        if (!r.ok) throw new Error('HTTP ' + r.status);
+        if (!r.ok) {
+          // a rota de fonte devolve o motivo em texto puro (arquivo sumiu etc.)
+          return r.text().then((texto) => {
+            const limpo = String(texto || '').trim().slice(0, 160);
+            throw new Error(limpo && !limpo.startsWith('<') ? limpo : 'HTTP ' + r.status);
+          });
+        }
         return r.text();
       })
       .then((txt) => {
@@ -450,7 +495,9 @@
     } else {
       div.textContent = txt;
     }
-    ajustarCaminhosMarkdown(div, aba.path);
+    // fonte fora de data/ não tem base de URL pública para resolver relativo;
+    // os caminhos ficam como vieram (imagem local de fonte não é suportada)
+    if (!aba.fonte) ajustarCaminhosMarkdown(div, aba.path);
     destacar(div);
     return div;
   }
@@ -485,7 +532,7 @@
       <div class="pv-card-ext">${esc(extDe(aba.name) || 'arquivo')}</div>
       <div class="pv-card-name">${esc(aba.name)}</div>
       <div class="pv-card-msg">${esc(mensagem)}</div>
-      <a class="pv-card-btn" href="${esc(urlDownload(aba.path))}" download>baixar arquivo</a>`;
+      <a class="pv-card-btn" href="${esc(aba.dl || urlDownload(aba.path))}" download>baixar arquivo</a>`;
     return div;
   }
 
@@ -784,6 +831,22 @@
         return;
       }
 
+      const fonte = alvo.closest('[data-preview-source]');
+      if (fonte) {
+        e.preventDefault();
+        abrirFonte(fonte.dataset.previewSource, fonte.dataset.previewName);
+        return;
+      }
+
+      const bloqueada = alvo.closest('[data-preview-bloqueado]');
+      if (bloqueada) {
+        e.preventDefault();
+        const nome = bloqueada.dataset.previewName || 'fonte';
+        const motivo = bloqueada.dataset.previewBloqueado || 'sem prévia para esta fonte';
+        if (window.addSysMsg) window.addSysMsg(`fonte "${nome}": ${motivo}.`);
+        return;
+      }
+
       const arq = alvo.closest('[data-preview-path]');
       if (arq) {
         e.preventDefault();
@@ -818,6 +881,8 @@
     reload: () => { if (estado.aberto) desenhar(); },
     strip: strip,
     autoOpen: autoOpen,
+    // fonte registrada fora de data/ (rota /api/source/<id>/preview)
+    openSource: abrirFonte,
     // resolve caminho relativo de markdown (usado também pelos testes)
     resolverRelativo: resolverRelativo,
     // usado pelo botão "ver" dos links antigos

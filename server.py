@@ -19,6 +19,7 @@ Rotas:
   POST /api/source              → indexa arquivo/URL como fonte (requer login)
   GET  /api/sources             → lista fontes da sessão atual
   DELETE /api/source/<id>       → remove fonte
+  GET  /api/source/<id>/preview → serve o arquivo da fonte (mesmo fora de data/)
   GET  /api/files?path=         → lista arquivos/pastas em data/ (requer login)
   GET  /api/preview_site?path=  → sobe servidor estático da pasta e devolve URL
   GET  /download                → download de arquivo em data/ (requer login)
@@ -558,7 +559,8 @@ def _preview_path_da_fonte(filepath: str) -> str | None:
     """
     Caminho relativo à raiz para o visualizador — só se o arquivo da fonte
     estiver em data/ (upload de fonte cai em data/user/sources/). Fonte
-    indexada de fora de data/ não expõe caminho nenhum para o navegador.
+    indexada de fora de data/ não expõe caminho nenhum por aqui; ela abre pela
+    rota /api/source/<id>/preview (ver _preview_da_fonte).
     """
     try:
         arquivo = Path(filepath or "").resolve()
@@ -568,6 +570,114 @@ def _preview_path_da_fonte(filepath: str) -> str | None:
     if any(parte.startswith(".") for parte in rel.parts) or not arquivo.is_file():
         return None
     return arquivo.relative_to(ROOT).as_posix()
+
+
+# arquivos que nunca saem pela rota de fonte, mesmo que alguém os indexe
+_FONTE_BLOQUEADA = {
+    "ciel_config.json", "providers.json", "mcp_servers.json",
+    "agent_history.db", "knowledge.db", "secrets.json",
+}
+_FONTE_EXT_BLOQUEADA = {".db", ".sqlite", ".sqlite3", ".pem", ".key", ".pfx", ".p12"}
+
+
+def _fonte_servivel(caminho: Path) -> tuple[bool, str]:
+    """
+    A fonte pode ser servida pelo visualizador? Devolve (ok, motivo).
+
+    A permissão aqui é o **registro na tabela de fontes** (o usuário indexou de
+    propósito), não o caminho: fonte fora de data/ é legítima. O que fica de
+    fora é credencial e banco do próprio Ciel, que não têm por que ir para o
+    navegador.
+    """
+    if not caminho.is_file():
+        return False, "arquivo da fonte não está mais no disco"
+    nome = caminho.name.lower()
+    if caminho.name.startswith(".") or nome in _FONTE_BLOQUEADA:
+        return False, "arquivo protegido — não é servido pelo visualizador"
+    if caminho.suffix.lower() in _FONTE_EXT_BLOQUEADA:
+        return False, "banco de dados não tem visualização"
+    try:
+        from workspace import _caminhos_de_credenciais
+        if caminho.resolve() in _caminhos_de_credenciais():
+            return False, "arquivo de credenciais — não é servido pelo visualizador"
+    except OSError:
+        pass
+    return True, ""
+
+
+def _preview_da_fonte(fonte: dict) -> dict:
+    """
+    Como o painel abre esta fonte.
+
+    preview_path   → arquivo em data/ (rota /preview, vira site se for html)
+    preview_url    → arquivo registrado fora de data/ (/api/source/<id>/preview)
+    preview_motivo → não abre, com o porquê para mostrar ao usuário
+    """
+    filepath = str(fonte.get("filepath") or "")
+    caminho = Path(filepath).expanduser()
+    ok, motivo = _fonte_servivel(caminho)
+    if not ok:
+        return {"preview_path": None, "preview_url": None, "preview_motivo": motivo}
+
+    rel = _preview_path_da_fonte(filepath)
+    if rel:
+        return {"preview_path": rel, "preview_url": None, "preview_motivo": None}
+
+    return {
+        "preview_path": None,
+        "preview_url": f"/api/source/{int(fonte['id'])}/preview",
+        "preview_motivo": None,
+    }
+
+
+@app.route("/api/source/<int:source_id>/preview")
+def api_source_preview(source_id):
+    """
+    Serve o arquivo de uma fonte registrada — inclusive fora de data/.
+
+    Fonte é conteúdo que o usuário indexou de propósito, e é isso que autoriza
+    a leitura; o guard do /preview continua restrito a data/. Html vira texto
+    para não rodar página na origem do Ciel.
+    """
+    if not _is_authenticated():
+        return (
+            "Faça login (cadeado no topo) para abrir a fonte.",
+            401,
+            {"Content-Type": "text/plain; charset=utf-8"},
+        )
+
+    try:
+        from knowledge.db import get_source
+        fonte = get_source(source_id)
+    except Exception as e:
+        return (f"Erro ao ler a fonte: {e}", 500,
+                {"Content-Type": "text/plain; charset=utf-8"})
+    if not fonte:
+        return ("Fonte não encontrada.", 404,
+                {"Content-Type": "text/plain; charset=utf-8"})
+
+    caminho = Path(str(fonte.get("filepath") or "")).expanduser()
+    ok, motivo = _fonte_servivel(caminho)
+    if not ok:
+        codigo = 404 if "disco" in motivo else 403
+        return (motivo + ".", codigo,
+                {"Content-Type": "text/plain; charset=utf-8"})
+
+    mime = mimetypes.guess_type(caminho.name)[0] or "application/octet-stream"
+    if mime in ("text/html", "application/xhtml+xml"):
+        mime = "text/plain"   # html de fonte não executa na origem do Ciel
+    resp = send_file(
+        str(caminho.resolve()),
+        mimetype=mime,
+        conditional=True,
+        as_attachment=request.args.get("dl") == "1",
+        download_name=caminho.name,
+    )
+    if _textual(mime):
+        resp.headers["Content-Type"] = f"{mime}; charset=utf-8"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @app.route("/api/files")
@@ -2227,11 +2337,11 @@ def api_load_session(session_id):
         raw = list_sources(agent_id=sess["agent_id"], session_id=str(session_id))
         sources = [
             {
-                "id":           s["id"],
-                "filename":     s["filename"],
-                "n_chunks":     s["n_chunks"],
-                "scope":        "global" if s["session_id"] == "_shared" else "sessão",
-                "preview_path": _preview_path_da_fonte(s.get("filepath")),
+                "id":       s["id"],
+                "filename": s["filename"],
+                "n_chunks": s["n_chunks"],
+                "scope":    "global" if s["session_id"] == "_shared" else "sessão",
+                **_preview_da_fonte(s),
             }
             for s in raw
         ]
@@ -2417,15 +2527,14 @@ def api_list_sources():
         result = []
         for s in sources:
             scope = "global" if s["session_id"] == "_shared" else f"sessão {s['session_id']}"
-            # caminho pronto para o visualizador (ver _preview_path_da_fonte)
-            preview_path = _preview_path_da_fonte(s.get("filepath"))
             result.append({
-                "id":           s["id"],
-                "filename":     s["filename"],
-                "n_chunks":     s["n_chunks"],
-                "scope":        scope,
-                "summary":      (s.get("summary") or "")[:100],
-                "preview_path": preview_path,
+                "id":       s["id"],
+                "filename": s["filename"],
+                "n_chunks": s["n_chunks"],
+                "scope":    scope,
+                "summary":  (s.get("summary") or "")[:100],
+                # como o painel abre: path em data/, url da fonte ou o motivo
+                **_preview_da_fonte(s),
             })
         return jsonify({"sources": result})
     except Exception as e:
