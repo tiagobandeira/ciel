@@ -128,15 +128,36 @@ function addUserMsg(text, fileInfo = null) {
   scrollBottom();
 }
 
-function addAgentMsg(text, role = 'agent') {
+function addAgentMsg(text, role = 'agent', arquivos = null) {
   const div = document.createElement('div');
   div.className = `msg ${role}`;
   const label = role === 'warn' ? '⚡ auto tool' : 'ciel';
 
   // detecta arquivos na resposta
   const refs = extractFileRefs(text);
+
+  // o servidor já disse o que o turno gerou: para esses, só o chip (nome abre
+  // a prévia, ↓ baixa). Sem isso a mesma resposta mostrava baixar + ver + chip.
+  // Menção solta ("index.html" no meio do texto) não vira link: o caminho não
+  // é um arquivo real e o /download devolveria 404.
+  const lista = Array.isArray(arquivos) ? arquivos : [];
+  const gerados = new Set(lista.map(a => String(a.path || '').toLowerCase()));
+  // projeto gerado: os arquivos dentro dele também não viram link solto
+  const pastas = lista.filter(a => a.dir).map(a => String(a.path || '').toLowerCase() + '/');
+  const refsChat = refs.filter(p => {
+    const alvo = previewPath(p);
+    if (!alvo) return false;
+    const baixo = alvo.toLowerCase();
+    if (gerados.has(baixo)) return false;
+    return !pastas.some(pasta => baixo.startsWith(pasta));
+  });
+
   let dlLinks = '';
-  if (refs.length) dlLinks = buildDownloadLinks(refs);
+  if (refsChat.length) dlLinks = buildDownloadLinks(refsChat);
+
+  // arquivos que o servidor viu sendo gerados (tool de escrita), sem regex
+  const fileStrip = (window.Preview && Array.isArray(arquivos) && arquivos.length)
+    ? Preview.strip(arquivos) : '';
 
   // imagens inline
   let imgBlocks = '';
@@ -150,7 +171,7 @@ function addAgentMsg(text, role = 'agent') {
     <div class="msg-bubble">
       <button class="copy-btn" onclick="copyBubble(this,\`${escAttr(text)}\`)">copy</button>
       <div class="msg-body">${renderMarkdown(text)}</div>
-      ${dlLinks}${imgBlocks}
+      ${dlLinks}${fileStrip}${imgBlocks}
     </div>`;
   messagesEl().appendChild(div);
   scrollBottom();
@@ -554,7 +575,12 @@ window.sendMessage = async () => {
     }
 
     const role = data.status === 'needs_tool' ? 'warn' : 'agent';
-    addAgentMsg(data.reply || data.error || '?', role);
+    addAgentMsg(data.reply || data.error || '?', role, data.arquivos || []);
+
+    // o agente gerou arquivo: abre a prévia do principal (se o "auto" estiver on)
+    if (window.Preview && Array.isArray(data.arquivos) && data.arquivos.length) {
+      Preview.autoOpen(data.arquivos);
+    }
 
     // atualiza tokens
     if (data.tokens_in || data.tokens_out) {
@@ -814,15 +840,19 @@ async function refreshSources() {
       miniList.innerHTML = '<div class="panel-empty">nenhuma fonte</div>';
       return;
     }
+    const attrFonte = (s, classe) => s.preview_path
+      ? ` class="${classe} clicavel" data-preview-path="${esc(s.preview_path)}"` +
+        ` data-preview-name="${esc(s.filename)}" title="visualizar ${esc(s.filename)}"`
+      : ` class="${classe}"`;
     list.innerHTML = data.sources.map(s => `
       <div class="source-item">
-        <span class="source-item-name">${icone('file')} ${esc(s.filename)}</span>
+        <span${attrFonte(s, 'source-item-name')}>${icone('file')} ${esc(s.filename)}</span>
         <span class="source-item-meta">${s.n_chunks} chunks · ${s.scope}</span>
         <button class="source-item-del" onclick="removeSource(${s.id})" title="remover">✕</button>
       </div>`).join('');
     miniList.innerHTML = data.sources.slice(0, 5).map(s => `
       <div class="source-mini-item">
-        <span class="source-mini-name">${icone('file')} ${esc(s.filename)}</span>
+        <span${attrFonte(s, 'source-mini-name')}>${icone('file')} ${esc(s.filename)}</span>
         <button class="source-mini-del" onclick="removeSource(${s.id})">✕</button>
       </div>`).join('');
   } catch(e) {
@@ -1011,7 +1041,9 @@ window.loadSession = async (sessionId) => {
     if (data.sources?.length) {
       miniList.innerHTML = data.sources.map(s => `
         <div class="source-mini-item">
-          <span class="source-mini-name">${icone('file')} ${esc(s.filename)}</span>
+          <span${s.preview_path
+            ? ` class="source-mini-name clicavel" data-preview-path="${esc(s.preview_path)}" data-preview-name="${esc(s.filename)}" title="visualizar"`
+            : ' class="source-mini-name"'}>${icone('file')} ${esc(s.filename)}</span>
         </div>`).join('');
     } else {
       miniList.innerHTML = '<div class="panel-empty">nenhuma fonte</div>';
@@ -1027,7 +1059,9 @@ window.loadSession = async (sessionId) => {
       if (t.role === 'user') { addUserMsg(t.content); return; }
       if (t.role !== 'agent') return;
       replayTrace(t);
-      addAgentMsg(t.content);
+      // chips "arquivo gerado" do turno salvo (o servidor manda a lista; em
+      // sessão antiga ele reconstrói pelos caminhos citados na resposta)
+      addAgentMsg(t.content, 'agent', t.arquivos || []);
     });
 
     // aviso de modo leitura
@@ -1207,14 +1241,32 @@ function extractFileRefs(text) {
   return [...refs];
 }
 
+// caminho relativo a data/ (o único que /preview serve); absoluto é reduzido
+function previewPath(p) {
+  const norm = String(p || '').replace(/\\/g, '/');
+  if (/^data\//i.test(norm)) return norm;
+  const i = norm.toLowerCase().indexOf('/data/');
+  return i >= 0 ? norm.slice(i + 1) : null;
+}
+
 function buildDownloadLinks(refs) {
   if (!refs.length) return '';
   return refs.map(p => {
     const ext  = p.split('.').pop().toLowerCase();
     const name = p.split(/[\\/]/).pop();
     const ic = icone(IMAGE_EXTS.has(ext) ? 'image' : 'download');
-    return `<a class="dl-link" href="/download?path=${encodeURIComponent(p)}" 
-               download="${esc(name)}" target="_blank">${ic} ${esc(name)}</a>`;
+    // "ver" abre o painel de visualização (Preview em preview.js); o link
+    // continua sendo o download — e é o que sobra quando o tipo não renderiza
+    const alvo = previewPath(p);
+    const ver = alvo
+      ? `<button class="dl-view" data-preview-path="${esc(alvo)}" data-preview-name="${esc(name)}"
+                 title="visualizar no painel">ver</button>`
+      : '';
+    return `<span class="dl-row">
+      <a class="dl-link" href="/download?path=${encodeURIComponent(p)}"
+         download="${esc(name)}" target="_blank">${ic} ${esc(name)}</a>
+      ${ver}
+    </span>`;
   }).join('');
 }
 

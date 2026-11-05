@@ -19,7 +19,10 @@ Rotas:
   POST /api/source              → indexa arquivo/URL como fonte (requer login)
   GET  /api/sources             → lista fontes da sessão atual
   DELETE /api/source/<id>       → remove fonte
+  GET  /api/files?path=         → lista arquivos/pastas em data/ (requer login)
+  GET  /api/preview_site?path=  → sobe servidor estático da pasta e devolve URL
   GET  /download                → download de arquivo em data/ (requer login)
+  GET  /preview/<path>          → visualização inline de arquivo em data/ (requer login)
 
   --- autenticação ---
   GET  /api/auth/status         → { configured, is_default, default_password? }
@@ -51,6 +54,8 @@ Uso:
 import sys
 import json
 import base64
+import mimetypes
+import os
 import argparse
 import re
 import threading
@@ -71,6 +76,7 @@ from history_ui     import build_context_injection
 from auth           import AuthManager
 from auth.cli       import exibir_senha
 import ui_bus
+import preview_sites
 from feed_builder import build_painel as construir_feed_painel
 from feed_builder import build_mais as construir_feed_mais
 from panel_actions import executar as executar_acao_painel
@@ -84,6 +90,9 @@ DEFAULT_AGENT  = "general"
 VERSION        = "2.0.0"
 AUTH_COOKIE    = "ciel_auth"
 ARTIGOS        = ArticleStore(DB_PATH)
+# endereço de escuta do Flask; define onde os servidores de preview escutam
+# (loopback quando o site é local, 0.0.0.0 quando roda com --lan)
+SERVER_HOST    = "127.0.0.1"
 
 # ── auth ─────────────────────────────────────────────────────────────────────
 # Criado no main(), depois do comando de reset. Construir o AuthManager não
@@ -403,22 +412,73 @@ def index():
 def static_files(filename):
     return send_from_directory(app.static_folder, filename)
 
-# ── /download ─────────────────────────────────────────────────────────────────
+# ── /download, /preview e /api/files ─────────────────────────────────────────
 # Só o que foi gerado PARA o usuário sai daqui: data/ (inclui data/user/).
 # Antes, qualquer arquivo dentro do ROOT era baixável — inclusive
 # ciel_config.json (com chaves de API em texto puro), agent_history.db e o
 # .ciel_workspace.json — e a rota nem exigia cookie: um GET na rede bastava.
-_DOWNLOAD_ROOT = (ROOT / "data").resolve()
+#
+# /preview usa a mesma raiz e o mesmo guard; muda só a entrega — inline com o
+# MIME do arquivo em vez de attachment. É o que permite ler um markdown, ver
+# imagem/PDF e RODAR uma página html/css/js gerada, sem abrir o arquivo na mão.
+_PUBLIC_ROOT = (ROOT / "data").resolve()
+
+# mimetypes do sistema não cobre tudo que o agente gera (e no Windows o
+# registro do SO às vezes atrapalha): estes são os que o visualizador usa.
+for _ext, _mime in {
+    ".md": "text/markdown", ".markdown": "text/markdown",
+    ".js": "text/javascript", ".mjs": "text/javascript", ".jsx": "text/javascript",
+    ".ts": "text/plain", ".tsx": "text/plain",
+    ".py": "text/x-python", ".ipynb": "application/json",
+    ".csv": "text/csv", ".tsv": "text/tab-separated-values",
+    ".yaml": "text/yaml", ".yml": "text/yaml", ".toml": "text/plain",
+    ".log": "text/plain", ".txt": "text/plain",
+    ".diff": "text/plain", ".patch": "text/plain",
+}.items():
+    # strict=True de propósito: guess_type() consulta o mapa "strict", e é
+    # ele que send_file/route usam (add_type com strict=False só mexe no outro)
+    mimetypes.add_type(_mime, _ext)
+
+# extensões que o painel do site sabe mostrar; o resto só oferece download
+_EXT_VISIVEIS = set("""
+    html htm xhtml md markdown txt log py js mjs cjs jsx ts tsx css scss json
+    jsonc yaml yml toml ini cfg conf sh bash ps1 bat cmd sql c h cpp hpp java
+    cs go rs rb php lua r kt swift csv tsv diff patch xml svg ipynb png jpg
+    jpeg gif webp bmp ico avif pdf
+""".split())
+
+_TEXTUAL = {
+    "application/javascript", "application/json", "application/xml",
+    "image/svg+xml", "application/x-yaml", "application/yaml",
+}
 
 
-def _resolver_download(path: str) -> Path | None:
-    """Resolve `path` e devolve o arquivo, ou None se cair fora de data/."""
+def _textual(mime: str) -> bool:
+    """MIME cujo conteúdo é texto — precisa de charset=utf-8 na resposta."""
+    return mime.startswith("text/") or mime in _TEXTUAL
+
+
+def _resolver_arquivo_publico(path: str) -> Path | None:
+    """
+    Resolve `path` e devolve o arquivo, ou None se cair fora de data/.
+
+    Recusa também qualquer componente que comece com ".": dentro de data/
+    mora, por exemplo, data/user/.id_secret (segredo HMAC do bot).
+    """
+    if not path:
+        return None
     try:
         full = (ROOT / path).resolve()
-        full.relative_to(_DOWNLOAD_ROOT)
+        rel = full.relative_to(_PUBLIC_ROOT)
     except (ValueError, OSError):
         return None
+    if any(parte.startswith(".") for parte in rel.parts):
+        return None
     return full if full.is_file() else None
+
+
+# nome antigo mantido — /download e o resto do arquivo já falavam nele
+_resolver_download = _resolver_arquivo_publico
 
 
 @app.route("/download")
@@ -434,10 +494,177 @@ def download():
     path = request.args.get("path", "")
     if not path:
         abort(400)
-    full = _resolver_download(path)
+    full = _resolver_arquivo_publico(path)
     if full is None:
         abort(403)
     return send_file(str(full), as_attachment=True, download_name=full.name)
+
+
+# ── /preview ──────────────────────────────────────────────────────────────────
+@app.route("/preview/<path:rel>")
+def preview(rel):
+    """
+    Serve o arquivo inline, com o MIME certo.
+
+    Quem decide o que NÃO roda é o front: o iframe do painel nasce sandboxed
+    (origem opaca), então a página gerada não alcança o cookie nem a API do
+    Ciel. "Modo confiável" e "abrir em nova aba" são opt-in explícito.
+    """
+    if not _is_authenticated():
+        return (
+            "Faça login (cadeado no topo) para visualizar arquivos.",
+            401,
+            {"Content-Type": "text/plain; charset=utf-8"},
+        )
+    full = _resolver_arquivo_publico(rel)
+    if full is None:
+        abort(404)
+
+    mime = mimetypes.guess_type(full.name)[0] or "application/octet-stream"
+    resp = send_file(str(full), mimetype=mime, conditional=True)
+    if _textual(mime):
+        resp.headers["Content-Type"] = f"{mime}; charset=utf-8"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    # o arquivo pode ser reescrito pelo agente: recarregar tem que mostrar novo
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+# ── /api/files ────────────────────────────────────────────────────────────────
+# Navegador de arquivos do painel de visualização. Mesmo guard do /preview:
+# login + data/ + nada de dotfile. Sem isto, mostrar "os arquivos gerados"
+# dependeria de adivinhar nomes pelo texto da resposta do agente.
+_FILES_LIMIT = 400
+
+
+def _descrever_arquivo(caminho: Path, info=None) -> dict:
+    """Metadados de um arquivo no formato que o painel consome."""
+    try:
+        info = info or caminho.stat()
+    except OSError:
+        info = None
+    ext = caminho.suffix.lower().lstrip(".")
+    return {
+        "path":    caminho.relative_to(ROOT).as_posix(),
+        "name":    caminho.name,
+        "ext":     ext,
+        "size":    getattr(info, "st_size", 0),
+        "mtime":   int(getattr(info, "st_mtime", 0)),
+        "preview": ext in _EXT_VISIVEIS,
+    }
+
+
+def _preview_path_da_fonte(filepath: str) -> str | None:
+    """
+    Caminho relativo à raiz para o visualizador — só se o arquivo da fonte
+    estiver em data/ (upload de fonte cai em data/user/sources/). Fonte
+    indexada de fora de data/ não expõe caminho nenhum para o navegador.
+    """
+    try:
+        arquivo = Path(filepath or "").resolve()
+        rel = arquivo.relative_to(_PUBLIC_ROOT)
+    except (ValueError, OSError):
+        return None
+    if any(parte.startswith(".") for parte in rel.parts) or not arquivo.is_file():
+        return None
+    return arquivo.relative_to(ROOT).as_posix()
+
+
+@app.route("/api/files")
+def api_files():
+    """Lista uma pasta dentro de data/ (padrão: data/user)."""
+    if not _is_authenticated():
+        return jsonify({"error": "listar arquivos exige login."}), 401
+
+    rel = (request.args.get("path") or "data/user").strip().replace("\\", "/").strip("/")
+    try:
+        alvo = (ROOT / rel).resolve()
+        alvo.relative_to(_PUBLIC_ROOT)
+    except (ValueError, OSError):
+        return jsonify({"error": "caminho fora de data/"}), 403
+    if not alvo.is_dir():
+        # instalação limpa: data/user só nasce no primeiro arquivo gerado
+        if alvo == _PUBLIC_ROOT / "user":
+            alvo = _PUBLIC_ROOT
+        else:
+            return jsonify({"error": "pasta não encontrada"}), 404
+
+    itens, cortados = [], False
+    for p in sorted(alvo.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
+        if p.name.startswith("."):
+            continue
+        if len(itens) >= _FILES_LIMIT:
+            cortados = True
+            break
+        if p.is_dir():
+            itens.append({
+                "path": p.relative_to(ROOT).as_posix(),
+                "name": p.name,
+                "dir":  True,
+                "site": _entry_do_site(p) is not None,
+            })
+            continue
+        if not p.is_file():
+            continue
+        itens.append({**_descrever_arquivo(p), "dir": False})
+
+    # "parent" só enquanto ainda estiver dentro de data/
+    pai = None
+    if alvo != _PUBLIC_ROOT:
+        cand = alvo.parent
+        try:
+            cand.relative_to(_PUBLIC_ROOT)
+            pai = cand.relative_to(ROOT).as_posix()
+        except ValueError:
+            pai = None
+
+    return jsonify({
+        "path":     alvo.relative_to(ROOT).as_posix(),
+        "parent":   pai,
+        "items":    itens,
+        "truncado": cortados,
+        "site":     _entry_do_site(alvo) is not None,
+    })
+
+
+# ── /api/preview_site ────────────────────────────────────────────────────────
+@app.route("/api/preview_site")
+def api_preview_site():
+    """
+    Sobe (ou reaproveita) o servidor estático da pasta e devolve a URL.
+
+    É o que permite abrir um projeto gerado como site de verdade — css/js
+    irmãos, `type="module"` e `localStorage` — numa origem separada do Ciel,
+    sem precisar abrir outra janela do navegador.
+    """
+    if not _is_authenticated():
+        return jsonify({"error": "abrir projeto exige login."}), 401
+
+    rel = (request.args.get("path") or "").strip().replace("\\", "/").strip("/")
+    alvo = _caminho_publico(rel)
+    if alvo is None:
+        return jsonify({"error": "caminho fora de data/"}), 403
+
+    destino = _pasta_do_site(alvo)
+    if destino is None:
+        return jsonify({
+            "error": "sem html para abrir (a pasta precisa de index.html)",
+        }), 404
+    pasta, entrada = destino
+
+    # espelha o alcance do site: local quando o Flask é local, rede no --lan
+    escuta = "0.0.0.0" if SERVER_HOST not in ("127.0.0.1", "localhost", "::1") else "127.0.0.1"
+    site = preview_sites.iniciar(pasta, host=escuta)
+    host_visto = request.host.split(":")[0]
+
+    return jsonify({
+        "url":   preview_sites.url_do(site, host_visto, entrada),
+        "path":  pasta.relative_to(ROOT).as_posix(),
+        "entry": entrada,
+        "name":  pasta.name,
+        "dir":   alvo.is_dir(),
+        "port":  site["porta"],
+    })
 
 
 # ── /api/info ─────────────────────────────────────────────────────────────────
@@ -1165,9 +1392,16 @@ def _publica_fim(turn_id: str, status: str, steps: int,
 
 
 def _trace_json(passos: list, status: str, steps: int,
-                tok_in: int, tok_out: int, t0: float) -> str | None:
-    """Serializa o trace do turno para o histórico (None se não houve passo)."""
-    if not passos:
+                tok_in: int, tok_out: int, t0: float,
+                arquivos: list | None = None) -> str | None:
+    """
+    Serializa o trace do turno para o histórico (None se não houve passo).
+
+    `arquivos` vai junto: é o que faz os chips "arquivo gerado" reaparecerem
+    quando a sessão é reaberta (um turno que só gerou pasta não tem nada no
+    texto da resposta para o front adivinhar).
+    """
+    if not passos and not arquivos:
         return None
     return json.dumps(
         {
@@ -1179,9 +1413,214 @@ def _trace_json(passos: list, status: str, steps: int,
                 "tokens_out": tok_out,
                 "ms":         int((time.monotonic() - t0) * 1000),
             },
+            "arquivos": arquivos or [],
         },
         ensure_ascii=False,
     )
+
+
+# ── arquivos gerados no turno ────────────────────────────────────────────────
+# O site mostra o que o agente acabou de gerar e abre a prévia sozinho. A
+# detecção é um retrato de data/user ANTES e DEPOIS do turno: pega qualquer
+# escrita — write_file, write_files, secondary_model, run_script, tool de MCP —
+# sem depender do texto da resposta nem do metadata da tool. Era justamente aí
+# que projeto salvo numa pasta nova (secondary_model) passava batido.
+#
+# Pasta com index.html vira UMA entrada `dir`: o painel abre a pasta como site
+# (css/js irmãos funcionando), em vez de abrir o index.html solto e cru.
+_ARQUIVOS_MAX = 40
+_FOTO_MAX     = 4000
+
+
+def _foto_data() -> dict[str, int]:
+    """Retrato `caminho relativo → mtime_ns` de data/user (fallback: data/)."""
+    base = _PUBLIC_ROOT / "user"
+    if not base.is_dir():
+        base = _PUBLIC_ROOT
+    foto: dict[str, int] = {}
+    try:
+        for nivel, (raiz, pastas, nomes) in enumerate(os.walk(base)):
+            if nivel > 40:
+                break
+            pastas[:] = [d for d in pastas if not d.startswith(".")]
+            for nome in nomes:
+                if nome.startswith("."):
+                    continue
+                caminho = Path(raiz) / nome
+                try:
+                    foto[caminho.relative_to(ROOT).as_posix()] = caminho.stat().st_mtime_ns
+                except OSError:
+                    continue
+                if len(foto) >= _FOTO_MAX:
+                    return foto
+    except OSError:
+        pass
+    return foto
+
+
+def _caminho_publico(valor) -> Path | None:
+    """
+    Resolve um path dentro de data/ — arquivo, pasta, ou pasta que a tool
+    ainda vai criar (o `write_files` recebe uma base que pode não existir).
+    """
+    if not isinstance(valor, str) or not valor:
+        return None
+    try:
+        alvo = (ROOT / valor).resolve()
+        rel = alvo.relative_to(_PUBLIC_ROOT)
+    except (ValueError, OSError):
+        return None
+    if any(parte.startswith(".") for parte in rel.parts):
+        return None
+    return alvo
+
+
+def _entry_do_site(pasta: Path) -> str | None:
+    """Página de entrada de um projeto: index.html, senão o único html da raiz."""
+    for nome in ("index.html", "index.htm"):
+        if (pasta / nome).is_file():
+            return nome
+    htmls = sorted(
+        p.name for p in pasta.iterdir()
+        if p.is_file() and p.suffix.lower() in (".html", ".htm")
+    )
+    return htmls[0] if len(htmls) == 1 else None
+
+
+def _descrever_pasta(pasta: Path, n_files: int) -> dict:
+    """Entrada de projeto: o painel abre a pasta como site, não o arquivo solto."""
+    try:
+        mtime = int(pasta.stat().st_mtime)
+    except OSError:
+        mtime = 0
+    return {
+        "path":    pasta.relative_to(ROOT).as_posix(),
+        "name":    pasta.name,
+        "ext":     "",
+        "size":    0,
+        "mtime":   mtime,
+        "preview": True,
+        "dir":     True,
+        "entry":   _entry_do_site(pasta),
+        "n_files": n_files,
+    }
+
+
+def _arquivos_do_turno(antes: dict[str, int], depois: dict[str, int]) -> list[dict]:
+    """
+    O que o turno gerou, a partir do retrato de data/user antes/depois.
+
+    Pasta com index.html alterado vira UMA entrada `dir` (abre como site) e os
+    arquivos dela não viram chips soltos — era o que deixava a resposta com
+    "index.html", "style.css" e "script.js" um por um.
+    """
+    mudados = [rel for rel, mtime in depois.items() if antes.get(rel) != mtime]
+    if not mudados:
+        return []
+
+    projetos: dict[str, None] = {}
+    soltos: list[str] = []
+    for rel in mudados:
+        if Path(rel).name.lower() in ("index.html", "index.htm"):
+            projetos[Path(rel).parent.as_posix()] = None
+        else:
+            soltos.append(rel)
+
+    entradas: list[dict] = []
+
+    def _adicionar_pasta(pasta_rel: str) -> bool:
+        """Vira entrada de projeto se a pasta existir e tiver página de entrada."""
+        if any(entrada["path"] == pasta_rel for entrada in entradas):
+            return True
+        pasta = ROOT / pasta_rel
+        if not pasta.is_dir() or _entry_do_site(pasta) is None:
+            return False
+        dentro = sum(1 for rel in mudados if rel.startswith(pasta_rel + "/"))
+        entradas.append(_descrever_pasta(pasta, dentro))
+        return True
+
+    # 1) quem teve index.html alterado é projeto, mesmo que a pasta tenha nascido
+    #    depois do retrato "antes"
+    for pasta_rel in sorted(projetos):
+        _adicionar_pasta(pasta_rel)
+
+    # 2) os demais arquivos: se moram numa pasta que já é um site, o projeto
+    #    inteiro entra no lugar do arquivo solto (editar style.css de um projeto
+    #    não deve virar chip de "style.css")
+    for rel in sorted(soltos):
+        if any(rel.startswith(entrada["path"] + "/") for entrada in entradas):
+            continue
+        if _adicionar_pasta(Path(rel).parent.as_posix()):
+            continue
+        caminho = ROOT / rel
+        if not caminho.is_file():
+            continue
+        entradas.append(_descrever_arquivo(caminho))
+
+    entradas.sort(key=lambda e: (not e.get("dir"), -e["mtime"]))
+    return entradas[:_ARQUIVOS_MAX]
+
+
+def _pasta_do_site(alvo: Path) -> tuple[Path, str] | None:
+    """Pasta + entrada para abrir `alvo` (arquivo html ou pasta) como site."""
+    if alvo.is_file():
+        if alvo.suffix.lower() not in (".html", ".htm"):
+            return None
+        return alvo.parent, alvo.name
+    if alvo.is_dir():
+        entrada = _entry_do_site(alvo)
+        return (alvo, entrada) if entrada else None
+    return None
+
+
+# caminhos de data/ citados na resposta ("Arquivos salvos em: data/user/foo")
+_MENCAO_RX = re.compile(r"data/[A-Za-z0-9_./\-]+")
+
+
+def _arquivos_da_mensagem(texto: str) -> list[dict]:
+    """
+    Backfill para sessões antigas, gravadas antes de o trace guardar a lista.
+
+    Só aceita caminho que **existe** de verdade dentro de data/ — menção a
+    pasta que já foi apagada (ou nome inventado) não vira chip.
+    """
+    if not texto:
+        return []
+
+    entradas: list[dict] = []
+
+    def _adicionar(entrada: dict) -> None:
+        if not any(e["path"] == entrada["path"] for e in entradas):
+            entradas.append(entrada)
+
+    vistos: set[str] = set()
+    for bruto in _MENCAO_RX.findall(texto):
+        rel = bruto.rstrip(".,;:")
+        if rel in vistos:
+            continue
+        vistos.add(rel)
+
+        alvo = _caminho_publico(rel)
+        if alvo is None:
+            continue
+        if alvo.is_dir():
+            if _entry_do_site(alvo) is not None:
+                _adicionar(_descrever_pasta(alvo, 0))
+        elif alvo.is_file() and alvo.suffix.lower().lstrip(".") in _EXT_VISIVEIS:
+            # arquivo dentro de projeto: o chip é do projeto, não do index.html
+            if _entry_do_site(alvo.parent) is not None:
+                _adicionar(_descrever_pasta(alvo.parent, 0))
+            else:
+                _adicionar(_descrever_arquivo(alvo))
+        if len(entradas) >= 8:
+            break
+
+    # pasta "vence" os arquivos que ela contém (mesma regra do turno ao vivo)
+    pastas = [e["path"] for e in entradas if e.get("dir")]
+    return [
+        e for e in entradas
+        if e.get("dir") or not any(e["path"].startswith(p + "/") for p in pastas)
+    ]
 
 
 @app.route("/api/chat", methods=["POST"])
@@ -1223,6 +1662,9 @@ def _chat_turn():
     turn_id = _turn_id_valido(data.get("turn_id"))
     t0      = time.monotonic()
 
+    # arquivos que este turno gerar (o front abre a prévia com isso)
+    arquivos: list = []
+
     if not user_input and not image_b64 and not file_text:
         return jsonify({"error": "mensagem vazia"}), 400
 
@@ -1236,7 +1678,8 @@ def _chat_turn():
     # ── comandos especiais (/task, /tools, /tokens, /history ...) ────────────
     if user_input.startswith("/"):
         reply, changed = handle_command(
-            user_input, turn_id=turn_id, perguntas_interativas=perguntas_interativas
+            user_input, turn_id=turn_id, perguntas_interativas=perguntas_interativas,
+            arquivos=arquivos,
         )
         _publica_fim(turn_id, "done", 0, 0, 0, t0)
         return jsonify({
@@ -1245,6 +1688,7 @@ def _chat_turn():
             "tools_changed": changed,
             "session_id":   state.session_id,
             "turn_id":      turn_id,
+            "arquivos":     arquivos,
         })
 
     # ── branch automática no primeiro input após visualização ────────────────
@@ -1299,6 +1743,10 @@ def _chat_turn():
     else:
         context_injection = state.context_injection
 
+    # retrato de data/user antes do turno: depois comparamos para saber o que
+    # o agente gerou (funciona para qualquer tool, inclusive secondary_model)
+    foto_antes = _foto_data()
+
     trace = []
 
     cancelar = _registrar_cancelamento(turn_id)
@@ -1332,6 +1780,9 @@ def _chat_turn():
     finally:
         _esquecer_cancelamento(turn_id)
 
+    # o que apareceu/mudou em data/user durante o turno
+    arquivos.extend(_arquivos_do_turno(foto_antes, _foto_data()))
+
     t_in  = result.tokens_in
     t_out = result.tokens_out
     state.tokens_in  += t_in
@@ -1360,6 +1811,7 @@ def _chat_turn():
             "tokens_out": t_out,
             "session_id": state.session_id,
             "turn_id":    turn_id,
+            "arquivos":   arquivos,
         })
 
     if result.status == "error":
@@ -1373,7 +1825,8 @@ def _chat_turn():
     state.history.append({"role": "agent", "content": final_reply, "ts": ts})
     state.store.append_turn(
         state.session_id, "agent", final_reply, ts,
-        trace=_trace_json(trace, result.status, result.steps, t_in, t_out, t0),
+        trace=_trace_json(trace, result.status, result.steps, t_in, t_out, t0,
+                          arquivos=arquivos),
     )
 
     _publica_fim(turn_id, result.status, result.steps, t_in, t_out, t0)
@@ -1386,15 +1839,19 @@ def _chat_turn():
         "tools_changed": tools_changed,
         "session_id":    state.session_id,
         "turn_id":       turn_id,
+        "arquivos":      arquivos,
     })
 
 
 # ── handler de comandos internos ──────────────────────────────────────────────
 def handle_command(cmd: str, turn_id: str | None = None,
-                   perguntas_interativas: bool = False) -> tuple[str, bool]:
+                   perguntas_interativas: bool = False,
+                   arquivos: list | None = None) -> tuple[str, bool]:
     """
     Processa /comandos do frontend.
     `perguntas_interativas` liga on_ask_user no /task (só o site simples).
+    `arquivos`, se passado, recebe os arquivos gerados pelo /task — o mesmo
+    coletor do turno normal, para o site abrir a prévia.
     Retorna (reply_str, tools_changed_bool).
     """
     changed = False
@@ -1445,6 +1902,8 @@ def handle_command(cmd: str, turn_id: str | None = None,
         trace = []
         t0_task = time.monotonic()
         cancelar = _registrar_cancelamento(turn_id) if turn_id else None
+        # mesmo retrato do turno normal: a task também gera arquivos para ver
+        foto_antes = _foto_data() if arquivos is not None else None
         try:
             result = run_agent(
                 task_prompt,
@@ -1470,6 +1929,8 @@ def handle_command(cmd: str, turn_id: str | None = None,
         finally:
             if turn_id:
                 _esquecer_cancelamento(turn_id)
+        if foto_antes is not None and arquivos is not None:
+            arquivos.extend(_arquivos_do_turno(foto_antes, _foto_data()))
         state.tokens_in  += result.tokens_in
         state.tokens_out += result.tokens_out
 
@@ -1487,6 +1948,7 @@ def handle_command(cmd: str, turn_id: str | None = None,
                 trace=_trace_json(
                     trace, result.status, result.steps,
                     result.tokens_in, result.tokens_out, t0_task,
+                    arquivos=arquivos,
                 ),
             )
         return final, changed
@@ -1717,12 +2179,20 @@ def _turn_json(t) -> dict:
             trace = json.loads(t["trace"])
         except (ValueError, TypeError):
             trace = None
+
+    arquivos = (trace or {}).get("arquivos")
+    if arquivos is None and t["role"] == "agent":
+        # sessão gravada antes do trace guardar a lista: recupera pelos
+        # caminhos de data/ que a própria resposta cita (e que existem)
+        arquivos = _arquivos_da_mensagem(t["content"])
+
     return {
-        "id":      t["id"],
-        "role":    t["role"],
-        "content": t["content"],
-        "ts":      t["ts"],
-        "trace":   trace,
+        "id":       t["id"],
+        "role":     t["role"],
+        "content":  t["content"],
+        "ts":       t["ts"],
+        "trace":    trace,
+        "arquivos": arquivos or [],
     }
 
 
@@ -1757,10 +2227,11 @@ def api_load_session(session_id):
         raw = list_sources(agent_id=sess["agent_id"], session_id=str(session_id))
         sources = [
             {
-                "id":       s["id"],
-                "filename": s["filename"],
-                "n_chunks": s["n_chunks"],
-                "scope":    "sessão",
+                "id":           s["id"],
+                "filename":     s["filename"],
+                "n_chunks":     s["n_chunks"],
+                "scope":        "sessão",
+                "preview_path": _preview_path_da_fonte(s.get("filepath")),
             }
             for s in raw
         ]
@@ -1946,12 +2417,15 @@ def api_list_sources():
         result = []
         for s in sources:
             scope = "global" if s["session_id"] == "_shared" else f"sessão {s['session_id']}"
+            # caminho pronto para o visualizador (ver _preview_path_da_fonte)
+            preview_path = _preview_path_da_fonte(s.get("filepath"))
             result.append({
-                "id":       s["id"],
-                "filename": s["filename"],
-                "n_chunks": s["n_chunks"],
-                "scope":    scope,
-                "summary":  (s.get("summary") or "")[:100],
+                "id":           s["id"],
+                "filename":     s["filename"],
+                "n_chunks":     s["n_chunks"],
+                "scope":        scope,
+                "summary":      (s.get("summary") or "")[:100],
+                "preview_path": preview_path,
             })
         return jsonify({"sources": result})
     except Exception as e:
@@ -1983,7 +2457,7 @@ def api_delete_source(source_id):
 
 # ── main ──────────────────────────────────────────────────────────────────────
 def main():
-    global state, auth
+    global state, auth, SERVER_HOST
 
     # Windows em locale cp1252: os glifos do banner (◈, ⚠, 🔒) levantam
     # UnicodeEncodeError quando stdout/stderr são redirecionados para arquivo
@@ -2018,6 +2492,7 @@ def main():
     args.model = (args.model or _modelo_salvo() or DEFAULT_MODEL).strip()
     if args.lan:
         args.host = "0.0.0.0"
+    SERVER_HOST = args.host
     if args.sim and not args.reset_password:
         parser.error("--sim exige --reset-password")
 

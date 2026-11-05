@@ -700,6 +700,39 @@ nomeada preserva o estudo sem transformar o processo em algo específico.
 
 ---
 
+## D-038 — Visualizador do site: página gerada roda em origem própria
+
+**Decisão:** o site (`/`) ganhou um painel de visualização ao lado do chat.
+Arquivos vêm de `data/` por `/preview/<path>` (inline, com MIME); pastas são
+listadas por `/api/files`. Página gerada — projeto com `index.html` ou `html`
+avulso — é servida por um **servidor estático efêmero por pasta**, em porta
+própria e com token no caminho (`/p/<token>/...`), e aparece num iframe sem
+sandbox.
+
+**Por quê:** as duas alternativas falharam na prática. Servir pelo próprio
+Flask coloca a página na origem do Ciel (pode chamar `/api/chat` com o cookie).
+Servir num iframe com `sandbox` (origem opaca) faz os subrecursos saírem sem
+cookie: `style.css`/`script.js` voltam 401 e a página abre **crua** — foi o que
+aconteceu com a calculadora. Além disso, origem opaca não tem `localStorage`,
+`type="module"` nem `fetch()` local. O servidor estático por pasta resolve os
+três: CSS/JS irmãos carregam, a página tem origem de verdade e, por ser outra
+origem, continua sem acesso à API e ao cookie do Ciel.
+
+**Consequência:** html/css/js roda de verdade (jogo, calculadora, landing
+page) e a página não precisa ser aberta em outra janela. App com backend
+(Flask/Django/Java/C++) continua precisando de processo próprio e cai no
+download; `docx`/`xlsx`/zip mostram cartão de download. O servidor estático só
+escuta loopback (ou `0.0.0.0` com `--lan`), só serve a pasta de um projeto em
+`data/`, exige token e não lista diretório.
+
+A detecção do que o turno gerou é um **retrato de `data/user` antes/depois**
+(mtime), não o texto da resposta nem o metadata da tool: funciona com
+`secondary_model`, `write_files`, `run_script` e tools de MCP igualmente. Pasta
+com `index.html` vira uma entrada só (abre como site), em vez de um chip por
+arquivo.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |
@@ -710,3 +743,4 @@ nomeada preserva o estudo sem transformar o processo em algo específico.
 | Prompt do build | `system/core_build.md`, `agent_loop._build_system_prompt` |
 | Multitask | `multitask/flow.py`, `planner.py`, `runner.py`, `checks.py`, `report.py` |
 | Quadro | `board.py` (`data/runs/<id>/board.json`) |
+| Visualizador do site | `server.py` (`/preview`, `/api/files`, `/api/preview_site`), `preview_sites.py`, `web/static/preview.js` |

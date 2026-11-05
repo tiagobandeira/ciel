@@ -140,9 +140,11 @@ interface padrão quando o Textual não está instalado.
 painel de modelo/tokens/CPU). Roda os mesmos agentes, tools e histórico da CLI.
 
 **Server web** — o site simples (`/`) tem chat, sessões, tasks e fontes com
-login próprio; a interface visual (`/ui`) apresenta a conversa em um núcleo de
-partículas, com modos Núcleo, Pesquisa e Artigo. Por padrão escuta só a máquina
-local:
+login próprio, mais um **visualizador de arquivos** que abre ao lado do chat o
+que o agente gerou (html rodando, markdown, imagem, pdf, texto) — divisória
+arrastável, sem abrir arquivo na mão; a interface visual (`/ui`) apresenta a
+conversa em um núcleo de partículas, com modos Núcleo, Pesquisa e Artigo. Por
+padrão escuta só a máquina local:
 
 ```bash
 python server.py            # http://127.0.0.1:5000

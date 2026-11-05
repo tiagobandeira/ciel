@@ -14,6 +14,7 @@
 <script src="/static/icons.js" defer></script>
 <script src="/static/palette.js" defer></script>
 <script src="/static/trace.js" defer></script>
+<script src="/static/preview.js" defer></script>
 <script src="/static/app.js" defer></script>
 </head>
 <body>
@@ -140,6 +141,7 @@
         <span id="safe-badge-label">safe</span>
       </button>
       <button class="icon-btn" onclick="openSettings()" title="ajustes"><svg class="ic" aria-hidden="true"><use href="#i-gear"></use></svg></button>
+      <button class="icon-btn" onclick="Preview.toggle()" title="visualizador de arquivos" id="preview-btn"><svg class="ic" aria-hidden="true"><use href="#i-eye"></use></svg></button>
       <button class="icon-btn" onclick="toggleRightPanel()" title="painel" id="right-panel-btn">⊟</button>
     </div>
   </header>
@@ -189,6 +191,30 @@
       </div>
 
     </div>
+
+    <!-- Visualizador de arquivos (gerados / fontes) — divisória arrastável -->
+    <div id="preview-resizer" class="preview-resizer" role="separator"
+         aria-orientation="vertical" aria-label="redimensionar o visualizador"
+         title="arraste para redimensionar"></div>
+
+    <aside id="preview-pane" class="preview-pane" aria-label="visualizador de arquivos" hidden>
+      <header class="preview-head">
+        <div id="preview-tabs" class="preview-tabs"></div>
+        <div class="preview-actions">
+          <button id="preview-browse" class="pv-btn" title="navegar pelos arquivos gerados (data/user)"><svg class="ic" aria-hidden="true"><use href="#i-folder"></use></svg></button>
+          <button id="preview-auto" class="pv-btn" title="abrir a prévia quando o agente gerar arquivo">auto</button>
+          <button id="preview-reload" class="pv-btn" title="recarregar">↻</button>
+          <button id="preview-newtab" class="pv-btn" title="abrir em nova aba (sem isolamento)">↗</button>
+          <a id="preview-download" class="pv-btn" title="baixar" href="#" download>↓</a>
+          <button id="preview-close" class="pv-btn" title="fechar visualizador">✕</button>
+        </div>
+      </header>
+      <div id="preview-body" class="preview-body"></div>
+      <footer class="preview-foot">
+        <span id="preview-path" class="preview-path"></span>
+        <span id="preview-server" class="preview-server hidden"></span>
+      </footer>
+    </aside>
 
     <!-- Painel direito -->
     <aside id="right-panel" class="right-panel">

@@ -61,8 +61,9 @@ O login define o que a sessão pode fazer:
 | logado | todas as tools do agente |
 | `--safe` | modo seguro permanente, mesmo logado |
 
-Downloads (`/download`) e indexação de fonte local (`/api/source`) exigem
-login. Downloads servem apenas arquivos de `data/`.
+Downloads (`/download`), visualização (`/preview`) e listagem de arquivos
+(`/api/files`) exigem login, e servem apenas arquivos de `data/`. Indexar fonte
+local (`/api/source`) também exige login.
 
 ### Esqueci a senha
 
@@ -96,6 +97,82 @@ provider no mesmo arquivo. Para guardar os segredos em outro lugar, defina
   final. O botão **parar** cancela o turno mesmo com uma pergunta pendente.
 - **Interface visual.** O `/ui` ainda não renderiza essas perguntas: nele a
   tool segue o comportamento antigo.
+
+## Visualizador de arquivos
+
+A tela de chat divide o espaço com um painel de visualização (como os
+artefatos do Claude). Ele abre sozinho quando o agente gera um arquivo, ou
+por um destes caminhos:
+
+- **chips "arquivo gerado"** embaixo da resposta do turno — um por arquivo
+  (nome abre a prévia, `↓` baixa) e um por projeto, marcado como `site`;
+- botão **ver** ao lado de cada link de download no chat;
+- nome da fonte no painel de fontes (uploads caem em `data/user/sources/`);
+- botão do olho na topbar → navegador de arquivos de `data/user/`, com
+  `▶` nas pastas que têm `index.html` e "abrir esta pasta como site".
+
+A divisória entre chat e painel é arrastável (duplo clique volta ao padrão; a
+largura fica salva no navegador). Em tela estreita o painel cobre a tela em
+vez de dividir.
+
+### Como a detecção funciona
+
+Antes e depois de cada turno o server tira um retrato (`caminho → mtime`) de
+`data/user`. O que apareceu ou mudou é o que o agente gerou — venha de
+`write_file`, `write_files`, `secondary_model`, `run_script` ou tool de MCP.
+Não depende de adivinhar nomes pelo texto da resposta (era o que falhava no
+`secondary_model`, que salva uma pasta e responde só "arquivos salvos em
+data/user/foo") nem do metadata da tool.
+
+Pasta que contém `index.html` vira **uma** entrada de projeto, e o painel abre
+a pasta inteira como site — não o `index.html` solto.
+
+A lista vai junto com o trace da sessão, então **reabrir uma conversa antiga
+mostra os mesmos chips**. Sessão gravada antes disso existir é reconstruída
+pelos caminhos de `data/` citados na resposta — só os que ainda existem viram
+chip; menção solta a nome inexistente é ignorada.
+
+### Página gerada roda em origem própria
+
+Projeto ou `html` avulso é servido por um **servidor estático efêmero**, um por
+pasta, em porta própria e com token no caminho (`/p/<token>/...`). Foi a forma
+de ter as três coisas que o iframe do Flask não dava ao mesmo tempo:
+
+1. `style.css` e `script.js` irmãos carregam (no iframe `sandbox` os
+   subrecursos saíam sem cookie e voltavam 401 — a página abria "crua");
+2. `<script type="module">`, `fetch()` de arquivo vizinho e `localStorage`
+   funcionam, porque a página tem origem de verdade;
+3. a página **não** alcança a API nem o cookie do Ciel: é outra origem.
+
+O servidor escuta só em loopback (ou em `0.0.0.0` com `--lan`), serve apenas a
+pasta de um projeto dentro de `data/`, exige o token e não lista diretório.
+O rodapé do painel mostra a porta em uso (`site :5123`).
+
+| Tipo | Como abre |
+|---|---|
+| `html` / `htm`, pasta com `index.html` | servidor estático próprio (página rodando) |
+| `md` | renderizado com Markdown |
+| `txt`, código, `json`, `csv`, `log`… | `<pre>` com destaque de sintaxe |
+| imagem (`png`, `jpg`, `svg`…) | `<img>` |
+| `pdf` | visualizador nativo do navegador |
+
+`docx`, `xlsx`, `pptx`, zip e binários **não têm visualização**: o painel mostra
+um cartão com o botão de download. O mesmo vale para aplicação com backend —
+Flask/Django/Java/C++ precisam de processo próprio; aí o download continua
+sendo o caminho.
+
+### Rotas (para quem for mexer)
+
+| Rota | O que faz |
+|---|---|
+| `GET /preview/<path>` | serve um arquivo **inline** (markdown, imagem, pdf, texto), com MIME, `no-store` e login |
+| `GET /api/files?path=` | lista uma pasta de `data/` (padrão `data/user`) e marca `site` |
+| `GET /api/preview_site?path=` | sobe/reaproveita o servidor estático da pasta e devolve a URL com token |
+
+O guard é o mesmo do `/download`: só `data/`, `resolve()` contra `..` e symlink,
+e nenhum caminho com componente começando por `.` (é onde mora
+`data/user/.id_secret`). Arquivo que o painel não sabe mostrar continua
+baixável em `/download`.
 
 ## Interface visual (`/ui`)
 
