@@ -115,6 +115,12 @@ A divisória entre chat e painel é arrastável (duplo clique volta ao padrão; 
 largura fica salva no navegador). Em tela estreita o painel cobre a tela em
 vez de dividir.
 
+Abrir o visualizador **recolhe o painel direito** quando a prévia deixaria o
+chat com menos de ~440px (notebook, janela pequena); em tela larga ele fica.
+Se você reabrir o painel na mão com a prévia aberta, a interface respeita e não
+recolhe mais sozinha até recarregar a página — e, ao fechar a prévia, o painel
+só volta se foi o visualizador quem o recolheu.
+
 ### Como a detecção funciona
 
 Antes e depois de cada turno o server tira um retrato (`caminho → mtime`) de

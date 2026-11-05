@@ -659,11 +659,46 @@ window.closeSidebar   = () => {
 };
 
 // ── Right panel ───────────────────────────────────────────────
+// O visualizador usa estas funções para recolher o painel quando a prévia
+// espremeria o chat. A memória fica aqui: se o usuário reabrir na mão com a
+// prévia aberta, a interface não fecha mais sozinha.
+let painelAutoFechado = false;   // foi o visualizador que recolheu (não o usuário)
+let painelOverride    = false;   // usuário reabriu por conta própria: não insistir
+
+function _pintarBotaoPainel() {
+  document.getElementById('right-panel-btn').textContent = rightPanelOpen ? '⊟' : '⊞';
+}
+
 window.toggleRightPanel = () => {
   const panel = document.getElementById('right-panel');
   rightPanelOpen = !rightPanelOpen;
   panel.classList.toggle('collapsed', !rightPanelOpen);
-  document.getElementById('right-panel-btn').textContent = rightPanelOpen ? '⊟' : '⊞';
+  _pintarBotaoPainel();
+
+  painelAutoFechado = false;
+  // escolha manual de reabrir: desiste de recolher automaticamente
+  if (rightPanelOpen) painelOverride = true;
+};
+
+/** Recolhe o painel direito para o visualizador ganhar espaço.
+ *  Devolve true só se foi ele quem recolheu (para poder restaurar depois). */
+window.recolherPainelParaPreview = () => {
+  if (!rightPanelOpen || painelOverride) return false;
+  rightPanelOpen = false;
+  document.getElementById('right-panel').classList.add('collapsed');
+  _pintarBotaoPainel();
+  painelAutoFechado = true;
+  return true;
+};
+
+/** Devolve o espaço — só se o fechamento anterior foi automático. */
+window.restaurarPainelDoPreview = () => {
+  if (!painelAutoFechado) return;
+  painelAutoFechado = false;
+  if (rightPanelOpen) return;
+  rightPanelOpen = true;
+  document.getElementById('right-panel').classList.remove('collapsed');
+  _pintarBotaoPainel();
 };
 
 // ── Modais ─────────────────────────────────────────────────────

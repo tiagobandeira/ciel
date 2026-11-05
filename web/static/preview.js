@@ -25,6 +25,9 @@
   const MAX_TEXTO   = 800 * 1024;   // acima disso não renderiza, só baixa
   const LARGURA_MIN = 300;
   const LARGURA_PADRAO = 0.46;
+  // abaixo disso a prévia + painel direito espremem o chat: melhor recolher o
+  // painel (240px) do que deixar bolha de mensagem com 300px de largura
+  const LIMITE_CHAT = 440;
 
   const EXT_IMG  = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'avif', 'svg']);
   const EXT_HTML = new Set(['html', 'htm', 'xhtml']);
@@ -89,6 +92,33 @@
   }
 
   // ── painel: abrir / fechar / abas ────────────────────────────
+
+  /** Quanto sobra para o chat com a prévia e o painel do jeito que estão. */
+  function larguraDoChat() {
+    const area = areaLargura();
+    const painel = el('preview-pane');
+    const larguraPreview = painel ? painel.getBoundingClientRect().width : area * LARGURA_PADRAO;
+    const direita = el('right-panel');
+    const aberta = direita && !direita.classList.contains('collapsed');
+    const larguraDireita = aberta ? direita.getBoundingClientRect().width : 0;
+    return area - larguraPreview - larguraDireita - 6;   // 6 = divisória
+  }
+
+  /**
+   * Recolhe o painel direito só quando a prévia deixaria o chat estreito.
+   * Quem manda nisso é app.js (é lá que fica a memória de "fui eu que fechei"
+   * e "o usuário reabriu de propósito"), então aqui só pedimos.
+   */
+  function ajustarPainelDireito() {
+    if (!estado.aberto) {
+      if (window.restaurarPainelDoPreview) window.restaurarPainelDoPreview();
+      return;
+    }
+    if (larguraDoChat() < LIMITE_CHAT && window.recolherPainelParaPreview) {
+      window.recolherPainelParaPreview();
+    }
+  }
+
   function mostrarPainel(abrir) {
     const painel = el('preview-pane');
     const resizer = el('preview-resizer');
@@ -104,9 +134,11 @@
     if (abrir) {
       if (estado.ativa < 0 && estado.abas.length) estado.ativa = 0;
       desenhar();
+      ajustarPainelDireito();
     } else {
       const corpo = el('preview-body');
       if (corpo) corpo.innerHTML = '';   // para o iframe/JS do arquivo
+      ajustarPainelDireito();
     }
   }
 
@@ -613,7 +645,10 @@
     });
 
     window.addEventListener('resize', () => {
-      if (estado.aberto) aplicarLargura(el('preview-pane').getBoundingClientRect().width);
+      if (!estado.aberto) return;
+      aplicarLargura(el('preview-pane').getBoundingClientRect().width);
+      // janela encolheu: reavalia se o painel direito ainda cabe
+      ajustarPainelDireito();
     });
   }
 
