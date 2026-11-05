@@ -167,6 +167,10 @@ um cartão com o botão de download. O mesmo vale para aplicação com backend �
 Flask/Django/Java/C++ precisam de processo próprio; aí o download continua
 sendo o caminho.
 
+No markdown, `![imagem](grafico.png)` e `[link](outro.md)` são resolvidos
+contra a pasta do próprio arquivo (não contra a raiz do Ciel), e link para
+outro arquivo de `data/` abre no painel em vez de sair do app.
+
 ### Rotas (para quem for mexer)
 
 | Rota | O que faz |

@@ -368,6 +368,75 @@
       });
   }
 
+  // ── markdown ─────────────────────────────────────────────────
+  /**
+   * Resolve `rel` a partir do diretório `base` (ambos relativos a data/),
+   * tratando "./" e "../". Ex.: base "data/user/guia/" + "../x.png" →
+   * "data/user/x.png".
+   */
+  function resolverRelativo(base, rel) {
+    const partes = String(base || '').split('/').filter(Boolean);
+    for (const pedaco of String(rel || '').split('/')) {
+      if (!pedaco || pedaco === '.') continue;
+      if (pedaco === '..') partes.pop();
+      else partes.push(pedaco);
+    }
+    return partes.join('/');
+  }
+
+  function urlDoArquivo(caminho) {
+    return '/preview/' + String(caminho || '').split('/').map(encodeURIComponent).join('/');
+  }
+
+  /** URL que não é caminho relativo do markdown: protocolo, //, / ou #âncora. */
+  function ehAbsoluta(url) {
+    return /^(?:[a-z][a-z0-9+.-]*:|\/\/|\/|#)/i.test(String(url || ''));
+  }
+
+  function decodificar(valor) {
+    try { return decodeURIComponent(valor); } catch (_) { return valor; }
+  }
+
+  /**
+   * Reescreve os caminhos relativos do markdown.
+   *
+   * Sem isso `![grafico](grafico.png)` resolve contra a raiz do Ciel e dá 404,
+   * porque o markdown é renderizado na página do chat, não na pasta do arquivo.
+   * Link para outro arquivo de data/ abre no próprio painel (mesmo mecanismo
+   * dos chips) em vez de navegar para fora do app.
+   */
+  function ajustarCaminhosMarkdown(raiz, caminhoDoArquivo) {
+    const base = String(caminhoDoArquivo || '').replace(/[^/]*$/, '');
+
+    raiz.querySelectorAll('img[src]').forEach((img) => {
+      const src = img.getAttribute('src') || '';
+      if (ehAbsoluta(src)) return;
+      const alvo = resolverRelativo(base, decodificar(src.split(/[?#]/)[0]));
+      if (!alvo) return;
+      img.setAttribute('src', urlDoArquivo(alvo));
+      img.setAttribute('loading', 'lazy');
+    });
+
+    raiz.querySelectorAll('a[href]').forEach((a) => {
+      const href = a.getAttribute('href') || '';
+      if (ehAbsoluta(href)) {
+        if (/^https?:/i.test(href)) {
+          a.setAttribute('target', '_blank');
+          a.setAttribute('rel', 'noopener noreferrer');
+        }
+        return;
+      }
+      const limpo = decodificar(href.split(/[?#]/)[0]);
+      if (!limpo) return;
+      const alvo = resolverRelativo(base, limpo);
+      if (!alvo) return;
+      a.dataset.previewPath = alvo;
+      a.dataset.previewName = baseNome(alvo);
+      a.setAttribute('href', '#');
+      a.setAttribute('title', 'abrir no painel: ' + alvo);
+    });
+  }
+
   function markdownDe(aba, txt) {
     const div = document.createElement('div');
     div.className = 'preview-md';
@@ -381,6 +450,7 @@
     } else {
       div.textContent = txt;
     }
+    ajustarCaminhosMarkdown(div, aba.path);
     destacar(div);
     return div;
   }
@@ -748,6 +818,8 @@
     reload: () => { if (estado.aberto) desenhar(); },
     strip: strip,
     autoOpen: autoOpen,
+    // resolve caminho relativo de markdown (usado também pelos testes)
+    resolverRelativo: resolverRelativo,
     // usado pelo botão "ver" dos links antigos
     abrir: abrir,
   };
