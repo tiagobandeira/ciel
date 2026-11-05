@@ -63,8 +63,12 @@ async function init() {
     // trace ao vivo: assina o SSE antes de qualquer turno
     initEventos();
 
-    // Sessões
+    // Sessões + fontes da sessão
     await loadSessions();
+    setEstadoSessao('nova');
+    setRodapeLeitura(false);
+    renderTokens();
+    await refreshSources();
   } catch(e) {
     setStatus('error');
     addSysMsg('erro ao conectar — servidor rodando?');
@@ -90,17 +94,103 @@ function setStatus(state) {
 }
 
 // ── Tokens ───────────────────────────────────────────────────
+// O painel mostra o detalhamento (entrada/saída + total); a topbar só o total.
+// Sessão salva não guarda tokens — ali o valor é "—" em vez de um 0 mentiroso.
+let tokensDesconhecidos = false;
+
 function updateTokenDisplay(dIn = 0, dOut = 0) {
   tokenIn  += dIn;
   tokenOut += dOut;
-  document.getElementById('token-in').textContent  = fmt(tokenIn);
-  document.getElementById('token-out').textContent = fmt(tokenOut);
-  document.getElementById('info-tin').textContent  = fmt(tokenIn);
-  document.getElementById('info-tout').textContent = fmt(tokenOut);
+  renderTokens();
 }
+
+function setTokensDesconhecidos() {
+  tokensDesconhecidos = true;
+  renderTokens();
+}
+
+function renderTokens() {
+  const total = tokenIn + tokenOut;
+  const tin   = document.getElementById('info-tin');
+  const tout  = document.getElementById('info-tout');
+  const tot   = document.getElementById('info-total');
+  if (!tin || !tout || !tot) return;
+
+  const desconhecido = tokensDesconhecidos;
+  tin.textContent  = desconhecido ? '—' : fmt(tokenIn);
+  tout.textContent = desconhecido ? '—' : fmt(tokenOut);
+  tot.textContent  = desconhecido ? '—' : fmt(total);
+
+  const bar  = document.getElementById('rp-bar');
+  const card = document.getElementById('rp-uso');
+  const pill = document.getElementById('token-pill');
+  const pillV = document.getElementById('token-total');
+
+  if (bar) bar.classList.toggle('oculto', desconhecido);
+  if (card) {
+    card.classList.toggle('is-desconhecido', desconhecido);
+    card.title = desconhecido ? 'tokens não foram salvos no histórico desta sessão' : '';
+  }
+  if (pillV) pillV.textContent = desconhecido ? '—' : fmt(total);
+  if (pill) {
+    pill.title = desconhecido
+      ? 'tokens não foram salvos nesta sessão'
+      : `tokens desta sessão · ${fmtCheio(tokenIn)} entrada · ${fmtCheio(tokenOut)} saída`;
+  }
+
+  if (!desconhecido && bar) {
+    const pct = total ? Math.round((tokenIn / total) * 100) : 0;
+    document.getElementById('bar-in').style.width  = (total ? pct : 0) + '%';
+    document.getElementById('bar-out').style.width = (total ? 100 - pct : 0) + '%';
+  }
+}
+
+/** 12.4k em pt-BR (vírgula decimal); inteiros ficam sem sufixo. */
 function fmt(n) {
-  return n >= 1000 ? `${(n/1000).toFixed(1)}k` : String(n);
+  return n >= 1000 ? `${(n / 1000).toFixed(1).replace('.', ',')}k` : String(n);
 }
+function fmtCheio(n) {
+  return Number(n).toLocaleString('pt-BR');
+}
+
+// ── Cabeçalho do painel: estado, título e modo ────────────────
+function setEstadoSessao(estado) {
+  const el = document.getElementById('sess-state');
+  if (!el) return;
+  el.className = `rp-state is-${estado}`;
+  el.innerHTML = estado === 'leitura'
+    ? `${icone('eye')}<span>leitura</span>`
+    : `<i></i><span>${estado}</span>`;
+}
+
+/** Título (texto) e id (#56 | #—) da sessão no cabeçalho. */
+function setTituloSessao(titulo, id) {
+  const el = document.getElementById('sess-title');
+  if (el) {
+    el.textContent = titulo || 'conversa nova';
+    el.title = titulo || 'conversa nova';
+  }
+  if (id !== undefined) {
+    const sid = document.getElementById('info-session');
+    if (sid) sid.textContent = id ? `#${id}` : '#—';
+  }
+}
+
+/** Alterna o rodapé entre ações da sessão ativa e o "retomar" da leitura. */
+function setRodapeLeitura(leitura) {
+  document.getElementById('rp-foot-normal')?.classList.toggle('hidden', leitura);
+  document.getElementById('rp-foot-leitura')?.classList.toggle('hidden', !leitura);
+  document.getElementById('right-panel')?.classList.toggle('is-leitura', leitura);
+}
+
+window.retomarSessao = () => {
+  const inp = inputEl();
+  if (inp) {
+    inp.placeholder = 'escreva para retomar esta sessão (branch automática)…';
+    inp.focus();
+  }
+  scrollBottom();
+};
 
 // ── Mensagens ─────────────────────────────────────────────────
 function addSysMsg(text) {
@@ -513,8 +603,10 @@ window.sendMessage = async () => {
   const displayText = text || (pendingFile ? `[arquivo: ${pendingFile.file.name}]` : '');
   inputEl().value = '';
   autoResize(inputEl());
+  inputEl().placeholder = 'mensagem para o agente…';
   if (window.Paleta) Paleta.fechar();
   removeViewModeBanner();
+  setRodapeLeitura(false);
 
   const fileInfo = pendingFile ? pendingFile.file.name : null;
   addUserMsg(displayText, fileInfo);
@@ -522,6 +614,7 @@ window.sendMessage = async () => {
   turnoAtivo = true;
   cancelando = false;
   entrarModoParar();
+  setEstadoSessao('pensando');
 
   // trace do turno: /task também mostra (roda o agente); os demais comandos
   // são instantâneos e não precisam de acordeão
@@ -618,6 +711,8 @@ window.sendMessage = async () => {
   limparPergunta(turno, 'turno encerrado');
 
   sairModoParar();
+  setEstadoSessao(currentSessionId ? 'ativa' : 'nova');
+  await refreshSources();   // branch copia as fontes do pai; a lista tem de refletir
   inputEl().focus();
 };
 // ── Limpar / nova sessão ──────────────────────────────────────
@@ -625,15 +720,29 @@ window.clearChat = async () => {
   try { await api('/api/clear', { method: 'POST' }); } catch(_) {}
   messagesEl().innerHTML = '';
   tokenIn = 0; tokenOut = 0;
-  updateTokenDisplay();
   currentSessionId = null;
   viewingSessionId = null;
-  resetRightPanel();   // limpa fontes e banner, mantém agente/tools atuais
+  resetRightPanel();   // zera tokens, título, estado e fontes
   addSysMsg('nova sessão iniciada');
   await loadSessions();
+  await refreshSources();   // fontes globais continuam disponíveis
 };
 
-window.newSession = () => clearChat();
+window.newSession = () => pedirNovaSessao();
+
+/** Confirma só quando há uma conversa em andamento (a antiga fica no histórico). */
+window.pedirNovaSessao = () => {
+  if (!currentSessionId && !tokenIn && !tokenOut) { clearChat(); return; }
+  openConfirm({
+    title: 'nova sessão',
+    icon: '↺',
+    subject: 'começar uma conversa nova?',
+    text: 'A conversa atual continua no histórico. A nova sessão começa sem contexto.',
+    okLabel: 'nova sessão',
+    perigo: false,
+    onOk: () => clearChat(),
+  });
+};
 
 // ── Quick command ─────────────────────────────────────────────
 window.quickCommand = (cmd) => {
@@ -731,10 +840,14 @@ window.openAgentModal = async () => {
 function resetRightPanel({ agentName = null, agentFull = null, agentDesc = null, tools = null } = {}) {
   removeViewModeBanner();
 
-  // info de sessão
-  document.getElementById('info-session').textContent  = 'nova';
-  document.getElementById('info-tin').textContent      = '0';
-  document.getElementById('info-tout').textContent     = '0';
+  // sessão: identidade, estado e uso
+  setTituloSessao('conversa nova');
+  setEstadoSessao('nova');
+  setRodapeLeitura(false);
+  tokenIn = 0;
+  tokenOut = 0;
+  tokensDesconhecidos = false;
+  renderTokens();
 
   // agente (só atualiza se veio como argumento)
   if (agentName !== null) {
@@ -749,9 +862,8 @@ function resetRightPanel({ agentName = null, agentFull = null, agentDesc = null,
   // tools: só a contagem (lista fica no /tools e na paleta)
   if (tools !== null) atualizarTools(tools);
 
-  // fontes: limpa mini-lista do painel
-  document.getElementById('sources-panel-list').innerHTML =
-    '<div class="panel-empty">nenhuma fonte</div>';
+  // fontes: volta ao estado vazio (as globais vêm do refreshSources)
+  renderFontesPainel([]);
 }
 
 window.switchAgent = async (agentId) => {
@@ -778,6 +890,7 @@ window.switchAgent = async (agentId) => {
 
     addSysMsg(`agente: ${data.agent_full || data.agent} · ${(data.tools||[]).length} tools`);
     await loadSessions();
+    await refreshSources();   // fontes são por agente
   } catch(e) {
     addSysMsg(`erro ao trocar agente: ${e.message}`);
   }
@@ -864,34 +977,78 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+/** Mini-lista de fontes do painel: sessão primeiro, globais marcadas.
+ *  A lista do modal continua mostrando todas, com chunks e escopo. */
+function renderFontesPainel(sources = [], { leitura = false } = {}) {
+  const list  = document.getElementById('sources-panel-list');
+  const badge = document.getElementById('sources-count');
+  if (!list) return;
+  if (badge) badge.textContent = sources.length;
+
+  if (!sources.length) {
+    list.innerHTML = `
+      <div class="rp-empty">
+        <p>nenhum documento anexado a esta conversa</p>
+        ${leitura ? '' : '<button class="rp-btn" onclick="openSourceModal()">+ adicionar fonte</button>'}
+      </div>`;
+    return;
+  }
+
+  const visiveis  = sources.slice(0, 4);
+  const restantes = sources.length - visiveis.length;
+
+  list.innerHTML = visiveis.map(s => {
+    const global = s.scope === 'global';
+    const escopo = global ? 'global' : 'sessao';
+    const dica = `${s.filename} · ${s.n_chunks} chunk${s.n_chunks === 1 ? '' : 's'} · `
+               + (global ? 'global' : 'sessão');
+    const preview = s.preview_path
+      ? ` data-preview-path="${esc(s.preview_path)}" data-preview-name="${esc(s.filename)}"`
+      : '';
+    const acao = leitura ? '' : `
+        <button class="rp-del" title="remover fonte" aria-label="remover ${esc(s.filename)}"
+                data-nome="${esc(s.filename)}"
+                onclick="event.stopPropagation(); removeSource(${s.id}, '${global ? 'global' : ''}', this.dataset.nome)">✕</button>`;
+    return `
+      <div class="rp-src ${escopo}"${preview} role="button" tabindex="0"
+           title="${esc(dica)}${s.preview_path ? ' · abrir no visualizador' : ''}">
+        ${icone('file')}
+        <span class="rp-src-name">${esc(s.filename)}</span>
+        <span class="rp-tag ${escopo}">${global ? 'global' : 'sessão'}</span>
+        ${acao}
+      </div>`;
+  }).join('') + (restantes > 0
+    ? `<button class="rp-more" onclick="openSourceModal()">ver todas (${sources.length}) →</button>`
+    : '');
+}
+
 async function refreshSources() {
-  const list     = document.getElementById('sources-list-modal');
-  const miniList = document.getElementById('sources-panel-list');
-  list.innerHTML = '<div class="panel-empty">carregando…</div>';
+  const list = document.getElementById('sources-list-modal');
+  if (list) list.innerHTML = '<div class="panel-empty">carregando…</div>';
   try {
     const data = await api('/api/sources');
+    renderFontesPainel(data.sources || []);
+    if (!list) return;
     if (!data.sources.length) {
       list.innerHTML = '<div class="panel-empty">nenhuma fonte indexada</div>';
-      miniList.innerHTML = '<div class="panel-empty">nenhuma fonte</div>';
       return;
     }
-    const attrFonte = (s, classe) => s.preview_path
-      ? ` class="${classe} clicavel" data-preview-path="${esc(s.preview_path)}"` +
+    const attrFonte = (s) => s.preview_path
+      ? `class="source-item-name clicavel" data-preview-path="${esc(s.preview_path)}"` +
         ` data-preview-name="${esc(s.filename)}" title="visualizar ${esc(s.filename)}"`
-      : ` class="${classe}"`;
+      : 'class="source-item-name"';
     list.innerHTML = data.sources.map(s => `
       <div class="source-item">
-        <span${attrFonte(s, 'source-item-name')}>${icone('file')} ${esc(s.filename)}</span>
-        <span class="source-item-meta">${s.n_chunks} chunks · ${s.scope}</span>
-        <button class="source-item-del" onclick="removeSource(${s.id})" title="remover">✕</button>
-      </div>`).join('');
-    miniList.innerHTML = data.sources.slice(0, 5).map(s => `
-      <div class="source-mini-item">
-        <span${attrFonte(s, 'source-mini-name')}>${icone('file')} ${esc(s.filename)}</span>
-        <button class="source-mini-del" onclick="removeSource(${s.id})">✕</button>
+        <span ${attrFonte(s)}>${icone('file')} ${esc(s.filename)}</span>
+        <span class="source-item-meta">${s.n_chunks} chunks · ${esc(s.scope)}</span>
+        <button class="source-item-del"
+                data-nome="${esc(s.filename)}"
+                onclick="removeSource(${s.id}, '${s.scope === 'global' ? 'global' : ''}', this.dataset.nome)"
+                title="remover">✕</button>
       </div>`).join('');
   } catch(e) {
-    list.innerHTML = `<div class="panel-empty">erro: ${esc(e.message)}</div>`;
+    if (list) list.innerHTML = `<div class="panel-empty">erro: ${esc(e.message)}</div>`;
+    renderFontesPainel([]);
   }
 }
 
@@ -957,7 +1114,22 @@ window.addSource = async () => {
   }
 };
 
-window.removeSource = async (id) => {
+window.removeSource = async (id, escopo = '', nome = '') => {
+  if (escopo === 'global') {
+    openConfirm({
+      title: 'remover fonte global',
+      icon: '⚠',
+      subject: nome || 'fonte compartilhada',
+      text: 'Ela fica disponível para todas as sessões deste agente. Remover afeta todas elas.',
+      okLabel: 'remover',
+      onOk: () => apagarFonte(id),
+    });
+    return;
+  }
+  await apagarFonte(id);
+};
+
+async function apagarFonte(id) {
   try {
     await api('/api/source/' + id, { method: 'DELETE' });
     await refreshSources();
@@ -1004,21 +1176,46 @@ window.openHistoryModal = async () => {
   }
 };
 
-// ── Delete de sessão ───────────────────────────────────────────
-let pendingDeleteId = null;
+// ── Confirmação genérica (modal único) ─────────────────────────
+let _acaoConfirmada = null;
 
-window.openConfirmDelete = (sessionId, title) => {
-  pendingDeleteId = sessionId;
-  document.getElementById('confirm-session-title').textContent = title;
-  document.getElementById('confirm-delete-modal').classList.remove('hidden');
+window.openConfirm = ({
+  title = 'confirmar', icon = '⚠', subject = '', text = '',
+  okLabel = 'confirmar', perigo = true, onOk = null,
+} = {}) => {
+  _acaoConfirmada = onOk;
+  document.getElementById('confirm-title').textContent   = title;
+  document.getElementById('confirm-icon').textContent    = icon;
+  document.getElementById('confirm-icon').classList.toggle('confirm-icon-info', !perigo);
+  document.getElementById('confirm-subject').textContent = subject;
+  document.getElementById('confirm-text').textContent    = text;
+  const ok = document.getElementById('confirm-ok');
+  ok.textContent = okLabel;
+  ok.classList.toggle('btn-danger', perigo);
+  ok.classList.toggle('btn-outline', !perigo);
+  document.getElementById('confirm-modal').classList.remove('hidden');
 };
 
-window.confirmDeleteSession = async () => {
-  if (!pendingDeleteId) return;
-  const id = pendingDeleteId;
-  pendingDeleteId = null;
-  closeModal('confirm-delete-modal');
+window.confirmarAcao = () => {
+  const cb = _acaoConfirmada;
+  _acaoConfirmada = null;
+  closeModal('confirm-modal');
+  if (cb) cb();
+};
 
+// ── Delete de sessão ───────────────────────────────────────────
+window.openConfirmDelete = (sessionId, title) => {
+  openConfirm({
+    title: 'deletar sessão',
+    icon: '⚠',
+    subject: title,
+    text: 'Esta ação é irreversível. A conversa e todas as fontes associadas serão removidas.',
+    okLabel: 'deletar',
+    onOk: () => deletarSessao(sessionId),
+  });
+};
+
+async function deletarSessao(id) {
   try {
     await api(`/api/session/${id}`, { method: 'DELETE' });
 
@@ -1041,7 +1238,7 @@ window.confirmDeleteSession = async () => {
   } catch(e) {
     addSysMsg(`erro ao deletar sessão: ${e.message}`);
   }
-};
+}
 
 window.loadSession = async (sessionId) => {
   closeModal('history-modal');
@@ -1049,10 +1246,10 @@ window.loadSession = async (sessionId) => {
   try {
     const data = await api(`/api/session/${sessionId}/load`, { method: 'POST' });
 
-    // limpa chat e reseta contadores
+    // limpa chat e reseta contadores — sessão antiga não guarda tokens
     messagesEl().innerHTML = '';
     tokenIn = 0; tokenOut = 0;
-    updateTokenDisplay();
+    setTokensDesconhecidos();
     currentSessionId = null;   // ainda não é a sessão ativa — é só visualização
     viewingSessionId = sessionId;
 
@@ -1066,23 +1263,15 @@ window.loadSession = async (sessionId) => {
       atualizarTools(data.tools);
     }
 
-    // info de sessão no painel
+    // cabeçalho: identidade + estado de leitura
     const sess = data.session;
-    document.getElementById('info-session').textContent = `#${sess.id} (leitura)`;
-    document.getElementById('info-model').textContent   = document.getElementById('topbar-model').textContent;
+    setTituloSessao(sess.title || 'sem título', sess.id);
+    setEstadoSessao('leitura');
+    setRodapeLeitura(true);
+    document.getElementById('info-model').textContent = document.getElementById('topbar-model').textContent;
 
-    // fontes da sessão no mini-painel
-    const miniList = document.getElementById('sources-panel-list');
-    if (data.sources?.length) {
-      miniList.innerHTML = data.sources.map(s => `
-        <div class="source-mini-item">
-          <span${s.preview_path
-            ? ` class="source-mini-name clicavel" data-preview-path="${esc(s.preview_path)}" data-preview-name="${esc(s.filename)}" title="visualizar"`
-            : ' class="source-mini-name"'}>${icone('file')} ${esc(s.filename)}</span>
-        </div>`).join('');
-    } else {
-      miniList.innerHTML = '<div class="panel-empty">nenhuma fonte</div>';
-    }
+    // fontes da sessão no painel (sem remoção enquanto é leitura)
+    renderFontesPainel(data.sources || [], { leitura: true });
 
     // separador de origem se for branch
     if (data.parent) {
@@ -1150,6 +1339,10 @@ async function loadSessions() {
                 title="deletar">×</button>
       </div>`;
     }).join('');
+
+    // mantém o título do cabeçalho alinhado com a sessão ativa/visualizada
+    const alvo = data.sessions.find(s => s.id === (viewingSessionId ?? currentSessionId));
+    if (alvo) setTituloSessao(alvo.title || 'sem título', alvo.id);
   } catch(_) {}
 }
 
@@ -1870,6 +2063,15 @@ document.getElementById('send-btn').addEventListener('click', (ev) => {
   ev.preventDefault();
   if (turnoAtivo) cancelarTurno(currentTurn);
   else sendMessage();
+});
+
+// Fonte do painel como botão: Enter/Espaço abrem no visualizador.
+document.addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Enter' && ev.key !== ' ') return;
+  const src = ev.target.closest?.('.rp-src');
+  if (!src || !src.dataset.previewPath) return;
+  ev.preventDefault();
+  src.click();
 });
 
 // ── Boot ───────────────────────────────────────────────────────

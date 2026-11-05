@@ -133,7 +133,7 @@
     </div>
     <div class="topbar-right">
       <div class="token-pill" id="token-pill" title="tokens desta sessão">
-        <span id="token-in">0</span>↑ <span id="token-out">0</span>↓
+        <span class="token-unit">tok</span> <span id="token-total">0</span>
       </div>
       <!-- badge de modo: clicável para abrir modal de auth -->
       <button class="safe-badge" id="safe-badge" onclick="openAuthModal()" title="status de autenticação">
@@ -218,44 +218,57 @@
 
     <!-- Painel direito -->
     <aside id="right-panel" class="right-panel">
-      <!-- Painel: sessão -->
-      <div id="panel-session" class="panel-content active">
-        <div class="session-info-block">
-          <div class="info-row">
-            <span class="info-label">agente</span>
-            <span class="info-val" id="info-agent">—</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">modelo</span>
-            <span class="info-val" id="info-model">—</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">sessão</span>
-            <span class="info-val" id="info-session">nova</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">tokens ↑</span>
-            <span class="info-val accent" id="info-tin">0</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">tokens ↓</span>
-            <span class="info-val accent" id="info-tout">0</span>
-          </div>
+      <!-- Cabeçalho: identidade da sessão -->
+      <div class="rp-head">
+        <div class="rp-eyebrow">
+          <span>sessão</span>
+          <span class="rp-state is-nova" id="sess-state"><i></i><span>nova</span></span>
         </div>
-        <div class="panel-divider"></div>
-        <div class="session-actions">
-          <button class="btn-outline btn-sm w-full" onclick="quickCommand('/history salvar')"><svg class="ic" aria-hidden="true"><use href="#i-save"></use></svg> salvar sessão</button>
-          <button class="btn-outline btn-sm w-full" onclick="quickCommand('/history exportar')"><svg class="ic" aria-hidden="true"><use href="#i-file"></use></svg> exportar .md</button>
-          <button class="btn-outline btn-sm w-full err-btn" onclick="clearChat()">↺ nova sessão</button>
+        <div class="rp-title" id="sess-title" title="conversa nova">conversa nova</div>
+        <div class="rp-meta">
+          <span class="rp-meta-id" id="info-session">#—</span>
+          <span class="rp-meta-sep">·</span>
+          <span class="rp-meta-txt"><span id="info-agent">—</span> · <span id="info-model">—</span></span>
         </div>
-        <div class="panel-divider"></div>
-        <div class="section-label">sources desta sessão</div>
-        <div id="sources-panel-list" class="sources-mini-list">
-          <div class="panel-empty">nenhuma fonte</div>
+      </div>
+
+      <div class="rp-body">
+        <!-- Uso: tokens da sessão -->
+        <div class="rp-card" id="rp-uso">
+          <div class="rp-stats">
+            <div class="rp-cell">
+              <div class="rp-k">entrada</div>
+              <div class="rp-v"><span id="info-tin">0</span><em>↑</em></div>
+            </div>
+            <div class="rp-cell right">
+              <div class="rp-k">saída</div>
+              <div class="rp-v"><span id="info-tout">0</span><em>↓</em></div>
+            </div>
+          </div>
+          <div class="rp-bar" id="rp-bar"><i class="in" id="bar-in"></i><i class="out" id="bar-out"></i></div>
+          <div class="rp-total"><span>total</span><b id="info-total">0</b></div>
         </div>
-        <div style="padding-left: 12px; padding-right: 12px;">
-          <button class="btn-outline btn-sm w-full mt8" onclick="openSourceModal()">+ adicionar fonte</button>
+
+        <!-- Fontes: sessão + globais, com escopo -->
+        <div class="rp-sec">
+          <div class="rp-sec-head">
+            <span class="rp-sec-title">fontes</span>
+            <span class="rp-badge" id="sources-count">0</span>
+            <button class="rp-add" onclick="openSourceModal()" title="adicionar fonte">+</button>
+          </div>
+          <div id="sources-panel-list" class="rp-list"></div>
         </div>
+      </div>
+
+      <!-- Ações: sessão em andamento -->
+      <div class="rp-foot" id="rp-foot-normal">
+        <button class="rp-btn" onclick="quickCommand('/history salvar')" title="salvar esta sessão no histórico"><svg class="ic" aria-hidden="true"><use href="#i-save"></use></svg> salvar</button>
+        <button class="rp-btn" onclick="quickCommand('/history exportar')" title="exportar a conversa em .md"><svg class="ic" aria-hidden="true"><use href="#i-download"></use></svg> exportar</button>
+        <button class="rp-btn danger" onclick="pedirNovaSessao()" title="nova sessão (a conversa atual fica no histórico)">↺</button>
+      </div>
+      <!-- Ações: sessão em modo leitura -->
+      <div class="rp-foot hidden" id="rp-foot-leitura">
+        <button class="rp-primary" onclick="retomarSessao()">retomar esta conversa</button>
       </div>
     </aside>
 
@@ -467,23 +480,23 @@
   </div>
 </div>
 
-<!-- Modal: Confirmar deleção de sessão -->
-<div id="confirm-delete-modal" class="modal-backdrop hidden" onclick="closeModal('confirm-delete-modal')">
+<!-- Modal: confirmação genérica (apagar sessão, remover fonte global, nova sessão…) -->
+<div id="confirm-modal" class="modal-backdrop hidden" onclick="closeModal('confirm-modal')">
   <div class="modal modal-sm" onclick="event.stopPropagation()">
     <div class="modal-header">
-      <span>deletar sessão</span>
-      <button class="icon-btn" onclick="closeModal('confirm-delete-modal')">✕</button>
+      <span id="confirm-title">confirmar</span>
+      <button class="icon-btn" onclick="closeModal('confirm-modal')">✕</button>
     </div>
     <div class="confirm-body">
-      <div class="confirm-icon">⚠</div>
+      <div class="confirm-icon" id="confirm-icon">⚠</div>
       <div class="confirm-text">
-        <strong id="confirm-session-title"></strong>
-        <span>Esta ação é irreversível. A conversa e todas as fontes associadas serão removidas.</span>
+        <strong id="confirm-subject"></strong>
+        <span id="confirm-text"></span>
       </div>
     </div>
     <div class="confirm-actions">
-      <button class="btn-outline btn-sm" onclick="closeModal('confirm-delete-modal')">cancelar</button>
-      <button class="btn-danger btn-sm" id="confirm-delete-btn" onclick="confirmDeleteSession()">deletar</button>
+      <button class="btn-outline btn-sm" onclick="closeModal('confirm-modal')">cancelar</button>
+      <button class="btn-danger btn-sm" id="confirm-ok" onclick="confirmarAcao()">confirmar</button>
     </div>
   </div>
 </div>

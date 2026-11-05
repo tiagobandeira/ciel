@@ -2230,7 +2230,7 @@ def api_load_session(session_id):
                 "id":           s["id"],
                 "filename":     s["filename"],
                 "n_chunks":     s["n_chunks"],
-                "scope":        "sessão",
+                "scope":        "global" if s["session_id"] == "_shared" else "sessão",
                 "preview_path": _preview_path_da_fonte(s.get("filepath")),
             }
             for s in raw
