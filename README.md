@@ -421,6 +421,7 @@ harness verifica cada uma por código.
 | Referência de comandos e flags | [comandos.md](docs/comandos.md) |
 | TUI e atalhos | [tui.md](docs/tui.md) |
 | Server web, login e `/ui` | [server.md](docs/server.md) |
+| Limites de contexto por perfil (plano) | [plano-contexto.md](docs/plano-contexto.md) |
 | Agentes (personas) | [agents.md](docs/agents.md) · [template](docs/template_agente.md) |
 | Skills | [skills.md](docs/skills.md) |
 | Tasks | [tasks.md](docs/tasks.md) · [template](docs/template_task.md) |
