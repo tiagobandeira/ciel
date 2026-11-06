@@ -77,6 +77,7 @@ from agent_loader   import load_agent, filter_tools, list_agents
 from history_store  import HistoryStore, DB_PATH
 from history_ui     import build_context_injection
 import contexto
+import uploads
 from auth           import AuthManager
 from auth.cli       import exibir_senha
 import ui_bus
@@ -2017,6 +2018,41 @@ _ARQUIVO_SO_RX  = re.compile(r'^\s*<arquivo nome="([^"]*)">\n[\s\S]*\n</arquivo>
 _ARQUIVO_FIM_RX = re.compile(r'\n\n<arquivo nome="([^"]*)">\n[\s\S]*\n</arquivo>\s*$')
 
 
+def _bloco_anexo(info: dict) -> str:
+    """
+    Bloco do anexo no prompt: prévia + caminho, nunca o arquivo inteiro.
+
+    A tag `<arquivo nome="...">` fica no formato antigo de propósito — é o que
+    `_separar_arquivo_injetado` usa para a bolha do usuário e para tirar o
+    bloco do replay. Os metadados vão na primeira linha do conteúdo.
+    """
+    meta = f"tipo={info.get('tipo', 'arquivo')} · {int(info.get('chars', 0)):,} chars"
+    if info.get("paginas"):
+        meta += f" · {info['paginas']} páginas"
+    return (
+        f'<arquivo nome="{info["nome"]}">\n'
+        f"[anexo salvo em {info['caminho']} — {meta}]\n"
+        f"{info.get('previa', '')}\n"
+        f"[prévia dos primeiros {uploads.PREVIA_CHARS} chars. O conteúdo completo "
+        f"não entra no contexto: leia trechos com read_file ou passe o caminho "
+        f"em secondary_model(files=[...]).]\n"
+        f"</arquivo>"
+    )
+
+
+def _aplicar_anexos(user_input: str, upload_ids) -> tuple[str, list[dict]]:
+    """Monta a entrada do turno com os anexos enviados por upload."""
+    anexos = []
+    for uid in (upload_ids or [])[:uploads.MAX_POR_MENSAGEM]:
+        info = uploads.obter(str(uid))
+        if info:
+            anexos.append(info)
+    for info in anexos:
+        bloco = _bloco_anexo(info)
+        user_input = f"{user_input}\n\n{bloco}" if (user_input or "").strip() else bloco
+    return user_input, anexos
+
+
 def _parece_binario(texto: str) -> bool:
     """Heurística: NUL ou muito caractere de controle = binário, não texto."""
     amostra = str(texto or "")[:4000]
@@ -2107,6 +2143,40 @@ def api_extrair_arquivo():
     return jsonify({"texto": texto, "chars": len(texto)})
 
 
+@app.route("/api/file/upload", methods=["POST"])
+def api_file_upload():
+    """
+    Salva o anexo do chat em `data/user/uploads/<id>/` e devolve o descritor
+    com a prévia. O orquestrador só vê a prévia + o caminho; o arquivo fica
+    disponível para `read_file` e para `secondary_model(files=[...])`.
+    """
+    if not _is_authenticated():
+        return jsonify({"error": "anexar arquivo exige login."}), 401
+
+    arq = request.files.get("file")
+    if arq is None or not arq.filename:
+        return jsonify({"error": "nenhum arquivo enviado"}), 400
+
+    dados = arq.read(uploads.MAX_BYTES + 1)
+    if len(dados) > uploads.MAX_BYTES:
+        return jsonify({
+            "error": f"arquivo grande demais (limite {uploads.MAX_BYTES // (1024*1024)} MB)",
+        }), 413
+
+    try:
+        uploads.limpar_orfaos()
+        info = uploads.salvar(
+            arq.filename, dados,
+            sessao=request.form.get("session_id") or None,
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"não deu para ler o arquivo: {e}"}), 500
+
+    return jsonify(info)
+
+
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
     """
@@ -2131,6 +2201,7 @@ def _chat_turn():
     user_input  = data.get("message", "").strip()
     image_b64   = data.get("image_b64")
     file_text   = data.get("file_text")
+    upload_ids  = data.get("upload_ids") or []
     filename    = data.get("filename", "arquivo")
     # Opt-in: só o site simples tem UI para responder tools INTERACTIVE. O /ui
     # (partículas) e qualquer cliente antigo continuam com on_ask_user=None —
@@ -2146,7 +2217,7 @@ def _chat_turn():
     # arquivos que este turno gerar (o front abre a prévia com isso)
     arquivos: list = []
 
-    if not user_input and not image_b64 and not file_text:
+    if not user_input and not image_b64 and not file_text and not upload_ids:
         return jsonify({"error": "mensagem vazia"}), 400
 
     # anexo binário nunca entra como texto: além de poluir o histórico, o
@@ -2167,6 +2238,9 @@ def _chat_turn():
             f"{user_input}\n\n"
             f"<arquivo nome=\"{filename}\">\n{file_text[:12000]}\n</arquivo>"
         ) if user_input else f"<arquivo nome=\"{filename}\">\n{file_text[:12000]}\n</arquivo>"
+
+    # anexos por upload: prévia + caminho (o conteúdo completo fica no disco)
+    user_input, anexos = _aplicar_anexos(user_input, upload_ids)
 
     # ── comandos especiais (/task, /tools, /tokens, /history ...) ────────────
     if user_input.startswith("/"):
@@ -2208,6 +2282,8 @@ def _chat_turn():
             agent_id=state.agent_id,
             title="",
         )
+    for info in anexos:
+        uploads.vincular(info["id"], state.session_id)
     state.store.append_turn(state.session_id, "user", user_input, ts)
 
     # auto-título
@@ -2820,6 +2896,11 @@ def api_delete_session(session_id):
         return jsonify({"error": "sessão não encontrada"}), 404
 
     state.store.delete_session(session_id)
+    # anexos do chat pertencem à sessão: saem junto
+    try:
+        uploads.limpar_sessao(session_id)
+    except Exception:
+        pass
 
     # se a sessão deletada era a atual, reseta o estado
     if state.session_id == session_id:

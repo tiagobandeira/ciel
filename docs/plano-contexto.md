@@ -47,9 +47,22 @@ Também já entrou (Parte 3.2, 2026-11-06):
   discutido + reset da cota, mantendo o id; o painel oferece "continuar nesta
   sessão" ou "começar uma nova", com branch como fallback se o resumo falhar.
 
-Ainda não: upload do anexo com prévia em disco e `source_ids`/`files` por tipo no
-secundário (Parte 2), override por modelo no perfil nuvem, exibir o `num_ctx`
-efetivo do Ollama vs. o definido pelo usuário.
+Já entrou também (Parte 2, parcial, 2026-11-06):
+
+- **anexo do chat no disco**: `/api/file/upload` grava em
+  `data/user/uploads/<id>/` (PDF/DOCX/texto, 25 MB) e devolve a prévia; o
+  orquestrador recebe `<arquivo nome=...>` com 2k chars + caminho, nunca o
+  arquivo inteiro. O agente lê trechos com `read_file` ou repassa o caminho em
+  `secondary_model(files=[...])`.
+- **`files` do secundário por tipo**: extração de PDF/DOCX (antes um PDF virava
+  erro de UTF-8) com orçamento `files_max_chars` (120k) e aviso de truncamento.
+- **limpeza**: anexos apagados junto da sessão; uploads sem sessão somem depois
+  de 7 dias.
+
+Ainda não: `source_ids` no secundário (hoje o caminho do anexo cobre o caso),
+guarda de workspace/credenciais para `secondary_model(files=...)` (spec de
+segurança separada), config de contexto pela web/CLI, override por modelo no
+perfil nuvem e exibir o `num_ctx` efetivo do Ollama vs. o definido pelo usuário.
 
 ## Objetivo
 

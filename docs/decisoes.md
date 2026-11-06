@@ -811,6 +811,31 @@ disso ainda entra pelo fluxo de branch ("retomar"), não pelo mesmo id.
 
 ---
 
+## D-042 — Anexo do chat no disco: orquestrador vê prévia, secundário vê o arquivo
+
+**Decisão:** o anexo do chat vai para `data/user/uploads/<id>/` e o prompt do
+orquestrador recebe `<arquivo nome=...>` com **2k chars de prévia** + o caminho.
+O conteúdo completo fica no disco para `read_file` e para
+`secondary_model(files=[...])`.
+
+**Por quê:** antes o PDF era extraído em memória e 12k chars entravam no
+histórico — o anexo competia com system/tools/histórico e o secundário só
+recebia o texto que o orquestrador repassasse, com corte. Com o arquivo em
+disco, o orquestrador gasta ~2k e o secundário lê o documento inteiro (até
+`files_max_chars`), sem passar pelo contexto do orquestrador. É o que sustenta o
+fluxo "artigo → artigo interativo" com o preview abrindo a saída.
+
+**Consequência:** `uploads.py` (índice, prévia, limpeza por sessão e órfãos);
+`/api/file/upload` (login, 25 MB, PDF/DOCX/texto); `_aplicar_anexos` no chat;
+`_inject_files` extrai PDF/DOCX com orçamento total; anexos apagados com a
+sessão. O legado (`file_text` e `/api/file/extrair`) continua aceito.
+
+**Risco conhecido:** `secondary_model(files=[...])` aceita qualquer caminho
+legível (sem guarda de workspace/credenciais) — é a spec de segurança separada;
+não misturar com esta mudança.
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |
@@ -824,4 +849,5 @@ disso ainda entra pelo fluxo de branch ("retomar"), não pelo mesmo id.
 | Orçamento de contexto | `contexto.py`, `agent_loop.py`, `llm/client.py` |
 | Cota da sessão (persistida) | `server.py` (`USO_PATH`, `_registrar_uso`), `data/session_usage.json` |
 | Compressão | `server.py` (`/api/session/compress`), `history_store.py` (`compressed_upto`) |
+| Anexo do chat | `uploads.py`, `server.py` (`/api/file/upload`, `_aplicar_anexos`), `tools/secondary_model.py` (`_inject_files`) |
 | Visualizador do site | `server.py` (`/preview`, `/api/files`, `/api/preview_site`), `preview_sites.py`, `web/static/preview.js` |

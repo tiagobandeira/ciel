@@ -802,6 +802,14 @@ window.sendMessage = async () => {
         turn_id:   turno,
         perguntas_interativas: true,
       });
+    } else if (file?.type === 'upload') {
+      body = JSON.stringify({
+        message:   text || `Analise o arquivo: ${file.file.name}`,
+        upload_ids: [file.uploadId],
+        session_id: currentSessionId,
+        turn_id:   turno,
+        perguntas_interativas: true,
+      });
     } else if (file?.type === 'text') {
       body = JSON.stringify({
         message:   text || `Analise o arquivo: ${file.file.name}`,
@@ -1578,34 +1586,10 @@ document.addEventListener('DOMContentLoaded', () => {
         showUploadPreview('img', e.target.result, file.name);
       };
       reader.readAsDataURL(file);
-    } else if (ext === 'pdf') {
-      // PDF não é texto: sobe para o server extrair e anexa o texto extraído
-      // (antes ia como readAsText e virava binário no histórico)
-      pendingFile = null;
-      showUploadPreview('text', null, file.name);
-      document.getElementById('prev-type').textContent = 'LENDO…';
-      const form = new FormData();
-      form.append('file', file);
-      fetch('/api/file/extrair', { method: 'POST', credentials: 'include', body: form })
-        .then(r => r.json().then(d => {
-          if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
-          return d;
-        }))
-        .then(d => {
-          pendingFile = { file, content: d.texto, type: 'text' };
-          showUploadPreview('text', null, file.name);
-        })
-        .catch(e => {
-          clearUpload();
-          addSysMsg(`não deu para ler o pdf "${file.name}": ${e.message}`);
-        });
     } else {
-      const reader = new FileReader();
-      reader.onload = e => {
-        pendingFile = { file, content: e.target.result, type: 'text' };
-        showUploadPreview('text', null, file.name);
-      };
-      reader.readAsText(file);
+      // PDF/DOCX/texto vão para o disco (data/user/uploads): o orquestrador
+      // recebe só a prévia + caminho; o secundário pode ler o arquivo inteiro.
+      subirAnexo(file);
     }
   });
 
@@ -1621,6 +1605,38 @@ document.addEventListener('DOMContentLoaded', () => {
     fileInput.dispatchEvent(new Event('change'));
   });
 });
+
+/** Sobe o anexo para data/user/uploads e guarda o id para o próximo envio. */
+function subirAnexo(file) {
+  pendingFile = null;
+  showUploadPreview('text', null, file.name);
+  const tipo = document.getElementById('prev-type');
+  if (tipo) tipo.textContent = 'ENVIANDO…';
+
+  const form = new FormData();
+  form.append('file', file);
+  if (currentSessionId) form.append('session_id', String(currentSessionId));
+
+  fetch('/api/file/upload', { method: 'POST', credentials: 'include', body: form })
+    .then(async (r) => {
+      const d = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      return d;
+    })
+    .then((d) => {
+      pendingFile = {
+        file, type: 'upload', uploadId: d.id, chars: d.chars, paginas: d.paginas,
+      };
+      if (tipo) {
+        tipo.textContent = `${fmtQ(d.chars)} chars`
+          + (d.paginas ? ` · ${d.paginas} págs` : '');
+      }
+    })
+    .catch((e) => {
+      clearUpload();
+      addSysMsg(`não deu para anexar "${file.name}": ${e.message}`);
+    });
+}
 
 function showUploadPreview(type, src, name) {
   document.getElementById('upload-preview').classList.add('active');

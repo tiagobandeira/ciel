@@ -183,6 +183,7 @@ Os três primeiros são escritos automaticamente pelo `/model` ao ativar um prov
 | `max_chars_per_session` | int | **Legado**: cota em caracteres; convertida por `chars_por_token` |
 | `max_response_chars` | int | Respostas maiores que isso são salvas em arquivo (padrão: 8000) |
 | `max_tokens` | int | Máximo de tokens na resposta do modelo secundário (padrão: 16384) |
+| `files_max_chars` | int | Orçamento total dos `files` no prompt (padrão: 120000) |
 
 ### De onde vem a API key
 
@@ -344,6 +345,10 @@ Parâmetros da tool:
 | `session_id` | str | `_nosession` | Controle de cota (injetado automaticamente) |
 | `system` | str | prompt padrão | Instrução de sistema para o modelo secundário |
 | `save_response` | bool | `False` | Força salvar em arquivo mesmo se resposta for curta |
+| `files` | list[str] | `[]` | Caminhos para injetar como contexto (PDF/DOCX são extraídos; total limitado por `files_max_chars`) |
+| `skill` | str | `""` | Nome da skill em `skills/` a injetar no system prompt |
+| `mode` | str | `text` | `text` (markdown) ou `code` (projeto com arquivos separados) |
+| `output_dir` | str | `""` | Pasta de destino no modo `code` (vazio = `data/user/<folder>_<timestamp>`) |
 
 ---
 

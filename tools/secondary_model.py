@@ -761,28 +761,62 @@ def _run_mock(
 
 
 
-def _inject_files(prompt: str, files: list) -> str:
+_MAX_FILES_CHARS = 120_000   # orçamento total dos arquivos no prompt
+
+
+def _texto_do_arquivo(path: Path) -> tuple[str, str]:
+    """Texto do arquivo para o prompt do secundário + rótulo (tipo/tamanho)."""
+    ext = path.suffix.lower()
+    if ext == ".pdf":
+        from PyPDF2 import PdfReader
+        leitor = PdfReader(str(path))
+        texto = "\n\n".join((p.extract_text() or "") for p in leitor.pages).strip()
+        if not texto:
+            raise ValueError("PDF sem texto extraível (digitalizado?)")
+        return texto, f"pdf, {len(leitor.pages)} páginas"
+    if ext == ".docx":
+        import docx
+        documento = docx.Document(str(path))
+        return "\n".join(p.text for p in documento.paragraphs).strip(), "docx"
+    return path.read_text(encoding="utf-8", errors="replace"), "texto"
+
+
+def _inject_files(prompt: str, files: list, max_chars: int = _MAX_FILES_CHARS) -> str:
     """
     Lê os arquivos da lista e injeta o conteúdo no prompt como bloco de contexto.
 
+    PDF/DOCX são extraídos (antes um PDF virava erro de UTF-8). O total é
+    limitado por `max_chars` para não estourar o contexto do secundário; o que
+    passar disso ganha um aviso para o modelo pedir um recorte específico.
     Arquivos ilegíveis geram um aviso inline em vez de abortar.
-    O bloco é inserido antes do prompt original para que o modelo
-    receba o contexto antes da instrução.
     """
     if not files:
         return prompt
 
     blocks = []
+    restante = max(1, int(max_chars))
     for path_str in files:
         path = Path(path_str)
         if not path.exists():
             blocks.append(f"### {path_str}\n[arquivo não encontrado]")
             continue
         try:
-            content = path.read_text(encoding="utf-8")
-            blocks.append(f"### {path_str}\n```\n{content}\n```")
+            content, rotulo = _texto_do_arquivo(path)
         except Exception as e:
             blocks.append(f"### {path_str}\n[erro ao ler: {e}]")
+            continue
+
+        pedaco = content[:max(0, restante)]
+        restante -= len(pedaco)
+        nota = ""
+        if len(pedaco) < len(content):
+            nota = (
+                f"\n[exibindo {len(pedaco):,} de {len(content):,} chars — "
+                f"peça um recorte específico se precisar do resto]"
+            )
+        blocks.append(
+            f"### {path_str} ({rotulo}, {len(content):,} chars){nota}\n```\n{pedaco}\n```"
+        )
 
     if not blocks:
         return prompt
@@ -815,7 +849,10 @@ def run(
 
     # ── injeta arquivos no prompt (antes de calcular cota) ────────────────────
     if files:
-        prompt = _inject_files(prompt, files)
+        prompt = _inject_files(
+            prompt, files,
+            max_chars=int(cfg.get("files_max_chars", _MAX_FILES_CHARS)),
+        )
 
     # ── mock para testes de fluxo ─────────────────────────────────────────────
     if cfg.get("mock_secondary", False):

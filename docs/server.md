@@ -95,12 +95,16 @@ provider no mesmo arquivo. Para guardar os segredos em outro lugar, defina
   livre) e o turno fica pausado esperando a resposta. Depois de responder, o
   card mostra "o agente está pensando…" até a próxima pergunta ou a resposta
   final. O botão **parar** cancela o turno mesmo com uma pergunta pendente.
-- **Anexos do chat.** Arquivo de texto entra como texto; **PDF** sobe para
-  `/api/file/extrair` e entra como o texto extraído (nada é salvo em disco).
-  PDF digitalizado, sem texto, é recusado com mensagem — aí o caminho é
-  **Fontes** + `read_pdf`. Anexo binário vindo de cliente antigo é barrado com
-  `400`, para não gravar bytes no histórico. Ao reabrir a sessão, a bolha do
-  usuário mostra só a mensagem e `📎 nome`, não o conteúdo do arquivo.
+- **Anexos do chat.** PDF, DOCX e texto sobem para `/api/file/upload` e ficam em
+  `data/user/uploads/<id>/` (limite de 25 MB). O orquestrador recebe só uma
+  **prévia de 2k chars** + o caminho — o conteúdo completo não entra no
+  contexto, então o anexo não come a janela nem incha o histórico. O agente lê
+  trechos com `read_file` ou passa o caminho em `secondary_model(files=[...])`,
+  e o secundário extrai PDF/DOCX respeitando `files_max_chars` (120k). PDF
+  digitalizado, sem texto, é recusado com mensagem — aí o caminho é **Fontes**
+  + `read_pdf`. Anexo binário vindo de cliente antigo é barrado com `400`. Ao
+  reabrir a sessão, a bolha mostra só a mensagem e `📎 nome`. Os anexos são
+  apagados junto da sessão; uploads sem sessão somem após 7 dias.
 - **Consumo.** **Ajustes → consumo** mostra o teto de contexto do modelo ativo
   (perfil + override), o uso da sessão em tokens, a cota do modelo secundário
   (com barra de uso) e o **último limite** que barrou uma chamada — deixando
