@@ -185,12 +185,15 @@ class OllamaClient(BaseClient):
         chat_path: str = "/api/chat",
         max_tokens: int | None = None,
         native_tools: bool = False,
+        num_ctx: int | None = None,
     ):
         self.base_url = _normalize_ollama_base(base_url)
         self.chat_path = chat_path if chat_path.startswith("/") else f"/{chat_path}"
         self.timeout = timeout
         self.max_tokens = max_tokens
         self.native_tools = native_tools
+        # janela de contexto pedida ao Ollama; None = default do servidor
+        self.num_ctx = num_ctx
 
     @property
     def endpoint(self) -> str:
@@ -229,6 +232,8 @@ class OllamaClient(BaseClient):
         effective_max = max_tokens if max_tokens is not None else self.max_tokens
         if effective_max is not None:
             options["num_predict"] = effective_max
+        if self.num_ctx:
+            options["num_ctx"] = int(self.num_ctx)
         if options:
             payload["options"] = options
 

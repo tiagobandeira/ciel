@@ -194,7 +194,7 @@ class TestExternalData:
 
         mensagens_recebidas = []
 
-        def mock_call(messages, model, ollama_url):
+        def mock_call(messages, model, ollama_url, **kwargs):
             mensagens_recebidas.extend(messages)
             if len(mensagens_recebidas) < 5:
                 return _resposta_tool("read_file", {"path": "pagina.txt"})

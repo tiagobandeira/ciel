@@ -733,6 +733,31 @@ arquivo.
 
 ---
 
+## D-039 — Contexto medido em tokens, por perfil e por modelo
+
+**Decisão:** o teto de contexto sai de `contexto.py` (bloco `contexto` do
+`ciel_config.json`): **32k tokens** no perfil local, **128k** na nuvem, com
+override por modelo (nome exato ou família). `chars_por_token` (3) converte para
+os pontos que ainda cortam em caracteres. A compactação de histórico passa a
+rodar em **todos** os perfis, e o Ollama recebe `options.num_ctx` = teto.
+
+**Por quê:** medição real no histórico — "oi" = 13.082 tokens de entrada (system
++ schema de 50+ tools), "valeu" = 13.546 e uma task de 2 steps = 26.7k. O
+prompt fixo come o orçamento antes da conversa; 16k é piso, 32k cobre a task.
+Sem `num_ctx` valia o default do servidor Ollama (bem menor que a janela) e o
+corte acontecia sem aviso; sem compactação no local, cada turno reenviava a
+conversa inteira.
+
+**Consequência:** o orçamento do histórico é a janela em chars menos 25% de
+reserva (no Ollama, `num_ctx` cobre entrada e saída); `keep_last` 4 no local e 6
+na nuvem; `run_agent` aceita `history_max_chars`/`history_keep_last`/`num_ctx`
+explícitos para CLI e testes. Como o `run_agent` é compartilhado, CLI/TUI também
+passam a compactar no perfil local. As cotas do modelo secundário continuam em
+chars por enquanto — a troca para tokens é o próximo passo do plano
+([plano-contexto.md](plano-contexto.md)).
+
+---
+
 ## Onde isso aparece no código
 
 | Área | Arquivo |
@@ -743,4 +768,5 @@ arquivo.
 | Prompt do build | `system/core_build.md`, `agent_loop._build_system_prompt` |
 | Multitask | `multitask/flow.py`, `planner.py`, `runner.py`, `checks.py`, `report.py` |
 | Quadro | `board.py` (`data/runs/<id>/board.json`) |
+| Orçamento de contexto | `contexto.py`, `agent_loop.py`, `llm/client.py` |
 | Visualizador do site | `server.py` (`/preview`, `/api/files`, `/api/preview_site`), `preview_sites.py`, `web/static/preview.js` |

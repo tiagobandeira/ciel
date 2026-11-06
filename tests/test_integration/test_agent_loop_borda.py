@@ -102,7 +102,7 @@ class TestParseError:
 
         original_call = __import__("agent_loop")._call_model
 
-        def interceptar(messages, model, url):
+        def interceptar(messages, model, url, **kwargs):
             call_count["n"] += 1
             if call_count["n"] == 2:
                 # captura a mensagem que foi injetada antes da segunda chamada
@@ -173,7 +173,7 @@ class TestConfirmTool:
         mensagens = []
         call_count = {"n": 0}
 
-        def interceptar(messages, model, url):
+        def interceptar(messages, model, url, **kwargs):
             call_count["n"] += 1
             if call_count["n"] == 2:
                 mensagens.extend(messages[-2:])
@@ -338,7 +338,7 @@ class TestExcecaoEmTool:
         feedbacks = []
         call_count = {"n": 0}
 
-        def interceptar(messages, model, url):
+        def interceptar(messages, model, url, **kwargs):
             call_count["n"] += 1
             if call_count["n"] == 2:
                 feedbacks.extend(messages[-2:])
@@ -377,7 +377,7 @@ class TestExcecaoEmTool:
         feedbacks = []
         call_count = {"n": 0}
 
-        def interceptar(messages, model, url):
+        def interceptar(messages, model, url, **kwargs):
             call_count["n"] += 1
             if call_count["n"] == 2:
                 feedbacks.extend(messages[-2:])
@@ -396,7 +396,7 @@ class TestExcecaoEmTool:
         feedbacks = []
         call_count = {"n": 0}
 
-        def interceptar(messages, model, url):
+        def interceptar(messages, model, url, **kwargs):
             call_count["n"] += 1
             if call_count["n"] == 2:
                 feedbacks.extend(messages[-2:])
@@ -527,7 +527,7 @@ class TestParseErrorFix:
         mensagens_injetadas = []
         call_count = {"n": 0}
 
-        def interceptar(messages, model, url):
+        def interceptar(messages, model, url, **kwargs):
             call_count["n"] += 1
             if call_count["n"] == 2:
                 # captura última mensagem injetada (a correção)

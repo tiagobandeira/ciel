@@ -97,6 +97,25 @@ Formatos: `.pdf`, `.txt`, `.md` e URLs. → [Fontes](sources.md)
 
 → [Modelo secundário](secondary-model.md) · [Perfis e modos](processos.md#perfil)
 
+### Contexto do modelo (`num_ctx`)
+
+A partir desta versão o Ciel manda `options.num_ctx` em cada chamada ao Ollama,
+com o valor de `contexto.teto_tokens` do `ciel_config.json` (default: 32k no
+perfil local, 128k na nuvem; override por modelo em `por_modelo`). Sem isso
+valia o default do servidor Ollama, que costuma ser bem menor que a janela do
+modelo — e o corte acontecia sem aviso.
+
+Para conferir/ajustar:
+
+```bash
+ollama show <modelo>            # mostra o que está gravado no modelo
+OLLAMA_CONTEXT_LENGTH=32768 ollama serve   # default do servidor (versões novas)
+```
+
+Um `Modelfile` com `PARAMETER num_ctx 32768` + `ollama create` também fixa o
+valor no modelo. Subir `num_ctx` consome mais RAM/VRAM: o orçamento do Ciel
+não impede o Ollama de alocar, só limita o que enviamos.
+
 ## Workspace e integrações
 
 | Comando | Ação |

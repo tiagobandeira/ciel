@@ -48,6 +48,7 @@ from llm.client import ChatResult, LLMError, OllamaClient
 from llm.native_tools import to_openai_tools
 from llm.roles import PERFIL_NUVEM, normalize_perfil
 from trust.input_verifier import InputVerifier
+import contexto
 
 # ── config padrão (pode ser sobrescrita pelo chamador) ────────────────────────
 
@@ -364,15 +365,20 @@ def _execute_read_batch(
     return "\n\n".join(parts)
 
 
-def _call_model(messages: list, model: str, ollama_url: str) -> tuple[str, int, int]:
+def _call_model(messages: list, model: str, ollama_url: str,
+                num_ctx: int | None = None) -> tuple[str, int, int]:
     """
     Caminho padrão: Ollama (`/api/chat`), sem streaming.
 
     A implementação HTTP vive em `llm/client.py` (fonte única); esta função
     mantém a assinatura antiga porque `task_runner`, testes e chamadores
     externos ainda a usam diretamente.
+
+    `num_ctx` vai em `options` e define a janela usada pelo Ollama nesta
+    chamada — sem ele, vale o default do servidor (que costuma ser bem menor
+    que a janela do modelo).
     """
-    result = OllamaClient(ollama_url, timeout=120).chat(messages, model=model)
+    result = OllamaClient(ollama_url, timeout=120, num_ctx=num_ctx).chat(messages, model=model)
     return result.as_tuple()
 
 
@@ -382,10 +388,11 @@ def _chat_completion_result(
     model: str,
     ollama_url: str,
     tools: list[dict] | None = None,
+    num_ctx: int | None = None,
 ) -> ChatResult:
     """Chamada com suporte opcional a tools nativas; normaliza dublês."""
     if client is None:
-        raw, t_in, t_out = _call_model(messages, model, ollama_url)
+        raw, t_in, t_out = _call_model(messages, model, ollama_url, num_ctx=num_ctx)
         return ChatResult(raw, t_in, t_out)
     result = client.chat(messages, model=model or None, tools=tools)
     if isinstance(result, ChatResult):
@@ -597,6 +604,12 @@ def run_agent(
     budget_tokens: int = 0,
     deadline: float | None = None,
     cancel_event=None,
+    # Orçamento de contexto. None = resolve pelo perfil/modelo em contexto.py
+    # (teto_tokens/chars_por_token/keep_last). Passar explícito serve para CLI,
+    # testes e para quem já sabe a janela do modelo.
+    history_max_chars: int | None = None,
+    history_keep_last: int | None = None,
+    num_ctx: int | None = None,
 ) -> AgentResult:
     """
     Executa o loop agêntico e retorna um AgentResult.
@@ -605,6 +618,11 @@ def run_agent(
     Compatível com execução em thread (Textual @work).
     """
     profile = normalize_perfil(profile)
+    _ctx_cfg   = contexto.carregar()
+    _teto      = num_ctx if num_ctx is not None else contexto.teto_tokens(profile, model, _ctx_cfg)
+    _cpt       = contexto.chars_por_token(_ctx_cfg)
+    _keep_last = (history_keep_last if history_keep_last is not None
+                  else contexto.keep_last(profile, _ctx_cfg))
     total_in  = 0
     total_out = 0
     parse_errors = 0
@@ -667,6 +685,14 @@ def run_agent(
     history_chars = sum(len(str(m.get("content", ""))) for m in context)
     prompt_chars = sum(len(str(m.get("content", ""))) for m in messages)
 
+    # Orçamento do contexto em chars: a janela do modelo menos 25% de reserva
+    # para a resposta (no Ollama, num_ctx cobre entrada e saída). A compactação
+    # compara esse teto com system + histórico + anexo; é por isso que ela não
+    # pode ser o valor "cru" da janela.
+    _teto_chars = _teto * _cpt
+    _hist_max = (history_max_chars if history_max_chars is not None
+                 else max(2_000, _teto_chars - int(_teto_chars * 0.25)))
+
     nudge_sent = False
     native_tools_enabled = bool(
         model_client is not None
@@ -702,9 +728,8 @@ def run_agent(
                 ),
             })
             nudge_sent = True
-        if profile == PERFIL_NUVEM:
-            if _compact_history(messages):
-                compactions += 1
+        if (_compact_history(messages, max_chars=_hist_max, keep_last=_keep_last)):
+            compactions += 1
         context_peak_chars = max(
             context_peak_chars,
             sum(len(str(m.get("content", ""))) for m in messages),
@@ -720,6 +745,7 @@ def run_agent(
             completion = _chat_completion_result(
                 model_client, messages, model, ollama_url,
                 tools=native_schema,
+                num_ctx=_teto,
             )
             raw, t_in, t_out = completion.as_tuple()
             total_in  += t_in

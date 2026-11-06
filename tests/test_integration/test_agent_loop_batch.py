@@ -171,3 +171,70 @@ def test_compact_history_preserva_inicio_e_fim():
     assert messages[-1]["content"] == "recente 8"
     assert "omitido" in messages[2]["content"]
     assert "compactado" in messages[3]["content"]
+
+# ── orçamento de contexto (contexto.py) ─────────────────────────────────────
+
+import agent_loop as loop_mod
+import contexto
+
+
+def _fake_completion(capturado):
+    def fake(client, messages, model, ollama_url, tools=None, num_ctx=None):
+        capturado["num_ctx"] = num_ctx
+        capturado["messages"] = list(messages)
+        return ChatResult(_done(), 10, 2)
+    return fake
+
+
+def test_run_agent_passa_num_ctx_do_perfil_local(monkeypatch):
+    capturado = {}
+    monkeypatch.setattr(loop_mod, "_chat_completion_result", _fake_completion(capturado))
+
+    result = run_agent("oi", {}, [], "gemma4:cloud", AGENT)
+
+    assert result.status == "done"
+    assert capturado["num_ctx"] == contexto.teto_tokens("local", "gemma4:cloud")
+
+
+def test_compactacao_roda_no_perfil_local(monkeypatch):
+    capturado = {}
+    monkeypatch.setattr(loop_mod, "_chat_completion_result", _fake_completion(capturado))
+    historico = [{"role": "user", "content": "x" * 600} for _ in range(10)]
+
+    result = run_agent(
+        "oi", {}, [], "m", AGENT, history=historico,
+        history_max_chars=2_500, history_keep_last=2,
+    )
+
+    assert result.compactions >= 1
+    assert any("compactado" in str(m.get("content")) for m in capturado["messages"])
+
+
+def test_compactacao_roda_no_perfil_nuvem(monkeypatch):
+    capturado = {}
+    monkeypatch.setattr(loop_mod, "_chat_completion_result", _fake_completion(capturado))
+    historico = [{"role": "user", "content": "y" * 600} for _ in range(10)]
+
+    result = run_agent(
+        "oi", {}, [], "deepseek-chat", AGENT, history=historico,
+        profile="nuvem", history_max_chars=2_500, history_keep_last=2,
+    )
+
+    assert result.compactions >= 1
+
+
+def test_call_model_passa_num_ctx(monkeypatch):
+    capturado = {}
+
+    class FakeOllama:
+        def __init__(self, url, timeout=120, num_ctx=None):
+            capturado["num_ctx"] = num_ctx
+
+        def chat(self, messages, model=None):
+            return ChatResult("{}", 1, 1)
+
+    monkeypatch.setattr(loop_mod, "OllamaClient", FakeOllama)
+
+    loop_mod._call_model([], "m", "http://127.0.0.1:11434", num_ctx=12345)
+
+    assert capturado["num_ctx"] == 12345
