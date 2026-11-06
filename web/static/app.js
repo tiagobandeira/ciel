@@ -1295,7 +1295,13 @@ window.loadSession = async (sessionId) => {
 
     // renderiza histórico da sessão (modo leitura), com o trace salvo
     (data.turns || []).forEach(t => {
-      if (t.role === 'user') { addUserMsg(t.content); return; }
+      if (t.role === 'user') {
+        // anexo do turno salvo: o server manda `content` sem o bloco <arquivo>
+        // e `arquivo` com o nome, igual ao que a tela mostra no envio ao vivo
+        addUserMsg(t.content || (t.arquivo ? `[arquivo: ${t.arquivo}]` : ''),
+                   t.arquivo || null);
+        return;
+      }
       if (t.role !== 'agent') return;
       replayTrace(t);
       // chips "arquivo gerado" do turno salvo (o servidor manda a lista; em
@@ -1405,6 +1411,27 @@ document.addEventListener('DOMContentLoaded', () => {
         showUploadPreview('img', e.target.result, file.name);
       };
       reader.readAsDataURL(file);
+    } else if (ext === 'pdf') {
+      // PDF não é texto: sobe para o server extrair e anexa o texto extraído
+      // (antes ia como readAsText e virava binário no histórico)
+      pendingFile = null;
+      showUploadPreview('text', null, file.name);
+      document.getElementById('prev-type').textContent = 'LENDO…';
+      const form = new FormData();
+      form.append('file', file);
+      fetch('/api/file/extrair', { method: 'POST', credentials: 'include', body: form })
+        .then(r => r.json().then(d => {
+          if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+          return d;
+        }))
+        .then(d => {
+          pendingFile = { file, content: d.texto, type: 'text' };
+          showUploadPreview('text', null, file.name);
+        })
+        .catch(e => {
+          clearUpload();
+          addSysMsg(`não deu para ler o pdf "${file.name}": ${e.message}`);
+        });
     } else {
       const reader = new FileReader();
       reader.onload = e => {

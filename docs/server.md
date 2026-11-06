@@ -95,6 +95,12 @@ provider no mesmo arquivo. Para guardar os segredos em outro lugar, defina
   livre) e o turno fica pausado esperando a resposta. Depois de responder, o
   card mostra "o agente está pensando…" até a próxima pergunta ou a resposta
   final. O botão **parar** cancela o turno mesmo com uma pergunta pendente.
+- **Anexos do chat.** Arquivo de texto entra como texto; **PDF** sobe para
+  `/api/file/extrair` e entra como o texto extraído (nada é salvo em disco).
+  PDF digitalizado, sem texto, é recusado com mensagem — aí o caminho é
+  **Fontes** + `read_pdf`. Anexo binário vindo de cliente antigo é barrado com
+  `400`, para não gravar bytes no histórico. Ao reabrir a sessão, a bolha do
+  usuário mostra só a mensagem e `📎 nome`, não o conteúdo do arquivo.
 - **Interface visual.** O `/ui` ainda não renderiza essas perguntas: nele a
   tool segue o comportamento antigo.
 

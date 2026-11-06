@@ -9,6 +9,7 @@ Rotas:
   POST /api/chat                → executa turno do agente
   POST /api/chat/cancel         → cancela o turno em andamento
   POST /api/chat/responder      → responde pergunta de tool INTERACTIVE
+  POST /api/file/extrair        → extrai texto de anexo do chat (PDF)
   POST /api/clear               → limpa histórico
   GET  /api/agents              → lista agentes disponíveis
   POST /api/agent               → troca de agente
@@ -55,6 +56,7 @@ Uso:
 import sys
 import json
 import base64
+import io
 import mimetypes
 import os
 import argparse
@@ -1733,6 +1735,105 @@ def _arquivos_da_mensagem(texto: str) -> list[dict]:
     ]
 
 
+# ── anexos do chat ───────────────────────────────────────────────────────────
+# Anexo de texto entra no histórico como <arquivo nome="...">...</arquivo>.
+# Cliente antigo mandava PDF assim mesmo (bytes decodificados como texto), o
+# que enchia a sessão de binário — hoje o front extrai o texto em
+# /api/file/extrair e a guarda abaixo barra qualquer cliente que ainda tente.
+_ARQUIVO_SO_RX  = re.compile(r'^\s*<arquivo nome="([^"]*)">\n[\s\S]*\n</arquivo>\s*$')
+_ARQUIVO_FIM_RX = re.compile(r'\n\n<arquivo nome="([^"]*)">\n[\s\S]*\n</arquivo>\s*$')
+
+
+def _parece_binario(texto: str) -> bool:
+    """Heurística: NUL ou muito caractere de controle = binário, não texto."""
+    amostra = str(texto or "")[:4000]
+    if not amostra:
+        return False
+    if "\x00" in amostra:
+        return True
+    controles = sum(1 for c in amostra if ord(c) < 32 and c not in "\n\r\t")
+    return controles / len(amostra) > 0.02
+
+
+def _separar_arquivo_injetado(texto: str) -> tuple[str, str | None]:
+    """
+    Separa a mensagem digitada do bloco `<arquivo>` que o server injeta.
+
+    O bloco continua no histórico (é o conteúdo que o modelo vê); isso serve só
+    para a tela não mostrar o arquivo inteiro quando a sessão é reaberta.
+    """
+    bruto = str(texto or "")
+    so_bloco = _ARQUIVO_SO_RX.match(bruto)
+    if so_bloco:
+        return "", so_bloco.group(1) or None
+    fim = _ARQUIVO_FIM_RX.search(bruto)
+    if fim:
+        return bruto[:fim.start()].rstrip(), fim.group(1) or None
+    return bruto, None
+
+
+def _extrair_texto_pdf(dados: bytes, max_chars: int = 12000) -> str:
+    """Texto de um PDF em memória — nada é gravado em disco."""
+    try:
+        from PyPDF2 import PdfReader
+    except ImportError as e:
+        raise RuntimeError("PyPDF2 não instalado (pip install -r requirements.txt)") from e
+
+    leitor = PdfReader(io.BytesIO(dados))
+    partes: list[str] = []
+    total = 0
+    for pagina in leitor.pages:
+        try:
+            trecho = pagina.extract_text() or ""
+        except Exception:
+            trecho = ""
+        if trecho:
+            partes.append(trecho)
+            total += len(trecho)
+        if total >= max_chars:
+            break
+    return "\n".join(partes)[:max_chars]
+
+
+@app.route("/api/file/extrair", methods=["POST"])
+def api_extrair_arquivo():
+    """
+    Extrai o texto de um anexo do chat (hoje: PDF).
+
+    O chat transporta texto, então PDF sobe aqui e volta como texto — é o que
+    evita mandar bytes para o histórico e para o modelo.
+    """
+    if not _is_authenticated():
+        return jsonify({"error": "extrair anexo exige login."}), 401
+
+    arq = request.files.get("file")
+    if arq is None or not arq.filename:
+        return jsonify({"error": "nenhum arquivo enviado"}), 400
+
+    ext = Path(arq.filename).suffix.lower()
+    if ext != ".pdf":
+        return jsonify({
+            "error": f"extração não suportada para {ext or 'arquivo sem extensão'}",
+        }), 415
+
+    dados = arq.read(25 * 1024 * 1024 + 1)
+    if len(dados) > 25 * 1024 * 1024:
+        return jsonify({"error": "pdf grande demais (limite 25 MB)"}), 413
+
+    try:
+        texto = _extrair_texto_pdf(dados)
+    except Exception as e:
+        return jsonify({"error": f"não deu para ler o pdf: {e}"}), 422
+
+    if not texto.strip():
+        return jsonify({
+            "error": "pdf sem texto extraível (digitalizado?) — adicione em "
+                     "Fontes e peça para o agente usar read_pdf",
+        }), 422
+
+    return jsonify({"texto": texto, "chars": len(texto)})
+
+
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
     """
@@ -1753,9 +1854,6 @@ def api_chat():
 
 
 def _chat_turn():
-    # garante que as tools refletem o estado de auth desta request
-    state.reload_tools_for_request()
-
     data        = request.get_json(force=True)
     user_input  = data.get("message", "").strip()
     image_b64   = data.get("image_b64")
@@ -1777,6 +1875,18 @@ def _chat_turn():
 
     if not user_input and not image_b64 and not file_text:
         return jsonify({"error": "mensagem vazia"}), 400
+
+    # anexo binário nunca entra como texto: além de poluir o histórico, o
+    # modelo recebe bytes decodificados. PDF tem extração própria em
+    # /api/file/extrair, e fonte vai por Fontes.
+    if file_text and _parece_binario(file_text):
+        return jsonify({
+            "error": "anexo binário não vai como texto — anexe o PDF de novo "
+                     "(o texto é extraído) ou adicione em Fontes",
+        }), 400
+
+    # garante que as tools refletem o estado de auth desta request
+    state.reload_tools_for_request()
 
     # monta entrada real
     if file_text:
@@ -2296,10 +2406,17 @@ def _turn_json(t) -> dict:
         # caminhos de data/ que a própria resposta cita (e que existem)
         arquivos = _arquivos_da_mensagem(t["content"])
 
+    # na tela, a mensagem do usuário volta sem o bloco <arquivo> (o conteúdo
+    # do anexo continua no histórico, só não precisa reaparecer inteiro aqui)
+    conteudo, anexo = t["content"], None
+    if t["role"] == "user":
+        conteudo, anexo = _separar_arquivo_injetado(t["content"])
+
     return {
         "id":       t["id"],
         "role":     t["role"],
-        "content":  t["content"],
+        "content":  conteudo,
+        "arquivo":  anexo,
         "ts":       t["ts"],
         "trace":    trace,
         "arquivos": arquivos or [],
