@@ -327,6 +327,16 @@ function initEventos() {
   _sse.onmessage = (e) => {
     let m;
     try { m = JSON.parse(e.data); } catch (_) { return; }
+    // limite do secundário (cota do usuário ou provedor) não tem turn_id:
+    // aparece como aviso na sessão, venha de qual turno for
+    if (m && m.tipo === 'limite') {
+      const quem = m.origem === 'usuario'
+        ? 'limite definido por você'
+        : 'limite do provedor';
+      const extra = m.subtipo ? ` (${m.subtipo})` : '';
+      addSysMsg(`⚠ ${quem}${extra}: ${m.detalhe || ''}`);
+      return;
+    }
     if (!m || !m.turn_id || m.turn_id !== currentTurn) return;
     if (m.tipo === 'pergunta') {
       mostrarPergunta(m);
@@ -1792,7 +1802,7 @@ window.openSettings = async () => {
   document.getElementById('settings-modal').classList.remove('hidden');
   closeSidebar();
   settingsTab('modelos');
-  ['modelos', 'provedores', 'sobre'].forEach(aba => {
+  ['modelos', 'provedores', 'consumo', 'sobre'].forEach(aba => {
     document.getElementById('settings-' + aba).innerHTML =
       '<div class="panel-empty">carregando…</div>';
   });
@@ -1801,6 +1811,7 @@ window.openSettings = async () => {
     renderSettingsModelos();
     renderSettingsProvedores();
     renderSettingsSobre();
+    renderSettingsConsumo();
   } catch (e) {
     document.getElementById('settings-modelos').innerHTML =
       `<div class="panel-empty">erro ao carregar: ${esc(e.message)}</div>`;
@@ -1995,6 +2006,61 @@ function renderSettingsSobre() {
       <a class="sett-link" href="${esc(d.repo)}" target="_blank" rel="noopener">${icone('book')} repositório</a>
       <a class="sett-link" href="${esc(d.repo)}/blob/main/README.md" target="_blank" rel="noopener">${icone('book')} documentação</a>
     </div>`;
+}
+
+/* Ajustes → consumo: orçamento de contexto e cota do modelo secundário.
+   Aviso de limite aparece aqui e também como mensagem de sistema na sessão
+   (evento SSE "limite", publicado pela tool). */
+async function renderSettingsConsumo() {
+  const alvo = document.getElementById('settings-consumo');
+  if (!alvo) return;
+  try {
+    const d = await api('/api/consumo');
+    const sec = d.secundario || {};
+    const pct = sec.cota_tokens
+      ? Math.min(100, Math.round((sec.usado_tokens / sec.cota_tokens) * 100))
+      : 0;
+    const linha = (k, v) => `
+      <div class="sett-info-row"><span>${esc(k)}</span><code>${esc(v)}</code></div>`;
+    const limite = d.limite ? `
+      <div class="sett-limit ${esc(d.limite.origem || '')}">
+        <b>⚠ último limite: ${d.limite.origem === 'usuario' ? 'definido por você' : 'do provedor'}</b>
+        <span>${esc(d.limite.detalhe || '')}</span>
+        <span class="sett-limit-ts">${esc(d.limite.ts || '')}</span>
+      </div>` : '';
+    alvo.innerHTML = `
+      <div class="sett-row">
+        <div>
+          <div class="sett-label">orçamento do modelo</div>
+          <div class="sett-value">${esc(d.modelo)}</div>
+        </div>
+        <span class="sett-pill">${esc(d.perfil)}</span>
+      </div>
+      <div class="sett-info">
+        ${linha('teto', `${fmt(d.contexto.teto_tokens)} tokens`)}
+        ${linha('teto do perfil', `${fmt(d.contexto.teto_perfil)} tokens`)}
+        ${linha('conversão', `${d.contexto.chars_por_token} chars/token`)}
+        ${linha('histórico mantém', `${d.contexto.keep_last} mensagens`)}
+        ${linha('prévia do anexo', `${fmt(d.contexto.anexo.previa_chars)} chars`)}
+      </div>
+      <div class="sett-divider"></div>
+      <div class="sett-label">sessão #${esc(d.sessao.id ?? '—')}</div>
+      <div class="sett-info">
+        ${linha('tokens ↑', fmt(d.sessao.tokens_in))}
+        ${linha('tokens ↓', fmt(d.sessao.tokens_out))}
+      </div>
+      <div class="sett-divider"></div>
+      <div class="sett-label">modelo secundário</div>
+      <div class="sett-info">
+        ${linha('cota da sessão', `${fmt(sec.cota_tokens)} tokens`)}
+        ${linha('usado', `${fmt(sec.usado_tokens)} tokens · ${pct}%`)}
+        ${linha('restante', `${fmt(sec.restante)} tokens`)}
+      </div>
+      <div class="sett-bar" title="${pct}% da cota"><span style="width:${pct}%"></span></div>
+      ${limite}`;
+  } catch (e) {
+    alvo.innerHTML = `<div class="panel-empty">erro ao carregar: ${esc(e.message)}</div>`;
+  }
 }
 
 // delegação: os painéis são re-renderizados a cada mudança

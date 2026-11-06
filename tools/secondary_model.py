@@ -29,12 +29,15 @@ _DEFAULT_CONFIG = {
     "model":                 "nvidia/llama-3.1-nemotron-ultra-253b-v1",
     "api_key_env":           "SECONDARY_MODEL_API_KEY",
     "timeout":               180,
+    # cota da sessão em tokens; 0 = deriva de max_chars_per_session (legado)
+    "max_tokens_per_session": 0,
     "max_chars_per_session": 40000,
     "max_response_chars":    8000,
 }
 
 _CONFIG_PATH  = Path(__file__).parent.parent / "ciel_config.json"
 _QUOTA_PATH   = Path(__file__).parent.parent / "data" / "secondary_quota.json"
+_LIMITE_PATH  = Path(__file__).parent.parent / "data" / "secondary_limite.json"
 _RESPONSE_DIR = Path(__file__).parent.parent / "data" / "user"
 _SKILLS_DIR   = Path(__file__).parent.parent / "skills"
 _MOCK_DIR     = Path(__file__).parent.parent / "data" / "mock"
@@ -389,18 +392,61 @@ def _load_config() -> dict:
     return cfg
 
 
-def _load_quota(session_id: str) -> int:
-    """Retorna quantos chars já foram enviados nesta sessão."""
+def _limite_tokens(cfg: dict) -> int:
+    """
+    Cota da sessão em tokens.
+
+    `max_tokens_per_session` manda; se não existir, converte o legado
+    `max_chars_per_session` (chars) por `chars_por_token`; senão 12k.
+    """
+    import contexto
+
+    tokens = cfg.get("max_tokens_per_session") or 0
+    try:
+        tokens = int(tokens)
+    except (TypeError, ValueError):
+        tokens = 0
+    if tokens > 0:
+        return tokens
+
+    legado = cfg.get("max_chars_per_session") or 0
+    try:
+        legado = int(legado)
+    except (TypeError, ValueError):
+        legado = 0
+    if legado > 0:
+        return max(1, legado // contexto.chars_por_token())
+    return 12_000
+
+
+def _load_quota(session_id: str) -> dict:
+    """
+    Uso do secundário nesta sessão: `{"tokens": int, "chars": int}`.
+
+    Quota antiga era um int de chars — convertida na leitura por
+    `chars_por_token` (mantém o comportamento de quem já tinha uso).
+    """
+    import contexto
+
+    vazio = {"tokens": 0, "chars": 0}
     if not _QUOTA_PATH.exists():
-        return 0
+        return vazio
     try:
         data = json.loads(_QUOTA_PATH.read_text(encoding="utf-8"))
-        return data.get(session_id, 0)
     except Exception:
-        return 0
+        return vazio
+
+    bruto = data.get(session_id, 0)
+    if isinstance(bruto, dict):
+        return {
+            "tokens": int(bruto.get("tokens", 0) or 0),
+            "chars":  int(bruto.get("chars", 0) or 0),
+        }
+    chars = int(bruto or 0)
+    return {"tokens": chars // contexto.chars_por_token(), "chars": chars}
 
 
-def _save_quota(session_id: str, used: int):
+def _save_quota(session_id: str, dados: dict):
     _QUOTA_PATH.parent.mkdir(parents=True, exist_ok=True)
     data = {}
     if _QUOTA_PATH.exists():
@@ -408,8 +454,79 @@ def _save_quota(session_id: str, used: int):
             data = json.loads(_QUOTA_PATH.read_text(encoding="utf-8"))
         except Exception:
             pass
-    data[session_id] = used
+    data[session_id] = {
+        "tokens": int(dados.get("tokens", 0) or 0),
+        "chars":  int(dados.get("chars", 0) or 0),
+    }
     _QUOTA_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _classificar_erro_provedor(status: int, corpo: str = "") -> dict:
+    """Traduz o erro HTTP do provedor em `limite` atribuível ao provedor."""
+    texto = str(corpo or "")[:4000].lower()
+    if status == 429:
+        subtipo = "rate_limit"
+    elif status == 402 or "insufficient_quota" in texto or "credit" in texto:
+        subtipo = "credito"
+    elif ("context_length" in texto or "maximum context length" in texto
+          or "too many tokens" in texto or "context window" in texto):
+        subtipo = "contexto"
+    else:
+        subtipo = "outro"
+    return {
+        "origem":   "provedor",
+        "subtipo":  subtipo,
+        "detalhe":  f"HTTP {status}: {str(corpo or '')[:200]}",
+    }
+
+def _registrar_limite(origem: str, detalhe: str, *, subtipo: str = "",
+                      usado: int = 0, teto: int = 0) -> dict:
+    """
+    Guarda o último limite que barrou a chamada (para a tela de consumo) e
+    publica no SSE — a sessão mostra um aviso em vez de um erro mudo.
+
+    O campo é `origem` (usuario/provedor) e não `tipo`, porque `publish()`
+    usa `tipo` para o nome do evento.
+    """
+    info = {
+        "origem":  origem,        # "usuario" | "provedor"
+        "subtipo": subtipo,
+        "detalhe": str(detalhe)[:300],
+        "usado":   int(usado),
+        "teto":    int(teto),
+        "ts":      datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+    try:
+        _LIMITE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _LIMITE_PATH.write_text(json.dumps(info, ensure_ascii=False, indent=2),
+                                encoding="utf-8")
+    except OSError:
+        pass
+    try:
+        import ui_bus
+        ui_bus.publish("limite", **info)
+    except Exception:
+        pass
+    return info
+
+
+def _mensagem_limite(info: dict) -> str:
+    """Mensagem para o modelo/usuário, deixando claro QUEM barrou."""
+    if info.get("origem") == "usuario":
+        teto = info.get("teto") or 0
+        usado = info.get("usado") or 0
+        pct = (usado / teto * 100) if teto else 0
+        return (
+            f"⚠ limite definido por você: cota do modelo secundário "
+            f"({usado:,} de {teto:,} tokens — {pct:.0f}%). "
+            f"Ajuste em ciel_config.json → max_tokens_per_session."
+        )
+    rotulo = {
+        "rate_limit": "rate limit do provedor",
+        "contexto":   "contexto acima da janela do provedor",
+        "credito":    "sem crédito no provedor",
+    }.get(info.get("subtipo", ""), "erro do provedor")
+    return f"⚠ limite do provedor ({rotulo}): {info.get('detalhe', '')}"
 
 
 def _save_text_response(content: str) -> str:
@@ -702,19 +819,21 @@ def run(
         mock_type = cfg.get("mock_type", "code")
         return _run_mock(mock_type, mode, skill, prompt, output_dir=output_dir)
 
-    # ── verifica cota ─────────────────────────────────────────────────────────
+    # ── verifica cota (em tokens; estimativa pré-call, usage real pós-call) ──
+    import contexto
     prompt_chars = len(prompt)
-    used         = _load_quota(session_id)
-    max_chars    = cfg.get("max_chars_per_session", 40000)
+    cpt          = contexto.chars_por_token()
+    estimado     = max(1, prompt_chars // cpt)
+    uso          = _load_quota(session_id)
+    max_tok      = _limite_tokens(cfg)
 
-    if used + prompt_chars > max_chars:
-        restante = max(0, max_chars - used)
-        return (
-            f"Cota do modelo secundário esgotada para esta sessão. "
-            f"Usado: {used:,} chars / Limite: {max_chars:,} chars. "
-            f"Restante: {restante:,} chars. "
-            f"Tente resumir o problema ou inicie uma nova sessão."
+    if uso["tokens"] + estimado > max_tok:
+        info = _registrar_limite(
+            "usuario",
+            f"cota de {max_tok:,} tokens da sessão atingida",
+            usado=uso["tokens"], teto=max_tok,
         )
+        return _mensagem_limite(info)
 
     # ── obtém API key ─────────────────────────────────────────────────────────
     api_key_env = cfg.get("api_key_env", "SECONDARY_MODEL_API_KEY")
@@ -812,7 +931,10 @@ def run(
                 status = resp.status_code
                 if status not in _RETRYABLE or attempt > max_retries:
                     spinner.fail(f"erro HTTP {status}")
-                    return f"Erro HTTP {status}: {resp.text[:300]}"
+                    info = _classificar_erro_provedor(status, resp.text)
+                    _registrar_limite(**info, usado=uso["tokens"] + estimado,
+                                      teto=max_tok)
+                    return _mensagem_limite(info)
                 wait = 2 ** attempt
                 spinner.set_status(f"erro {status}, aguardando {wait}s")
                 time.sleep(wait)
@@ -838,10 +960,19 @@ def run(
     except Exception:
         pass
 
-    # ── atualiza cota ─────────────────────────────────────────────────────────
+    # ── atualiza cota (tokens reais do usage; estimativa como fallback) ──────
     if content is None:
         return "Erro: todas as tentativas falharam sem resposta do modelo secundário."
-    _save_quota(session_id, used + prompt_chars)
+    reais = int(_usage.get("total_tokens") or 0)
+    if not reais:
+        reais = (int(_usage.get("prompt_tokens", 0) or 0)
+                 + int(_usage.get("completion_tokens", 0) or 0))
+    if not reais:
+        reais = estimado
+    _save_quota(session_id, {
+        "tokens": uso["tokens"] + reais,
+        "chars":  uso["chars"] + prompt_chars,
+    })
 
     # ── mode: code ────────────────────────────────────────────────────────────
     if mode == "code":

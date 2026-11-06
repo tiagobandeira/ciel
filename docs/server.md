@@ -101,6 +101,10 @@ provider no mesmo arquivo. Para guardar os segredos em outro lugar, defina
   **Fontes** + `read_pdf`. Anexo binário vindo de cliente antigo é barrado com
   `400`, para não gravar bytes no histórico. Ao reabrir a sessão, a bolha do
   usuário mostra só a mensagem e `📎 nome`, não o conteúdo do arquivo.
+- **Consumo.** **Ajustes → consumo** mostra o teto de contexto do modelo ativo
+  (perfil + override), o uso da sessão em tokens, a cota do modelo secundário
+  (com barra de uso) e o **último limite** que barrou uma chamada — deixando
+  claro se foi a cota que você definiu ou o provedor (rate limit/contexto/crédito).
 - **Interface visual.** O `/ui` ainda não renderiza essas perguntas: nele a
   tool segue o comportamento antigo.
 

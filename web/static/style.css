@@ -2067,6 +2067,33 @@ body {
 .sett-info-row code { word-break: break-all; }
 .sett-links { display: flex; gap: 16px; }
 
+/* consumo: cota do secundário e orçamento de contexto */
+.sett-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface3);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  margin-top: 8px;
+}
+.sett-bar > span { display: block; height: 100%; background: var(--accent2); }
+.sett-limit {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--warn);
+  background: var(--warn-dim);
+  border-radius: var(--radius);
+  font-size: 11px;
+  color: var(--text2);
+}
+.sett-limit b { color: var(--warn); font-weight: 600; }
+.sett-limit.provedor { border-color: var(--err); background: var(--err-dim); }
+.sett-limit.provedor b { color: var(--err); }
+.sett-limit-ts { color: var(--muted); font-family: var(--font-mono); font-size: 10px; }
+
 /* ══ PERFIL DO ORQUESTRADOR (local / nuvem) ═══════════════════ */
 .perfil-wrap { position: relative; flex-shrink: 0; }
 .perfil-btn {

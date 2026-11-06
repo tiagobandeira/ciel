@@ -76,6 +76,7 @@ from tools_registry import load_tools, load_ui_tools, tools_schema
 from agent_loader   import load_agent, filter_tools, list_agents
 from history_store  import HistoryStore, DB_PATH
 from history_ui     import build_context_injection
+import contexto
 from auth           import AuthManager
 from auth.cli       import exibir_senha
 import ui_bus
@@ -797,6 +798,72 @@ def api_info():
         "authenticated": authenticated,
         "safe":          _safe_for_request(),
         "force_safe":    state.force_safe,
+    })
+
+
+# ── /api/consumo ─────────────────────────────────────────────────────────────
+def _consumo_secundario(sessao) -> dict:
+    """
+    Cota e uso do modelo secundário.
+
+    O estado vive nos arquivos que a tool mantém (`data/secondary_quota.json`);
+    aqui só lemos — sem importar a tool (rich/requests) para uma tela.
+    """
+    cfg = _ler_json(CONFIG_PATH)
+    tokens = cfg.get("max_tokens_per_session") or 0
+    try:
+        tokens = int(tokens)
+    except (TypeError, ValueError):
+        tokens = 0
+    if tokens <= 0:
+        legado = cfg.get("max_chars_per_session") or 0
+        try:
+            legado = int(legado)
+        except (TypeError, ValueError):
+            legado = 0
+        tokens = max(1, legado // contexto.chars_por_token()) if legado else 12_000
+
+    usado = 0
+    if sessao is not None:
+        quota = _ler_json(ROOT / "data" / "secondary_quota.json")
+        bruto = quota.get(str(sessao), 0)
+        if isinstance(bruto, dict):
+            usado = int(bruto.get("tokens", 0) or 0)
+        else:  # legado: int em chars
+            usado = int(bruto or 0) // contexto.chars_por_token()
+
+    return {
+        "cota_tokens":  tokens,
+        "usado_tokens": usado,
+        "restante":     max(0, tokens - usado),
+    }
+
+
+@app.route("/api/consumo")
+def api_consumo():
+    """Orçamento de contexto e uso em tokens — alimenta Ajustes → consumo."""
+    if not _is_authenticated():
+        return jsonify({"error": "consumo exige login."}), 401
+
+    cfg = contexto.carregar()
+    modelo = state.model
+    return jsonify({
+        "perfil": state.perfil,
+        "modelo": state.model_label or modelo,
+        "contexto": {
+            "teto_tokens":     contexto.teto_tokens(state.perfil, modelo, cfg),
+            "teto_perfil":     contexto.teto_tokens(state.perfil, None, cfg),
+            "chars_por_token": contexto.chars_por_token(cfg),
+            "keep_last":       contexto.keep_last(state.perfil, cfg),
+            "anexo":           contexto.anexo(cfg),
+        },
+        "sessao": {
+            "id":         state.session_id,
+            "tokens_in":  state.tokens_in,
+            "tokens_out": state.tokens_out,
+        },
+        "secundario": _consumo_secundario(state.session_id),
+        "limite":     _ler_json(ROOT / "data" / "secondary_limite.json") or None,
     })
 
 

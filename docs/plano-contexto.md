@@ -20,9 +20,19 @@ Já entrou (incremento 1, Parte 1):
 - Testes: `tests/test_core/test_contexto.py` e casos novos em
   `tests/test_integration/test_agent_loop_batch.py`.
 
-Ainda não (próximos incrementos): upload do anexo com prévia em disco (Parte 2),
-cota do secundário em tokens + atribuição de limite e tela de Consumo (Parte 3),
-e `source_ids`/`files` por tipo no secundário.
+Também já entrou (Parte 3, parcial):
+
+- cota do secundário em **tokens** (`max_tokens_per_session`), debitada pelo
+  `usage` real com estimativa `chars/3` na admissão e fallback em chars quando o
+  provedor não devolve `usage`; legado `max_chars_per_session` convertido;
+- **atribuição do limite** (`limite: usuario` x `limite: provedor` com subtipo
+  rate limit/contexto/crédito) — o "Erro HTTP 429" mudo saiu de cena;
+- aviso na sessão via SSE (`limite`) e **Ajustes → consumo** com teto, uso da
+  sessão, cota do secundário e o último limite (GET `/api/consumo`).
+
+Ainda não: upload do anexo com prévia em disco e `source_ids`/`files` por tipo no
+secundário (Parte 2), override por modelo no perfil nuvem, exibir o `num_ctx`
+efetivo do Ollama vs. o definido pelo usuário.
 
 ## Objetivo
 

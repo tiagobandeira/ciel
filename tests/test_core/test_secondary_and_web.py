@@ -144,33 +144,42 @@ class TestLoadConfigSM:
 # ── _load_quota / _save_quota ─────────────────────────────────────────────────
 
 class TestQuota:
+    """Cota em tokens; a leitura aceita o formato antigo (int em chars)."""
+
     def test_load_quota_zero_sem_arquivo(self, tmp_root, sm_mod):
-        assert sm_mod._load_quota("sessao-x") == 0
+        assert sm_mod._load_quota("sessao-x") == {"tokens": 0, "chars": 0}
 
     def test_save_e_load_quota(self, tmp_root, sm_mod):
-        sm_mod._save_quota("sessao-abc", 5000)
-        assert sm_mod._load_quota("sessao-abc") == 5000
+        sm_mod._save_quota("sessao-abc", {"tokens": 1_600, "chars": 5_000})
+        assert sm_mod._load_quota("sessao-abc") == {"tokens": 1_600, "chars": 5_000}
 
     def test_multiplas_sessoes_independentes(self, tmp_root, sm_mod):
-        sm_mod._save_quota("sess-1", 1000)
-        sm_mod._save_quota("sess-2", 2000)
-        assert sm_mod._load_quota("sess-1") == 1000
-        assert sm_mod._load_quota("sess-2") == 2000
+        sm_mod._save_quota("sess-1", {"tokens": 300, "chars": 1_000})
+        sm_mod._save_quota("sess-2", {"tokens": 600, "chars": 2_000})
+        assert sm_mod._load_quota("sess-1")["tokens"] == 300
+        assert sm_mod._load_quota("sess-2")["tokens"] == 600
 
     def test_sessao_inexistente_retorna_zero(self, tmp_root, sm_mod):
-        sm_mod._save_quota("sess-real", 500)
-        assert sm_mod._load_quota("sess-fantasma") == 0
+        sm_mod._save_quota("sess-real", {"tokens": 100, "chars": 300})
+        assert sm_mod._load_quota("sess-fantasma") == {"tokens": 0, "chars": 0}
 
     def test_atualiza_quota_existente(self, tmp_root, sm_mod):
-        sm_mod._save_quota("sess", 100)
-        sm_mod._save_quota("sess", 200)
-        assert sm_mod._load_quota("sess") == 200
+        sm_mod._save_quota("sess", {"tokens": 30, "chars": 100})
+        sm_mod._save_quota("sess", {"tokens": 60, "chars": 200})
+        assert sm_mod._load_quota("sess")["tokens"] == 60
 
     def test_load_quota_json_invalido_retorna_zero(self, tmp_root, sm_mod):
         quota_path = tmp_root / "data" / "secondary_quota.json"
         quota_path.parent.mkdir(parents=True, exist_ok=True)
         quota_path.write_text("{invalido", encoding="utf-8")
-        assert sm_mod._load_quota("sess") == 0
+        assert sm_mod._load_quota("sess") == {"tokens": 0, "chars": 0}
+
+    def test_formato_antigo_era_em_chars(self, tmp_root, sm_mod):
+        quota_path = tmp_root / "data" / "secondary_quota.json"
+        quota_path.parent.mkdir(parents=True, exist_ok=True)
+        quota_path.write_text('{"sess": 9000}', encoding="utf-8")
+
+        assert sm_mod._load_quota("sess") == {"tokens": 3_000, "chars": 9_000}
 
 
 # ── _save_text_response ───────────────────────────────────────────────────────
@@ -366,15 +375,16 @@ class TestRunSemAPI:
         (tmp_root / "ciel_config.json").write_text(json.dumps({
             "base_url": "https://api.groq.com/openai/v1",
             "model": "llama-3.3-70b-versatile",
-            "max_chars_per_session": 1000,
+            "max_chars_per_session": 3000,   # legado → 1000 tokens
         }), encoding="utf-8")
 
     def test_cota_esgotada_retorna_mensagem(self, tmp_root, sm_mod, cfg_basico, monkeypatch):
         monkeypatch.setenv("SECONDARY_MODEL_API_KEY", "fake-key")
-        # força cota esgotada
-        sm_mod._save_quota("sess-cota", 2000)  # already over max_chars=1000
+        # cota efetiva: 3000 chars ÷ 3 = 1000 tokens (já estourou)
+        sm_mod._save_quota("sess-cota", {"tokens": 2_000, "chars": 6_000})
         result = sm_mod.run("prompt qualquer", session_id="sess-cota")
-        assert "Cota" in result or "esgotada" in result
+        assert "limite definido por você" in result
+        assert "1,000" in result
 
     def test_sem_api_key_retorna_mensagem_de_erro(self, tmp_root, sm_mod, monkeypatch):
         monkeypatch.delenv("SECONDARY_MODEL_API_KEY", raising=False)

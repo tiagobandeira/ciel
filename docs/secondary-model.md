@@ -82,7 +82,8 @@ por ele.
 | `~/.ciel/secrets.json` | credenciais dos providers configurados — gerenciado por `trust/secrets.py`, fora do repositório |
 | `trust/model_manager.py` | lógica de listagem/ativação de provider usada por `/model` |
 | `ciel_config.example.json` | template público de referência (formato legado) |
-| `data/secondary_quota.json` | controle de caracteres consumidos por sessão |
+| `data/secondary_quota.json` | uso em tokens por sessão |
+| `data/secondary_limite.json` | último limite que barrou uma chamada (usuário ou provedor) |
 | `data/user/secondary_response_*.md` | respostas longas salvas automaticamente |
 
 ---
@@ -178,7 +179,8 @@ Os três primeiros são escritos automaticamente pelo `/model` ao ativar um prov
 | `api_key` | string | Chave direto no arquivo — fallback manual, sem passar por `/connect` (ver abaixo) |
 | `api_key_env` | string | Nome da variável de ambiente a checar (padrão: `SECONDARY_MODEL_API_KEY`) |
 | `timeout` | int | Segundos de espera pela resposta (padrão: 120) |
-| `max_chars_per_session` | int | Limite de caracteres de input por sessão (padrão: 40000) |
+| `max_tokens_per_session` | int | Cota da sessão em tokens (padrão: 0 = deriva do legado, senão 12.000) |
+| `max_chars_per_session` | int | **Legado**: cota em caracteres; convertida por `chars_por_token` |
 | `max_response_chars` | int | Respostas maiores que isso são salvas em arquivo (padrão: 8000) |
 | `max_tokens` | int | Máximo de tokens na resposta do modelo secundário (padrão: 16384) |
 
@@ -223,19 +225,35 @@ Pra ver todos os providers já conectados e qual está ativo, rode `/model` a qu
 
 ## Controle de cota
 
-A tool rastreia quantos caracteres de input foram enviados ao modelo secundário
-por sessão, armazenando em `data/secondary_quota.json`:
+A cota é medida em **tokens**, não em caracteres. A tool guarda o uso por sessão
+em `data/secondary_quota.json`:
 
 ```json
 {
-  "70": 1285,
-  "71": 358
+  "70": { "tokens": 1285, "chars": 4200 },
+  "71": { "tokens": 358,  "chars": 1100 }
 }
 ```
 
-Cada chave é um `session_id`. Quando o total da sessão ultrapassa
-`max_chars_per_session`, a tool retorna uma mensagem de cota esgotada
-sem fazer a chamada.
+- Antes da chamada, estima `chars / chars_por_token` (3 por padrão) e recusa se
+  `usado + estimado` passar de `max_tokens_per_session`;
+- depois da chamada, debita o `usage` real do provedor
+  (`total_tokens` ou `prompt + completion`), com a estimativa como fallback;
+- arquivo antigo (um int por sessão) continua válido: o valor era em chars e é
+  convertido na leitura.
+
+### Quem barrou: você ou o provedor?
+
+O retorno da tool diz explicitamente, e o site mostra o mesmo aviso na sessão
+(evento `limite` no SSE) e em **Ajustes → consumo**:
+
+| Origem | Quando | Exemplo |
+|---|---|---|
+| `usuario` | cota da sessão (`max_tokens_per_session`) | `⚠ limite definido por você: … 18.000 de 20.000 tokens — 90%` |
+| `provedor` | 429 rate limit, 400 contexto, 402 sem crédito | `⚠ limite do provedor (rate limit): HTTP 429 …` |
+
+O último limite fica em `data/secondary_limite.json` (origem, subtipo, uso,
+teto e horário), que é o que a tela de consumo lê.
 
 O `session_id` é injetado automaticamente pelo `run_agent()` em `cli.py`,
 seguindo o mesmo padrão das tools RAG — o modelo não precisa passá-lo
