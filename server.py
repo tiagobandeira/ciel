@@ -862,6 +862,27 @@ def _avisar_cota_sessao(sessao, uso: dict, teto: int) -> None:
     )
 
 
+def _garantir_sessao(titulo: str = "") -> int | None:
+    """
+    Cria a sessão no histórico se ainda não existe.
+
+    `/task` roda o agente e consome tokens, mas não passa pelo turno normal —
+    sem isso a task ficava sem `session_id`: o uso caía no balde `_nosession`
+    (inclusive a cota do secundário) e o painel só mostrava algo no próximo
+    turno, quando a sessão era criada.
+    """
+    if state.session_id is not None:
+        return state.session_id
+    try:
+        state.session_id = state.store.new_session(
+            agent_id=state.agent_id,
+            title=(titulo or f"sessão {datetime.now().strftime('%d/%m %H:%M')}")[:80],
+        )
+    except Exception:
+        return None
+    return state.session_id
+
+
 def _bloqueio_cota_sessao():
     """
     Devolve a resposta de bloqueio quando a cota da sessão já foi atingida.
@@ -2293,7 +2314,13 @@ def handle_command(cmd: str, turn_id: str | None = None,
 
         task_prompt = build_task_prompt(task)
         ts = datetime.now().strftime("%a %H:%M")
+        sid = _garantir_sessao(f"task {task['nome']}")
         state.history.append({"role": "user", "content": f"/task {task['nome']}", "ts": ts})
+        if sid:
+            try:
+                state.store.append_turn(sid, "user", f"/task {task['nome']}", ts)
+            except Exception:
+                pass
 
         trace = []
         t0_task = time.monotonic()

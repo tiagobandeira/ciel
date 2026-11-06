@@ -106,10 +106,10 @@ provider no mesmo arquivo. Para guardar os segredos em outro lugar, defina
   (com barra de uso) e o **último limite** que barrou uma chamada — deixando
   claro se foi a cota que você definiu ou o provedor (rate limit/contexto/crédito).
   O painel da sessão (à direita) traz as mesmas cotas em três barras: **sessão**
-  (entrada acumulada), **contexto** (último turno contra a janela, com link de
-  "nova sessão com resumo" a partir de 85%) e **secundário** (só no perfil local).
-  Avisos em 80%/95%; o bloqueio só acontece no teto da sessão — o turno que
-  cruza termina e o seguinte é que não começa.
+  (entrada acumulada), **turno** (último envio contra a janela, com link de
+  "nova sessão com resumo" a partir de 85% do turno ou 95% da sessão) e
+  **secundário** (só no perfil local). Avisos em 80%/95%; o bloqueio só acontece
+  no teto da sessão — o turno que cruza termina e o seguinte é que não começa.
 - **Interface visual.** O `/ui` ainda não renderiza essas perguntas: nele a
   tool segue o comportamento antigo.
 

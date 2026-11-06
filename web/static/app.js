@@ -222,7 +222,12 @@ async function atualizarConsumo() {
   }
 
   const link = document.getElementById('q-branch');
-  if (link) link.classList.toggle('hidden', !(s.id && s.pct_contexto >= 85));
+  if (link) {
+    // contexto do turno perto da janela OU cota da sessão quase esgotada:
+    // em ambos os casos a saída é resumir e continuar em outra sessão
+    const pertoDoTeto = s.pct_contexto >= 85 || s.pct_cota >= 95;
+    link.classList.toggle('hidden', !(s.id && pertoDoTeto));
+  }
 
   avisarCota('sessao', s.id, s.pct_cota, c.avisos);
   avisarCota('secundario', s.id, sec.pct, c.avisos);

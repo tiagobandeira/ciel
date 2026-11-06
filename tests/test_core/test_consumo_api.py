@@ -6,6 +6,7 @@ persistido por sessão e bloqueio quando a cota da sessão é atingida.
 """
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -168,3 +169,59 @@ class TestBloqueioDaSessao:
 
         assert r.status_code == 200
         assert chamado["cmd"].startswith("/history")
+
+class TestSessaoDaTask:
+    """/task consome tokens sem passar pelo turno normal: precisa de sessão."""
+
+    def test_garantir_sessao_cria_uma_vez(self, amb):
+        servidor, _, _ = amb
+        servidor.state.session_id = None
+        criadas = []
+
+        class Store:
+            def new_session(self, agent_id, title="", parent_session_id=None):
+                criadas.append(title)
+                return 77
+
+        servidor.state.store = Store()
+        servidor.state.agent_id = "general"
+
+        assert servidor._garantir_sessao("task x") == 77
+        assert servidor._garantir_sessao("outra") == 77
+        assert len(criadas) == 1
+
+    def test_task_registra_uso_na_sessao(self, amb, monkeypatch):
+        servidor, _, _ = amb
+        estado = servidor.state
+        estado.session_id = None
+        estado.history = []
+        estado.tools = {}
+        estado.schema = []
+        estado.agent_info = {"id": "general"}
+        estado.base_url = ""
+        estado.model_client = None
+        estado.agent_id = "general"
+        estado.tokens_in = 0
+        estado.tokens_out = 0
+
+        class Store:
+            def __init__(self):
+                self.turns = []
+
+            def new_session(self, agent_id, title="", parent_session_id=None):
+                return 77
+
+            def append_turn(self, *args, **kwargs):
+                self.turns.append(args)
+
+        estado.store = Store()
+        fake = SimpleNamespace(status="done", message="ok", steps=1,
+                               tokens_in=120, tokens_out=8)
+        monkeypatch.setattr(servidor, "run_agent", lambda *a, **k: fake)
+
+        task = next(Path("tasks").glob("*.md"))
+        reply, changed = servidor.handle_command(f"/task {task.stem}")
+
+        assert estado.session_id == 77
+        assert servidor._uso_da_sessao(77)["entrada"] == 120
+        assert "ok" in reply
