@@ -67,7 +67,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     summary          TEXT    NOT NULL DEFAULT '',
     created_at       TEXT    NOT NULL,
     updated_at       TEXT    NOT NULL,
-    parent_session_id INTEGER REFERENCES sessions(id)
+    parent_session_id INTEGER REFERENCES sessions(id),
+    compressed_upto  INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS conversations (
@@ -100,14 +101,25 @@ class HistoryStore:
         Ajusta bancos criados por versões anteriores.
 
         `trace` guarda o passo a passo do turno (JSON) para o acordeão do
-        front ao reabrir uma sessão. CREATE TABLE IF NOT EXISTS não altera
-        tabela existente, então a coluna entra por ALTER quando falta.
+        front ao reabrir uma sessão; `compressed_upto` marca até qual turno a
+        conversa foi comprimida (o resumo substitui esses turnos no contexto
+        enviado ao modelo, mas eles continuam visíveis no histórico).
+        CREATE TABLE IF NOT EXISTS não altera tabela existente, então as
+        colunas entram por ALTER quando faltam.
         """
         colunas = {row["name"] for row in self._conn.execute(
             "PRAGMA table_info(conversations)"
         )}
         if "trace" not in colunas:
             self._conn.execute("ALTER TABLE conversations ADD COLUMN trace TEXT")
+
+        colunas = {row["name"] for row in self._conn.execute(
+            "PRAGMA table_info(sessions)"
+        )}
+        if "compressed_upto" not in colunas:
+            self._conn.execute(
+                "ALTER TABLE sessions ADD COLUMN compressed_upto INTEGER NOT NULL DEFAULT 0"
+            )
 
     # ── sessões ──────────────────────────────────────────────────────────────
 
@@ -226,6 +238,30 @@ class HistoryStore:
         return self._conn.execute(
             "SELECT * FROM conversations WHERE session_id=? ORDER BY id",
             (session_id,),
+        ).fetchall()
+
+    def compress_session(self, session_id: int, summary: str,
+                         upto_turn_id: int) -> None:
+        """
+        Marca a compressão: `summary` substitui os turnos até `upto_turn_id`.
+
+        Os turnos continuam no banco (o histórico visível não some); quem monta
+        o contexto do modelo passa a usar o resumo + turnos depois do marco.
+        """
+        self._conn.execute(
+            "UPDATE sessions SET summary=?, compressed_upto=?, updated_at=? "
+            "WHERE id=?",
+            (_redact(summary), int(upto_turn_id), _now(), session_id),
+        )
+        self._conn.commit()
+
+    def turnos_para_contexto(self, session_id: int) -> list[sqlite3.Row]:
+        """Turnos que ainda entram no contexto (depois do marco de compressão)."""
+        sess = self.get_session(session_id)
+        marco = int(sess["compressed_upto"] or 0) if sess else 0
+        return self._conn.execute(
+            "SELECT * FROM conversations WHERE session_id=? AND id>? ORDER BY id",
+            (session_id, marco),
         ).fetchall()
 
     # ── branch (ramificação) ─────────────────────────────────────────────────

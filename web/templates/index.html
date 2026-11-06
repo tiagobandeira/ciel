@@ -254,8 +254,8 @@
               <div class="rp-qbar"><i id="q-sessao-bar"></i></div>
               <span class="rp-qv" id="q-sessao-v">—</span>
             </div>
-            <div class="rp-q" id="q-turno" title="contexto do último turno (system + tools + histórico) contra a janela do modelo">
-              <span class="rp-qk">turno</span>
+            <div class="rp-q" id="q-turno" title="contexto do último envio (system + tools + histórico) contra a janela do modelo">
+              <span class="rp-qk">envio</span>
               <div class="rp-qbar"><i id="q-turno-bar"></i></div>
               <span class="rp-qv" id="q-turno-v">—</span>
             </div>
@@ -268,6 +268,15 @@
                     title="salva esta sessão com resumo para continuar em outra, sem perder o contexto">
               nova sessão com resumo →
             </button>
+            <div class="rp-limite hidden" id="q-limite">
+              <div class="rp-limite-txt">
+                O envio desta sessão chegou ao limite. <b>Continuar nela</b>
+                resume o que já foi discutido e zera o contador;
+                <b>começar uma nova</b> leva esse resumo como memória.
+              </div>
+              <button class="rp-primary" onclick="comprimirSessao()">continuar nesta sessão</button>
+              <button class="rp-btn" onclick="sugerirNovaSessaoComResumo()">começar uma nova</button>
+            </div>
           </div>
         </div>
 

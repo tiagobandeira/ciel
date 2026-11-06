@@ -883,6 +883,94 @@ def _garantir_sessao(titulo: str = "") -> int | None:
     return state.session_id
 
 
+def _resetar_uso(sessao) -> dict:
+    """Zera o acumulado da sessão depois de comprimir (mantém a saída)."""
+    dados = _ler_json(USO_PATH)
+    atual = _uso_da_sessao(sessao)
+    atual["entrada"]        = 0
+    atual["ultimo_entrada"] = 0
+    atual["aviso"]          = 0.0
+    atual["atualizado"]      = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    dados[str(sessao)] = atual
+    _gravar_json(USO_PATH, dados)
+    return atual
+
+
+def _bloco_resumo(resumo: str) -> str:
+    """Mensagem que abre o contexto depois da compressão."""
+    return (
+        "[contexto comprimido da conversa anterior — este resumo substitui os "
+        "turnos antigos]\n\n" + (resumo or "").strip()
+    )
+
+
+class _DummyConsole:
+    """Console sem saída para reusar `_save_session` fora da CLI."""
+
+    def print(self, *args, **kwargs):
+        pass
+
+
+def _gerar_resumo_sessao(sid: int) -> str:
+    """
+    Gera (ou atualiza) o resumo da sessão pelo mesmo caminho do
+    `/history salvar`, sem criar outro id.
+    """
+    _save_session(
+        state.store, state.history, state.agent_info,
+        state.model, state.agent_id, _DummyConsole(),
+        existing_session_id=sid,
+    )
+    sess = state.store.get_session(sid)
+    return str((sess["summary"] if sess else "") or "").strip()
+
+
+@app.route("/api/session/compress", methods=["POST"])
+def api_compress_session():
+    """
+    Comprime a sessão atual: resumo do que já foi discutido + turnos antigos
+    fora do contexto, sem trocar de id. O contador da cota reinicia.
+
+    O histórico visível continua no banco; o modelo passa a receber o resumo.
+    Se o resumo falhar, o front cai para "começar uma nova" (branch).
+    """
+    if not _is_authenticated():
+        return jsonify({"error": "comprimir exige login."}), 401
+    if state.session_id is None or not state.history:
+        return jsonify({"error": "nada para comprimir nesta sessão."}), 400
+    if _turno_lock.locked():
+        return jsonify({"error": "turno em execução — aguarde terminar."}), 409
+
+    sid = state.session_id
+    try:
+        resumo = _gerar_resumo_sessao(sid)
+        turnos = state.store.get_turns(sid)
+        if not resumo or not turnos:
+            raise RuntimeError("resumo vazio")
+        upto = int(turnos[-1]["id"])
+        state.store.compress_session(sid, resumo, upto)
+        uso = _resetar_uso(sid)
+        state.history = [{
+            "role": "assistant",
+            "content": _bloco_resumo(resumo),
+            "ts": datetime.now().strftime("%a %H:%M"),
+        }]
+        return jsonify({
+            "status": "ok",
+            "session_id": sid,
+            "compressed_upto": upto,
+            "resumo": resumo,
+            "uso": uso,
+        })
+    except Exception as e:
+        return jsonify({
+            "error": (
+                f"não deu para comprimir ({e}). Use 'começar uma nova' — o "
+                f"resumo vira a memória da nova sessão."
+            ),
+        }), 502
+
+
 def _bloqueio_cota_sessao():
     """
     Devolve a resposta de bloqueio quando a cota da sessão já foi atingida.
@@ -897,8 +985,8 @@ def _bloqueio_cota_sessao():
     return jsonify({
         "error": (
             f"cota da sessão atingida ({uso['entrada']:,} de {cota:,} tokens de "
-            f"entrada). Crie uma nova sessão (com resumo) ou aumente "
-            f"`cota_sessao_tokens`."
+            f"entrada). Resuma e continue nesta sessão (comprimir) ou comece "
+            f"uma nova com o resumo; para aumentar, `cota_sessao_tokens`."
         ),
         "limite": {"origem": "sessao", "usado": uso["entrada"], "teto": cota},
     }), 429

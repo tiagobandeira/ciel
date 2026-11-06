@@ -225,3 +225,70 @@ class TestSessaoDaTask:
         assert estado.session_id == 77
         assert servidor._uso_da_sessao(77)["entrada"] == 120
         assert "ok" in reply
+class TestCompressaoDaSessao:
+    """POST /api/session/compress: resumo + reset da cota sem trocar de id."""
+
+    def _preparar(self, servidor, tmp_path):
+        from history_store import HistoryStore
+
+        store = HistoryStore(db_path=tmp_path / "compress.db")
+        sid = store.new_session("general", "conversa")
+        store.append_turn(sid, "user", "oi")
+        store.append_turn(sid, "agent", "olá")
+        servidor.state.store = store
+        servidor.state.session_id = sid
+        servidor.state.history = [
+            {"role": "user", "content": "oi"},
+            {"role": "agent", "content": "olá"},
+        ]
+        servidor.state.agent_id = "general"
+        servidor.state.agent_info = {"id": "general"}
+        servidor.state.model = "gemma4:cloud"
+        servidor._registrar_uso(sid, 900_000, 0)
+        return store, sid
+
+    def test_comprime_e_zera_cota(self, amb, monkeypatch):
+        servidor, cliente, tmp = amb
+        store, sid = self._preparar(servidor, tmp)
+
+        def fake_save(*args, **kwargs):
+            store.save_summary(sid, "resumo feito")
+            return sid
+
+        monkeypatch.setattr(servidor, "_save_session", fake_save)
+
+        r = cliente.post("/api/session/compress", json={"session_id": sid})
+        dados = r.get_json()
+
+        assert r.status_code == 200
+        assert dados["session_id"] == sid
+        assert dados["compressed_upto"] == store.get_turns(sid)[-1]["id"]
+        assert store.get_session(sid)["summary"] == "resumo feito"
+        assert servidor._uso_da_sessao(sid)["entrada"] == 0
+        assert "[contexto comprimido" in servidor.state.history[0]["content"]
+        store.close()
+
+    def test_resumo_falhou_502(self, amb, monkeypatch):
+        servidor, cliente, tmp = amb
+        store, sid = self._preparar(servidor, tmp)
+        monkeypatch.setattr(servidor, "_save_session",
+                            lambda *a, **k: (_ for _ in ()).throw(RuntimeError("sem modelo")))
+
+        r = cliente.post("/api/session/compress", json={"session_id": sid})
+
+        assert r.status_code == 502
+        assert "começar uma nova" in r.get_json()["error"]
+        store.close()
+
+    def test_sem_historico_400(self, amb):
+        servidor, cliente, _ = amb
+        servidor.state.session_id = 12
+        servidor.state.history = []
+
+        assert cliente.post("/api/session/compress", json={}).status_code == 400
+
+    def test_exige_login(self, amb, monkeypatch):
+        servidor, cliente, _ = amb
+        monkeypatch.setattr(servidor, "_is_authenticated", lambda: False)
+
+        assert cliente.post("/api/session/compress", json={}).status_code == 401

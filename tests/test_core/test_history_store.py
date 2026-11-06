@@ -473,3 +473,59 @@ class TestFormatSessionRow:
         row = store.list_sessions()[0]
         formatted = format_session_row(row)
         assert "(sem título)" in formatted
+
+class TestCompressao:
+    """Marcador de compressão: resumo + turnos antigos fora do contexto."""
+
+    def test_compress_session_marca_upto(self, store):
+        sid = store.new_session("geral", "S")
+        store.append_turn(sid, "user", "primeira")
+        store.append_turn(sid, "agent", "resposta")
+        ultimo = store.get_turns(sid)[-1]["id"]
+
+        store.compress_session(sid, "resumo da conversa", ultimo)
+
+        sess = store.get_session(sid)
+        assert sess["summary"] == "resumo da conversa"
+        assert sess["compressed_upto"] == ultimo
+
+    def test_turnos_para_contexto_ignora_antigos(self, store):
+        sid = store.new_session("geral", "S")
+        store.append_turn(sid, "user", "antiga")
+        store.append_turn(sid, "agent", "antiga resposta")
+        marco = store.get_turns(sid)[-1]["id"]
+        store.compress_session(sid, "resumo", marco)
+        store.append_turn(sid, "user", "depois da compressão")
+
+        restantes = store.turnos_para_contexto(sid)
+
+        assert [t["content"] for t in restantes] == ["depois da compressão"]
+
+    def test_sem_compressao_traz_tudo(self, store):
+        sid = store.new_session("geral", "S")
+        store.append_turn(sid, "user", "a")
+        store.append_turn(sid, "agent", "b")
+
+        assert len(store.turnos_para_contexto(sid)) == 2
+
+    def test_migracao_adiciona_coluna_em_banco_antigo(self, tmp_path):
+        db = tmp_path / "antigo.db"
+        conn = sqlite3.connect(str(db))
+        conn.executescript(
+            "CREATE TABLE sessions (id INTEGER PRIMARY KEY, agent_id TEXT NOT NULL,"
+            " title TEXT NOT NULL DEFAULT '', summary TEXT NOT NULL DEFAULT '',"
+            " created_at TEXT NOT NULL, updated_at TEXT NOT NULL,"
+            " parent_session_id INTEGER);"
+        )
+        conn.execute(
+            "INSERT INTO sessions (agent_id, title, created_at, updated_at)"
+            " VALUES ('geral', 'x', '2026-01-01', '2026-01-01')"
+        )
+        conn.commit()
+        conn.close()
+
+        s = HistoryStore(db_path=db)
+        try:
+            assert s.get_session(1)["compressed_upto"] == 0
+        finally:
+            s.close()

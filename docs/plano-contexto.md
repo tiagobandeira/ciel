@@ -43,6 +43,9 @@ Também já entrou (Parte 3.2, 2026-11-06):
   rate limit/contexto/crédito) — o "Erro HTTP 429" mudo saiu de cena;
 - aviso na sessão via SSE (`limite`) e **Ajustes → consumo** com teto, uso da
   sessão, cota do secundário e o último limite (GET `/api/consumo`).
+- **compressão na mesma sessão** (`compressed_upto`): resumo do que já foi
+  discutido + reset da cota, mantendo o id; o painel oferece "continuar nesta
+  sessão" ou "começar uma nova", com branch como fallback se o resumo falhar.
 
 Ainda não: upload do anexo com prévia em disco e `source_ids`/`files` por tipo no
 secundário (Parte 2), override por modelo no perfil nuvem, exibir o `num_ctx`

@@ -208,7 +208,7 @@ async function atualizarConsumo() {
   pintarCota('q-turno', 'q-turno-bar', 'q-turno-v', s.pct_contexto,
              `${fmtQ(s.ultimo_entrada)}/${fmtQ(c.teto_tokens)}`);
   const qt = document.getElementById('q-turno');
-  if (qt) qt.title = `contexto do último turno: ${fmtCheio(s.ultimo_entrada || 0)} de ${fmtCheio(c.teto_tokens || 0)} tokens`;
+  if (qt) qt.title = `contexto do último envio: ${fmtCheio(s.ultimo_entrada || 0)} de ${fmtCheio(c.teto_tokens || 0)} tokens`;
 
   const qsec = document.getElementById('q-sec');
   if (qsec) {
@@ -223,15 +223,41 @@ async function atualizarConsumo() {
 
   const link = document.getElementById('q-branch');
   if (link) {
-    // contexto do turno perto da janela OU cota da sessão quase esgotada:
-    // em ambos os casos a saída é resumir e continuar em outra sessão
-    const pertoDoTeto = s.pct_contexto >= 85 || s.pct_cota >= 95;
+    // contexto do envio perto da janela: a saída é resumir e continuar em
+    // outra sessão. Com a cota esgotada quem aparece é o bloco de limite
+    // (que oferece continuar nesta ou começar uma nova).
+    const pertoDoTeto = s.pct_contexto >= 85 && s.pct_cota < 95;
     link.classList.toggle('hidden', !(s.id && pertoDoTeto));
   }
+
+  const bloco = document.getElementById('q-limite');
+  if (bloco) bloco.classList.toggle('hidden', !(s.id && s.pct_cota >= 95));
 
   avisarCota('sessao', s.id, s.pct_cota, c.avisos);
   avisarCota('secundario', s.id, sec.pct, c.avisos);
 }
+
+/** Comprime a sessão atual (resumo + reset do contador) sem trocar de id. */
+window.comprimirSessao = async () => {
+  if (turnoAtivo) return;
+  if (!currentSessionId) { addSysMsg('sessão nova — não há o que comprimir.'); return; }
+  addSysMsg('comprimindo o contexto desta sessão…');
+  try {
+    await api('/api/session/compress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: currentSessionId }),
+    });
+    addSysMsg('contexto comprimido — o resumo agora abre o contexto e o ' +
+              'contador da sessão reiniciou; pode continuar aqui.');
+    await loadSessions();
+    await atualizarConsumo();
+  } catch (e) {
+    addSysMsg(`não deu para comprimir: ${e.message}`);
+    addSysMsg('abrindo o caminho de uma nova sessão com resumo…');
+    try { await sugerirNovaSessaoComResumo(); } catch (_) {}
+  }
+};
 
 /** Aviso único por sessão+faixa (o server também publica por SSE). */
 function avisarCota(escopo, sessao, pct, avisos) {

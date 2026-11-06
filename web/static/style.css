@@ -1123,6 +1123,23 @@ body {
 .rp-qlink:hover { background: var(--surface2); }
 .rp-qlink.hidden { display: none; }
 
+/* limite da sessão: continuar nela (comprimir) ou começar uma nova */
+.rp-limite {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--warn);
+  background: var(--warn-dim);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rp-limite.hidden { display: none; }
+.rp-limite-txt { font-size: 10.5px; color: var(--text2); line-height: 1.4; }
+.rp-limite-txt b { color: var(--warn); font-weight: 600; }
+.rp-limite .rp-primary,
+.rp-limite .rp-btn { width: 100%; justify-content: center; }
+
 .rp-total {
   margin-top: 6px;
   display: flex;

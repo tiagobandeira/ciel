@@ -779,8 +779,35 @@ orçamento de custo em bloqueio precoce.
 **Consequência:** uso persistido em `data/session_usage.json`; o turno que cruza
 o teto termina (não mata trabalho no meio) e o próximo é bloqueado, com saída
 por `/history salvar` e branch. Avisos 80/95 no painel e no SSE; o painel mostra
-sessão, contexto do turno e secundário (só no perfil local). Números antigos em
+sessão, contexto do envio e secundário (só no perfil local). Números antigos em
 chars são convertidos por `chars_por_token`.
+
+---
+
+## D-041 — Compressão na mesma sessão (`compressed_upto`), branch como fallback
+
+**Decisão:** quando a cota da sessão chega perto do teto, o painel oferece
+**continuar nesta sessão** (comprimir) ou **começar uma nova** (branch).
+
+- **Continuar nesta sessão**: gera o resumo pelo mesmo caminho do
+  `/history salvar`, grava `summary` + `compressed_upto = último turno` e zera o
+  acumulado da cota. O contexto enviado ao modelo passa a ser o **resumo** (os
+  turnos antigos saem do prompt, mas continuam visíveis no histórico); o
+  contador começa de novo e volta a encher.
+- **Começar uma nova**: branch com o resumo do pai (o id muda e a cota é nova).
+- Se o resumo falhar (Ollama fora, provider sem resumo), o front cai
+  automaticamente para a branch.
+
+**Por quê:** só resetar o contador sem trocar o contexto enviado faria a barra
+voltar a 100% no turno seguinte — a compressão precisa mexer no que vai para o
+modelo, não só no número. Manter o id preserva a thread; a branch fica como
+saída quando não há como resumir.
+
+**Consequência:** coluna `compressed_upto` em `sessions` (ALTER automático em
+banco antigo); `HistoryStore.compress_session`/`turnos_para_contexto`; endpoint
+`POST /api/session/compress` (409 com turno em execução). O resumo custa tokens,
+por isso o reset já parte do resumo no próximo envio. Sessão reaberta depois
+disso ainda entra pelo fluxo de branch ("retomar"), não pelo mesmo id.
 
 ---
 
@@ -796,4 +823,5 @@ chars são convertidos por `chars_por_token`.
 | Quadro | `board.py` (`data/runs/<id>/board.json`) |
 | Orçamento de contexto | `contexto.py`, `agent_loop.py`, `llm/client.py` |
 | Cota da sessão (persistida) | `server.py` (`USO_PATH`, `_registrar_uso`), `data/session_usage.json` |
+| Compressão | `server.py` (`/api/session/compress`), `history_store.py` (`compressed_upto`) |
 | Visualizador do site | `server.py` (`/preview`, `/api/files`, `/api/preview_site`), `preview_sites.py`, `web/static/preview.js` |
