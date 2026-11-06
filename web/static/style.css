@@ -1081,6 +1081,48 @@ body {
 .rp-bar .in  { width: 0; background: linear-gradient(90deg, var(--accent2), var(--accent)); }
 .rp-bar .out { width: 0; background: var(--cyan); opacity: 0.65; }
 
+/* cotas: sessão (acumulada), contexto do turno e secundário (local) */
+.rp-quotas { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.rp-q { display: grid; grid-template-columns: 54px 1fr auto; gap: 6px; align-items: center; }
+.rp-q.hidden { display: none; }
+.rp-qk {
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.rp-qbar {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--surface3);
+  overflow: hidden;
+}
+.rp-qbar > i { display: block; height: 100%; width: 0; background: var(--accent2); }
+.rp-q.warn .rp-qbar > i { background: var(--warn); }
+.rp-q.err  .rp-qbar > i { background: var(--err); }
+.rp-qv {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text2);
+  white-space: nowrap;
+}
+.rp-q.warn .rp-qv { color: var(--warn); }
+.rp-q.err  .rp-qv { color: var(--err); }
+.rp-qlink {
+  margin-top: 2px;
+  padding: 4px 6px;
+  background: var(--warn-dim);
+  border: 1px solid var(--warn);
+  border-radius: 5px;
+  color: var(--warn);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+.rp-qlink:hover { background: var(--surface2); }
+.rp-qlink.hidden { display: none; }
+
 .rp-total {
   margin-top: 6px;
   display: flex;

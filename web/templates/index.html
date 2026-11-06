@@ -233,7 +233,7 @@
       </div>
 
       <div class="rp-body">
-        <!-- Uso: tokens da sessão -->
+        <!-- Uso: tokens da sessão + cotas -->
         <div class="rp-card" id="rp-uso">
           <div class="rp-stats">
             <div class="rp-cell">
@@ -247,6 +247,28 @@
           </div>
           <div class="rp-bar" id="rp-bar"><i class="in" id="bar-in"></i><i class="out" id="bar-out"></i></div>
           <div class="rp-total"><span>total</span><b id="info-total">0</b></div>
+
+          <div class="rp-quotas">
+            <div class="rp-q" id="q-sessao" title="cota acumulada da sessão (tokens de entrada)">
+              <span class="rp-qk">sessão</span>
+              <div class="rp-qbar"><i id="q-sessao-bar"></i></div>
+              <span class="rp-qv" id="q-sessao-v">—</span>
+            </div>
+            <div class="rp-q" id="q-turno" title="contexto do último turno contra a janela do modelo">
+              <span class="rp-qk">contexto</span>
+              <div class="rp-qbar"><i id="q-turno-bar"></i></div>
+              <span class="rp-qv" id="q-turno-v">—</span>
+            </div>
+            <div class="rp-q hidden" id="q-sec" title="cota acumulada do modelo secundário nesta sessão">
+              <span class="rp-qk">secundário</span>
+              <div class="rp-qbar"><i id="q-sec-bar"></i></div>
+              <span class="rp-qv" id="q-sec-v">—</span>
+            </div>
+            <button class="rp-qlink hidden" id="q-branch" onclick="sugerirNovaSessaoComResumo()"
+                    title="salva esta sessão com resumo para continuar em outra, sem perder o contexto">
+              nova sessão com resumo →
+            </button>
+          </div>
         </div>
 
         <!-- Fontes: sessão + globais, com escopo -->

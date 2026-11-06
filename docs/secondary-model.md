@@ -236,9 +236,13 @@ em `data/secondary_quota.json`:
 ```
 
 - Antes da chamada, estima `chars / chars_por_token` (3 por padrão) e recusa se
-  `usado + estimado` passar de `max_tokens_per_session`;
+  `usado + estimado` passar de `max_tokens_per_session` (default **1M** — é
+  guarda de custo, não um corte curto; 20k quebrava tarefas grandes);
 - depois da chamada, debita o `usage` real do provedor
   (`total_tokens` ou `prompt + completion`), com a estimativa como fallback;
+- o painel da sessão e **Ajustes → consumo** avisam em 80%/95%; o bloqueio só
+  acontece no teto, para pegar o caso de o orquestrador repetir a mesma chamada
+  cara várias vezes;
 - arquivo antigo (um int por sessão) continua válido: o valor era em chars e é
   convertido na leitura.
 
@@ -249,7 +253,7 @@ O retorno da tool diz explicitamente, e o site mostra o mesmo aviso na sessão
 
 | Origem | Quando | Exemplo |
 |---|---|---|
-| `usuario` | cota da sessão (`max_tokens_per_session`) | `⚠ limite definido por você: … 18.000 de 20.000 tokens — 90%` |
+| `usuario` | cota da sessão (`max_tokens_per_session`) | `⚠ limite definido por você: … 900.000 de 1.000.000 tokens — 90%` |
 | `provedor` | 429 rate limit, 400 contexto, 402 sem crédito | `⚠ limite do provedor (rate limit): HTTP 429 …` |
 
 O último limite fica em `data/secondary_limite.json` (origem, subtipo, uso,

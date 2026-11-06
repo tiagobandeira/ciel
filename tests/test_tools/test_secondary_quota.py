@@ -28,7 +28,9 @@ class TestLimiteTokens:
         assert sm._limite_tokens({"max_chars_per_session": 60_000}) == 20_000
 
     def test_default_sem_config(self):
-        assert sm._limite_tokens({}) == 12_000
+        # sem nada no config: 1M (guarda de custo, não corte curto)
+        assert sm._limite_tokens(sm._DEFAULT_CONFIG) == 1_000_000
+        assert sm._limite_tokens({}) == 1_000_000
 
     def test_valor_invalido_cai_no_legado(self):
         assert sm._limite_tokens({"max_tokens_per_session": "x",

@@ -45,6 +45,7 @@ def tmp_root(tmp_path, sm_mod, monkeypatch):
     """Redireciona todos os paths do módulo para tmp_path."""
     monkeypatch.setattr(sm_mod, "_CONFIG_PATH",  tmp_path / "ciel_config.json")
     monkeypatch.setattr(sm_mod, "_QUOTA_PATH",   tmp_path / "data" / "secondary_quota.json")
+    monkeypatch.setattr(sm_mod, "_LIMITE_PATH",  tmp_path / "data" / "secondary_limite.json")
     monkeypatch.setattr(sm_mod, "_RESPONSE_DIR", tmp_path / "data" / "user")
     monkeypatch.setattr(sm_mod, "_SKILLS_DIR",   tmp_path / "skills")
     monkeypatch.setattr(sm_mod, "_MOCK_FILE",    tmp_path / "data" / "mock" / "mock_responses.json")

@@ -802,6 +802,87 @@ def api_info():
 
 
 # ── /api/consumo ─────────────────────────────────────────────────────────────
+# uso da sessão é persistente: state.tokens_in/out são do processo e zeram ao
+# trocar de sessão; a cota é acumulada (tokens de entrada) e sobrevive restart.
+USO_PATH = ROOT / "data" / "session_usage.json"
+
+
+def _uso_da_sessao(sessao) -> dict:
+    vazio = {"entrada": 0, "saida": 0, "ultimo_entrada": 0, "aviso": 0.0, "atualizado": ""}
+    if sessao is None:
+        return vazio
+    bruto = _ler_json(USO_PATH).get(str(sessao))
+    if not isinstance(bruto, dict):
+        return vazio
+    return {
+        "entrada":        int(bruto.get("entrada", 0) or 0),
+        "saida":          int(bruto.get("saida", 0) or 0),
+        "ultimo_entrada": int(bruto.get("ultimo_entrada", 0) or 0),
+        "aviso":          float(bruto.get("aviso", 0) or 0),
+        "atualizado":     str(bruto.get("atualizado", "") or ""),
+    }
+
+
+def _registrar_uso(sessao, entrada: int, saida: int) -> dict:
+    """Soma o turno ao acumulado da sessão e devolve o novo total."""
+    if sessao is None:
+        return _uso_da_sessao(None)
+    dados = _ler_json(USO_PATH)
+    atual = _uso_da_sessao(sessao)
+    atual["entrada"]        += int(entrada or 0)
+    atual["saida"]          += int(saida or 0)
+    atual["ultimo_entrada"]  = int(entrada or 0)
+    atual["atualizado"]      = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    dados[str(sessao)] = atual
+    _gravar_json(USO_PATH, dados)
+    return atual
+
+
+def _avisar_cota_sessao(sessao, uso: dict, teto: int) -> None:
+    """Publica aviso (80%/95%) uma vez por faixa, para a sessão mostrar."""
+    if sessao is None or teto <= 0:
+        return
+    pct = contexto.fracao(uso.get("entrada", 0), teto)
+    avisos = contexto.avisos()
+    cruzado = max((a for a in avisos if pct >= a), default=0.0)
+    if cruzado <= float(uso.get("aviso", 0) or 0):
+        return
+
+    dados = _ler_json(USO_PATH)
+    item = dados.get(str(sessao))
+    if isinstance(item, dict):
+        item["aviso"] = cruzado
+        dados[str(sessao)] = item
+        _gravar_json(USO_PATH, dados)
+
+    ui_bus.publish(
+        "cota", escopo="sessao", aviso=cruzado,
+        usado=int(uso.get("entrada", 0)), teto=int(teto),
+        pct=round(pct * 100, 1),
+    )
+
+
+def _bloqueio_cota_sessao():
+    """
+    Devolve a resposta de bloqueio quando a cota da sessão já foi atingida.
+
+    Chamado só para turnos que vão ao modelo: comandos como `/history salvar`
+    precisam continuar funcionando para o usuário criar a próxima sessão.
+    """
+    cota = contexto.cota_sessao_tokens(state.perfil)
+    uso  = _uso_da_sessao(state.session_id)
+    if uso["entrada"] < cota:
+        return None
+    return jsonify({
+        "error": (
+            f"cota da sessão atingida ({uso['entrada']:,} de {cota:,} tokens de "
+            f"entrada). Crie uma nova sessão (com resumo) ou aumente "
+            f"`cota_sessao_tokens`."
+        ),
+        "limite": {"origem": "sessao", "usado": uso["entrada"], "teto": cota},
+    }), 429
+
+
 def _consumo_secundario(sessao) -> dict:
     """
     Cota e uso do modelo secundário.
@@ -821,7 +902,7 @@ def _consumo_secundario(sessao) -> dict:
             legado = int(legado)
         except (TypeError, ValueError):
             legado = 0
-        tokens = max(1, legado // contexto.chars_por_token()) if legado else 12_000
+        tokens = max(1, legado // contexto.chars_por_token()) if legado else 1_000_000
 
     usado = 0
     if sessao is not None:
@@ -847,22 +928,38 @@ def api_consumo():
 
     cfg = contexto.carregar()
     modelo = state.model
+    teto = contexto.teto_tokens(state.perfil, modelo, cfg)
+    cota = contexto.cota_sessao_tokens(state.perfil, cfg)
+    uso = _uso_da_sessao(state.session_id)
+    secundario = _consumo_secundario(state.session_id)
+    if secundario.get("cota_tokens"):
+        secundario["pct"] = round(
+            contexto.fracao(secundario.get("usado_tokens", 0),
+                            secundario["cota_tokens"]) * 100, 1)
+
     return jsonify({
         "perfil": state.perfil,
         "modelo": state.model_label or modelo,
         "contexto": {
-            "teto_tokens":     contexto.teto_tokens(state.perfil, modelo, cfg),
+            "teto_tokens":     teto,
             "teto_perfil":     contexto.teto_tokens(state.perfil, None, cfg),
             "chars_por_token": contexto.chars_por_token(cfg),
             "keep_last":       contexto.keep_last(state.perfil, cfg),
             "anexo":           contexto.anexo(cfg),
+            "avisos":          contexto.avisos(cfg),
         },
         "sessao": {
-            "id":         state.session_id,
-            "tokens_in":  state.tokens_in,
-            "tokens_out": state.tokens_out,
+            "id":             state.session_id,
+            "tokens_in":      state.tokens_in,      # processo atual
+            "tokens_out":     state.tokens_out,
+            "entrada":        uso["entrada"],       # acumulado persistido
+            "saida":          uso["saida"],
+            "ultimo_entrada": uso["ultimo_entrada"],
+            "cota_tokens":    cota,
+            "pct_cota":       round(contexto.fracao(uso["entrada"], cota) * 100, 1),
+            "pct_contexto":   round(contexto.fracao(uso["ultimo_entrada"], teto) * 100, 1),
         },
-        "secundario": _consumo_secundario(state.session_id),
+        "secundario": secundario,
         "limite":     _ler_json(ROOT / "data" / "secondary_limite.json") or None,
     })
 
@@ -1978,6 +2075,13 @@ def _chat_turn():
             "arquivos":     arquivos,
         })
 
+    # Cota da sessão (acumulada, tokens de entrada): o turno que cruza o teto
+    # termina; o próximo é que não começa — evita matar trabalho no meio.
+    # Comandos (`/history salvar`…) passam antes, para dar saída ao usuário.
+    bloqueio = _bloqueio_cota_sessao()
+    if bloqueio is not None:
+        return bloqueio
+
     # ── branch automática no primeiro input após visualização ────────────────
     branch_notice = None
     if state.branch_pending is not None:
@@ -2075,6 +2179,11 @@ def _chat_turn():
     state.tokens_in  += t_in
     state.tokens_out += t_out
     state.context_injection = None  # limpa após primeiro uso
+
+    # cota da sessão (acumulada): avisa em 80/95% e sobrevive a restart
+    _uso = _registrar_uso(state.session_id, t_in, t_out)
+    _avisar_cota_sessao(state.session_id, _uso,
+                        contexto.cota_sessao_tokens(state.perfil))
 
     tools_changed = False
 
@@ -2220,6 +2329,9 @@ def handle_command(cmd: str, turn_id: str | None = None,
             arquivos.extend(_arquivos_do_turno(foto_antes, _foto_data()))
         state.tokens_in  += result.tokens_in
         state.tokens_out += result.tokens_out
+        _uso = _registrar_uso(state.session_id, result.tokens_in, result.tokens_out)
+        _avisar_cota_sessao(state.session_id, _uso,
+                            contexto.cota_sessao_tokens(state.perfil))
 
         if result.status == "needs_tool":
             return "⚠ A task requer uma tool que ainda não existe.", False

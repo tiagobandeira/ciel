@@ -29,6 +29,11 @@ DEFAULTS: dict = {
         "teto_tokens":   8000,
     },
     "history_keep_last": {"local": 4, "nuvem": 6},
+    # Cota da SESSÃO: soma de tokens de entrada enviados (system + histórico +
+    # anexo + tools a cada chamada). Não é a janela do turno — é o último
+    # recurso contra loop/leitura gigante. 1M ≈ 50–70 mensagens curtas.
+    "cota_sessao_tokens": {"local": 1_000_000, "nuvem": 2_000_000},
+    "avisos":            [0.8, 0.95],
     "avisar_truncamento": True,
 }
 
@@ -117,6 +122,47 @@ def keep_last(perfil: str | None = None, cfg: dict | None = None) -> int:
     cfg = cfg or carregar()
     tabela = cfg.get("history_keep_last") or {}
     return _num(tabela.get(_perfil(perfil)), DEFAULTS["history_keep_last"][_perfil(perfil)])
+
+
+def cota_sessao_tokens(perfil: str | None = None, cfg: dict | None = None) -> int:
+    """
+    Cota acumulada da sessão, em tokens de **entrada**.
+
+    Diferente do teto do turno: aqui é o orçamento total que a sessão pode
+    enviar ao orquestrador (system + histórico + anexo, a cada chamada). Serve
+    de último recurso contra um loop que consome tudo de uma vez.
+    """
+    cfg = cfg or carregar()
+    tabela = cfg.get("cota_sessao_tokens") or {}
+    padrao = DEFAULTS["cota_sessao_tokens"][_perfil(perfil)]
+    return _num(tabela.get(_perfil(perfil)), padrao)
+
+
+def avisos(cfg: dict | None = None) -> list[float]:
+    """Frações em que a UI avisa sobre a cota (ex.: 0.8 e 0.95)."""
+    cfg = cfg or carregar()
+    brutos = cfg.get("avisos")
+    if not isinstance(brutos, (list, tuple)):
+        return list(DEFAULTS["avisos"])
+    saida = []
+    for bruto in brutos:
+        try:
+            fracao = float(bruto)
+        except (TypeError, ValueError):
+            continue
+        if 0 < fracao < 1:
+            saida.append(fracao)
+    return sorted(saida) or list(DEFAULTS["avisos"])
+
+
+def fracao(usado: int, teto: int) -> float:
+    """Fração usada (0..1+), tolerante a teto zero."""
+    try:
+        teto = int(teto)
+        usado = int(usado)
+    except (TypeError, ValueError):
+        return 0.0
+    return (usado / teto) if teto > 0 else 0.0
 
 
 def anexo(cfg: dict | None = None) -> dict:

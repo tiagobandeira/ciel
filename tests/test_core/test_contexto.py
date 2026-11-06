@@ -92,3 +92,32 @@ class TestOverride:
         assert contexto.teto_tokens("cloud", cfg=cfg) == 64_000
         assert contexto.teto_tokens("build", cfg=cfg) == 64_000
         assert contexto.teto_tokens("", cfg=cfg) == 32_000
+
+class TestCotaSessao:
+    """A cota da sessão é acumulada e separada da janela do turno."""
+
+    def test_default_por_perfil(self, tmp_path):
+        cfg = contexto.carregar(tmp_path / "nao-existe.json")
+
+        assert contexto.cota_sessao_tokens("local", cfg=cfg) == 1_000_000
+        assert contexto.cota_sessao_tokens("nuvem", cfg=cfg) == 2_000_000
+
+    def test_override(self, tmp_path):
+        cfg = contexto.carregar(_config(tmp_path, {
+            "cota_sessao_tokens": {"local": 500_000},
+        }))
+
+        assert contexto.cota_sessao_tokens("local", cfg=cfg) == 500_000
+        assert contexto.cota_sessao_tokens("nuvem", cfg=cfg) == 2_000_000
+
+    def test_avisos_default_e_override(self, tmp_path):
+        cfg = contexto.carregar(tmp_path / "nao-existe.json")
+        assert contexto.avisos(cfg) == [0.8, 0.95]
+
+        cfg = contexto.carregar(_config(tmp_path, {"avisos": [0.5, "x", 1.2, 0.9]}))
+        assert contexto.avisos(cfg) == [0.5, 0.9]
+
+    def test_fracao(self):
+        assert contexto.fracao(250_000, 1_000_000) == 0.25
+        assert contexto.fracao(10, 0) == 0.0
+        assert contexto.fracao("x", 10) == 0.0

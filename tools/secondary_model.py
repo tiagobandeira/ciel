@@ -29,9 +29,11 @@ _DEFAULT_CONFIG = {
     "model":                 "nvidia/llama-3.1-nemotron-ultra-253b-v1",
     "api_key_env":           "SECONDARY_MODEL_API_KEY",
     "timeout":               180,
-    # cota da sessão em tokens; 0 = deriva de max_chars_per_session (legado)
+    # cota da sessão em tokens; 0 = deriva de max_chars_per_session (legado).
+    # O legado também começa em 0: só vale se o config do usuário definir um
+    # valor — assim um config antigo não é mascarado pelo default novo.
     "max_tokens_per_session": 0,
-    "max_chars_per_session": 40000,
+    "max_chars_per_session": 0,
     "max_response_chars":    8000,
 }
 
@@ -397,7 +399,8 @@ def _limite_tokens(cfg: dict) -> int:
     Cota da sessão em tokens.
 
     `max_tokens_per_session` manda; se não existir, converte o legado
-    `max_chars_per_session` (chars) por `chars_por_token`; senão 12k.
+    `max_chars_per_session` (chars) por `chars_por_token`; senão 1M (default
+    de guarda de custo, não corte curto).
     """
     import contexto
 
@@ -416,7 +419,7 @@ def _limite_tokens(cfg: dict) -> int:
         legado = 0
     if legado > 0:
         return max(1, legado // contexto.chars_por_token())
-    return 12_000
+    return 1_000_000
 
 
 def _load_quota(session_id: str) -> dict:

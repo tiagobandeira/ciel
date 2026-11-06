@@ -68,6 +68,7 @@ async function init() {
     setEstadoSessao('nova');
     setRodapeLeitura(false);
     renderTokens();
+    await atualizarConsumo();
     await refreshSources();
   } catch(e) {
     setStatus('error');
@@ -149,6 +150,121 @@ function renderTokens() {
 function fmt(n) {
   return n >= 1000 ? `${(n / 1000).toFixed(1).replace('.', ',')}k` : String(n);
 }
+
+/* ── consumo da sessão (cota acumulada) ────────────────────────
+   O card "uso" mostra o acumulado persistido (server), não o contador do
+   processo: a cota é sobre tokens de ENTRADA da sessão, e o contexto do turno
+   é o último prompt contra a janela do modelo. */
+let _consumoAvisos = { sessao: '', secundario: '' };
+
+function fmtQ(n) {
+  n = Number(n) || 0;
+  if (n >= 1e6) return (n / 1e6).toFixed(n < 1e7 ? 1 : 0).replace('.', ',') + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(n < 1e4 ? 1 : 0).replace('.', ',') + 'k';
+  return String(n);
+}
+
+function pintarCota(rowId, barId, valId, pct, texto) {
+  const row = document.getElementById(rowId);
+  const bar = document.getElementById(barId);
+  const val = document.getElementById(valId);
+  if (!row || !bar || !val) return;
+  const p = Math.max(0, Math.min(100, Number(pct) || 0));
+  row.classList.toggle('warn', p >= 70 && p < 90);
+  row.classList.toggle('err', p >= 90);
+  bar.style.width = p + '%';
+  val.textContent = `${texto} ${Math.round(p)}%`;
+}
+
+async function atualizarConsumo() {
+  if (!document.getElementById('q-sessao')) return;
+  let d;
+  try { d = await api('/api/consumo'); } catch (_) { return; }
+
+  const s = d.sessao || {};
+  const c = d.contexto || {};
+  const sec = d.secundario || {};
+
+  const tin = document.getElementById('info-tin');
+  const tout = document.getElementById('info-tout');
+  const tot = document.getElementById('info-total');
+  if (tin) tin.textContent = fmtQ(s.entrada);
+  if (tout) tout.textContent = fmtQ(s.saida);
+  if (tot) tot.textContent = fmtQ((s.entrada || 0) + (s.saida || 0));
+
+  const bar = document.getElementById('rp-bar');
+  if (bar) {
+    const total = (s.entrada || 0) + (s.saida || 0);
+    const pctIn = total ? Math.round((s.entrada / total) * 100) : 0;
+    document.getElementById('bar-in').style.width = pctIn + '%';
+    document.getElementById('bar-out').style.width = (total ? 100 - pctIn : 0) + '%';
+  }
+
+  pintarCota('q-sessao', 'q-sessao-bar', 'q-sessao-v', s.pct_cota,
+             `${fmtQ(s.entrada)}/${fmtQ(s.cota_tokens)}`);
+  const qs = document.getElementById('q-sessao');
+  if (qs) qs.title = `cota da sessão: ${fmtCheio(s.entrada || 0)} de ${fmtCheio(s.cota_tokens || 0)} tokens de entrada`;
+
+  pintarCota('q-turno', 'q-turno-bar', 'q-turno-v', s.pct_contexto,
+             `${fmtQ(s.ultimo_entrada)}/${fmtQ(c.teto_tokens)}`);
+  const qt = document.getElementById('q-turno');
+  if (qt) qt.title = `contexto do último turno: ${fmtCheio(s.ultimo_entrada || 0)} de ${fmtCheio(c.teto_tokens || 0)} tokens`;
+
+  const qsec = document.getElementById('q-sec');
+  if (qsec) {
+    const temSec = d.perfil === 'local' && sec.cota_tokens;
+    qsec.classList.toggle('hidden', !temSec);
+    if (temSec) {
+      pintarCota('q-sec', 'q-sec-bar', 'q-sec-v', sec.pct,
+                 `${fmtQ(sec.usado_tokens)}/${fmtQ(sec.cota_tokens)}`);
+      qsec.title = `cota do secundário: ${fmtCheio(sec.usado_tokens || 0)} de ${fmtCheio(sec.cota_tokens || 0)} tokens`;
+    }
+  }
+
+  const link = document.getElementById('q-branch');
+  if (link) link.classList.toggle('hidden', !(s.id && s.pct_contexto >= 85));
+
+  avisarCota('sessao', s.id, s.pct_cota, c.avisos);
+  avisarCota('secundario', s.id, sec.pct, c.avisos);
+}
+
+/** Aviso único por sessão+faixa (o server também publica por SSE). */
+function avisarCota(escopo, sessao, pct, avisos) {
+  const faixas = (Array.isArray(avisos) && avisos.length) ? avisos : [0.8, 0.95];
+  const frac = (Number(pct) || 0) / 100;
+  const faixa = faixas.filter((f) => frac >= f).pop();
+  if (!faixa || !sessao) return;
+  const chave = `${sessao}:${faixa}`;
+  if (_consumoAvisos[escopo] === chave) return;
+  _consumoAvisos[escopo] = chave;
+  const rotulo = escopo === 'sessao' ? 'cota da sessão' : 'cota do secundário';
+  addSysMsg(`⚠ ${rotulo} em ${Math.round(faixa * 100)}% — Ajustes → consumo ` +
+            `para aumentar o limite, ou nova sessão com resumo.`);
+}
+
+/** Segunda etapa: salva a sessão (com resumo) para continuar em branch. */
+window.sugerirNovaSessaoComResumo = async () => {
+  if (turnoAtivo) return;
+  if (!currentSessionId) { addSysMsg('sessão nova — não há histórico para resumir.'); return; }
+  addSysMsg('salvando esta sessão com resumo…');
+  try {
+    await api('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: `/history salvar`,
+        session_id: currentSessionId,
+        turn_id: novoTurno(),
+      }),
+    });
+    await loadSessions();
+    addSysMsg(`sessão #${currentSessionId} salva com resumo. Abra ela na lista e ` +
+              `use “retomar esta conversa” para continuar em uma nova branch.`);
+    await atualizarConsumo();
+  } catch (e) {
+    addSysMsg(`não deu para salvar a sessão: ${e.message}`);
+  }
+};
 function fmtCheio(n) {
   return Number(n).toLocaleString('pt-BR');
 }
@@ -335,6 +451,10 @@ function initEventos() {
         : 'limite do provedor';
       const extra = m.subtipo ? ` (${m.subtipo})` : '';
       addSysMsg(`⚠ ${quem}${extra}: ${m.detalhe || ''}`);
+      return;
+    }
+    if (m && m.tipo === 'cota') {
+      atualizarConsumo();
       return;
     }
     if (!m || !m.turn_id || m.turn_id !== currentTurn) return;
@@ -704,6 +824,7 @@ window.sendMessage = async () => {
     }
 
     await loadSessions();
+    await atualizarConsumo();
 
   } catch(e) {
     setStatus('error');
@@ -735,6 +856,7 @@ window.clearChat = async () => {
   resetRightPanel();   // zera tokens, título, estado e fontes
   addSysMsg('nova sessão iniciada');
   await loadSessions();
+  await atualizarConsumo();
   await refreshSources();   // fontes globais continuam disponíveis
 };
 
@@ -1328,6 +1450,7 @@ window.loadSession = async (sessionId) => {
     addViewModeBanner(sess.id, sess.title);
 
     await loadSessions();
+    await atualizarConsumo();
 
   } catch(e) {
     addSysMsg(`erro ao carregar sessão: ${e.message}`);

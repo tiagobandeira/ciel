@@ -20,11 +20,25 @@ Já entrou (incremento 1, Parte 1):
 - Testes: `tests/test_core/test_contexto.py` e casos novos em
   `tests/test_integration/test_agent_loop_batch.py`.
 
-Também já entrou (Parte 3, parcial):
+Também já entrou (Parte 3.2, 2026-11-06):
 
-- cota do secundário em **tokens** (`max_tokens_per_session`), debitada pelo
-  `usage` real com estimativa `chars/3` na admissão e fallback em chars quando o
-  provedor não devolve `usage`; legado `max_chars_per_session` convertido;
+- **distinção turno x sessão**: `teto_tokens` é a janela de **uma** chamada
+  (local 32k, override `gemma4:cloud` 64k, nuvem 128k); `cota_sessao_tokens` é
+  o **acumulado de tokens de entrada** da sessão (1M local / 2M nuvem) — o
+  último recurso contra loop/leitura gigante. 32k por sessão não dava alguns
+  turnos, e essa era a confusão.
+- cota da sessão persistida em `data/session_usage.json` (entrada, saída,
+  último turno e faixa de aviso já emitida); sobrevive restart e troca de sessão.
+- avisos em **80%/95%** (painel + SSE `cota`); o turno que cruza o teto termina e
+  o **próximo** é que não começa. Comandos como `/history salvar` continuam
+  liberados para dar saída ao usuário.
+- **painel da sessão (site)** ganhou as barras `sessão`, `contexto` (último
+  turno) e `secundário` (só no perfil local), com cor por faixa e link
+  "nova sessão com resumo" quando o contexto do turno passa de 85%.
+- cota do secundário em **tokens** (`max_tokens_per_session`, default 1M),
+  debitada pelo `usage` real com estimativa `chars/3` na admissão e fallback em
+  chars quando o provedor não devolve `usage`; legado `max_chars_per_session`
+  convertido;
 - **atribuição do limite** (`limite: usuario` x `limite: provedor` com subtipo
   rate limit/contexto/crédito) — o "Erro HTTP 429" mudo saiu de cena;
 - aviso na sessão via SSE (`limite`) e **Ajustes → consumo** com teto, uso da

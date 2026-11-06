@@ -752,9 +752,35 @@ conversa inteira.
 reserva (no Ollama, `num_ctx` cobre entrada e saída); `keep_last` 4 no local e 6
 na nuvem; `run_agent` aceita `history_max_chars`/`history_keep_last`/`num_ctx`
 explícitos para CLI e testes. Como o `run_agent` é compartilhado, CLI/TUI também
-passam a compactar no perfil local. As cotas do modelo secundário continuam em
-chars por enquanto — a troca para tokens é o próximo passo do plano
-([plano-contexto.md](plano-contexto.md)).
+passam a compactar no perfil local. A cota do secundário também foi para tokens
+(D-040).
+
+---
+
+## D-040 — Duas cotas: janela do turno x orçamento da sessão
+
+**Decisão:** separar o que estava junto.
+
+- `teto_tokens` (`contexto.py`) é a janela de **uma** chamada — 32k local,
+  override por modelo (`gemma4:cloud` 64k), 128k nuvem. É físico: compacta e,
+  perto do limite, sugere branch.
+- `cota_sessao_tokens` é o **acumulado de tokens de entrada** da sessão (1M
+  local / 2M nuvem). Serve de último recurso contra um loop que lê um livro
+  inteiro, repete a mesma tool ou reenvia o mesmo prompt caro várias vezes.
+- a cota do secundário segue a mesma lógica: 1M de entrada por sessão, avisos
+  em 80/95% e bloqueio só no teto.
+
+**Por quê:** com `gemma4:cloud` (modelo remoto via Ollama), o 32k não é limite
+de RAM — mas 32k **por sessão** daria dois ou três turnos, porque cada turno
+reenvia system + tools + histórico (13k+). A cota de sessão é sobre **entrada
+acumulada**, não sobre a janela; usar a janela como cota transformava um
+orçamento de custo em bloqueio precoce.
+
+**Consequência:** uso persistido em `data/session_usage.json`; o turno que cruza
+o teto termina (não mata trabalho no meio) e o próximo é bloqueado, com saída
+por `/history salvar` e branch. Avisos 80/95 no painel e no SSE; o painel mostra
+sessão, contexto do turno e secundário (só no perfil local). Números antigos em
+chars são convertidos por `chars_por_token`.
 
 ---
 
@@ -769,4 +795,5 @@ chars por enquanto — a troca para tokens é o próximo passo do plano
 | Multitask | `multitask/flow.py`, `planner.py`, `runner.py`, `checks.py`, `report.py` |
 | Quadro | `board.py` (`data/runs/<id>/board.json`) |
 | Orçamento de contexto | `contexto.py`, `agent_loop.py`, `llm/client.py` |
+| Cota da sessão (persistida) | `server.py` (`USO_PATH`, `_registrar_uso`), `data/session_usage.json` |
 | Visualizador do site | `server.py` (`/preview`, `/api/files`, `/api/preview_site`), `preview_sites.py`, `web/static/preview.js` |
