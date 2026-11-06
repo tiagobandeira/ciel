@@ -177,6 +177,9 @@ function pintarCota(rowId, barId, valId, pct, texto) {
 }
 
 async function atualizarConsumo() {
+  // /api/consumo exige login; sem isso cada load/turno gerava 401 no log
+  // (e o painel ficava com "erro ao carregar" em vez de esperar o login)
+  if (!_authState.authenticated) return;
   if (!document.getElementById('q-sessao')) return;
   let d;
   try { d = await api('/api/consumo'); } catch (_) { return; }
@@ -1897,6 +1900,7 @@ async function doLogin() {
     // recarrega info para atualizar tools disponíveis
     const info = await api('/api/info');
     atualizarTools(info.tools);
+    await atualizarConsumo();     // painel estava vazio enquanto não havia login
     addSysMsg('🔓 autenticado — todas as tools disponíveis');
   } catch(_) {
     err.classList.remove('hidden');
@@ -1918,6 +1922,14 @@ async function doLogout() {
   _authState.authenticated = false;
   _renderAuthBadge();
   closeModal('auth-modal');
+  // consumo exige login: limpa os números antigos em vez de deixá-los na tela
+  ['q-sessao-v', 'q-turno-v', 'q-sec-v'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '—';
+  });
+  ['q-limite', 'q-branch', 'q-sec'].forEach((id) => {
+    document.getElementById(id)?.classList.add('hidden');
+  });
   const info = await api('/api/info');
   atualizarTools(info.tools);
   addSysMsg('🔒 sessão encerrada — modo seguro ativo');
@@ -2168,6 +2180,10 @@ function renderSettingsSobre() {
 async function renderSettingsConsumo() {
   const alvo = document.getElementById('settings-consumo');
   if (!alvo) return;
+  if (!_authState.authenticated) {
+    alvo.innerHTML = '<div class="panel-empty">consumo exige login — use o cadeado no topo.</div>';
+    return;
+  }
   try {
     const d = await api('/api/consumo');
     const sec = d.secundario || {};
